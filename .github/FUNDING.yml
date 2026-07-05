@@ -1,0 +1,16 @@
+# GitHub renders a "Sponsor" button on the repo from this file.
+# Fill in the accounts you actually have; delete the ones you don't.
+# Docs: https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
+
+# GitHub Sponsors (enable at https://github.com/sponsors first)
+github: [orelvis15]
+
+# Other platforms — uncomment and set your handle to enable:
+# patreon: your-handle
+# open_collective: your-project
+# ko_fi: your-handle
+# buy_me_a_coffee: your-handle
+# liberapay: your-handle
+# polar: your-handle
+# thanks_dev: your-handle
+# custom: ["https://your-site.example/donate"]
