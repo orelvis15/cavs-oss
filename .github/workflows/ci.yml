@@ -36,5 +36,12 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
+      # The cavs-client integration tests spawn the cavs-server / cavs CLI
+      # binaries by path, so they must exist before the tests run. On a clean
+      # runner `cargo test` may reach those tests before the sibling crates'
+      # binaries are built, so build all binaries up front.
+      - name: Build binaries
+        run: cargo build --workspace --bins
+
       - name: Test
         run: cargo test --all

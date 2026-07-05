@@ -6,6 +6,20 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1]
+
+### Fixed
+
+- CI: build all workspace binaries before running tests, so the `cavs-client`
+  integration tests can find the `cavs-server` / `cavs` binaries they spawn on a
+  clean runner.
+
+### Changed
+
+- Release workflow now publishes all crates to crates.io automatically on a
+  version tag (in dependency order), so releases no longer require a manual
+  `cargo publish`.
+
 ## [0.1.0]
 
 Initial public release.
@@ -27,5 +41,6 @@ Initial public release.
 - `cavs-steam`: SteamPipe update-size analyzer for game builds.
 - Documentation: format specification, architecture, benchmarks, and paper.
 
-[Unreleased]: https://github.com/orelvis15/cavs-oss/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/orelvis15/cavs-oss/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/orelvis15/cavs-oss/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/orelvis15/cavs-oss/releases/tag/v0.1.0

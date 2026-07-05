@@ -249,14 +249,14 @@ checksum = "8ae3f5d315924270530207e2a68396c3cc547f6dca3fbdca317cfb1a51edb593"
 
 [[package]]
 name = "cavs-chunker"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "fastcdc",
 ]
 
 [[package]]
 name = "cavs-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "cavs-chunker",
@@ -273,7 +273,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-client"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "cavs-hash",
@@ -291,7 +291,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-format"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cavs-hash",
  "cavs-store",
@@ -303,14 +303,14 @@ dependencies = [
 
 [[package]]
 name = "cavs-hash"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "blake3",
 ]
 
 [[package]]
 name = "cavs-proto"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cavs-hash",
  "serde",
@@ -320,7 +320,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-server"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -340,7 +340,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-steam"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "cavs-chunker",
@@ -355,7 +355,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-store"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cavs-hash",
  "serde",

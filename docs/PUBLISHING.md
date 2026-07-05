@@ -1,7 +1,27 @@
 # Publishing to crates.io
 
 Maintainer notes for releasing the CAVS crates to [crates.io](https://crates.io).
-This is a manual, maintainer-only process — it is **not** run by CI.
+
+## Automated release (normal path)
+
+Publishing is automated. Pushing a version tag runs the
+[release workflow](../.github/workflows/release.yml), which builds the binaries
+and then publishes every crate to crates.io **in dependency order**:
+
+```sh
+# bump the version in Cargo.toml + CHANGELOG.md first, then:
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+This requires a repository secret named **`CRATES_IO_TOKEN`** (Settings →
+Secrets and variables → Actions) holding a crates.io API token with publish
+scope. The publish step is idempotent — a version already on crates.io is
+skipped, so the workflow can be safely re-run.
+
+The rest of this document describes the manual process and the mechanics behind
+it, useful for the very first publish (before the secret exists) or for
+debugging a failed release.
 
 ## One-time setup
 
