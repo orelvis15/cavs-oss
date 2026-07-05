@@ -15,6 +15,14 @@ a pixel codec.
 - **Content-addressable**: every chunk is identified by its BLAKE3-256 hash;
   the client fetches only what it lacks, with a cache that reuses bytes across
   versions, DLC and sessions.
+- **Cold installs at less than full-download price (dual route)**: packing
+  with `--bootstrap` also emits the whole release as one zstd-19 artifact;
+  the server routes cache-less clients to it automatically whenever it beats
+  the chunk path, and the client **seeds its chunk cache from it** — so the
+  first install is cheap *and* the next update is already incremental.
+- **Adaptive chunking**: `--profile auto` classifies the payload (format
+  magic, sampled entropy, compression probe) and measures candidate chunk
+  profiles on the real bytes; `cavs sweep` prints the per-title table.
 - **Verified end-to-end**: per-chunk BLAKE3, global Merkle root, per-file
   SHA-256, and an optional Ed25519 content signature. Reconstruction is
   byte-identical or it fails — never halfway.
@@ -33,8 +41,17 @@ version downloads, versus downloading the full new release compressed with zstd.
 | Game | Update | Full download | With CAVS | Saved |
 |---|---|---:|---:|---:|
 | godotengine/**tps-demo** (569 MB) | tag 4.5 → master | 247.6 MiB | **1.64 MiB** | **−99.3%** |
-| MechanicalFlower/**Marble** | 1.6.0 → 1.6.1 | 6.55 MiB | 0.19 MiB | **−97.1%** |
-| GDQuest **3D third-person** | HEAD~10 → HEAD (468 files) | 27.61 MiB | 8.7 MiB | **−68%** |
+| MechanicalFlower/**Marble** | 1.6.0 → 1.6.1 | 6.55 MiB | 0.14 MiB | **−97.8%** |
+| GDQuest **3D third-person** | HEAD~10 → HEAD (468 files) | 27.61 MiB | 8.7 MiB | **−68.5%** |
+
+And the **first install** (a cache-less player) now costs *less* than
+downloading the full compressed release, thanks to the dual delivery route:
+
+| Game | Full download (zstd-3) | CAVS cold install | Delta |
+|---|---:|---:|---:|
+| godotengine/**tps-demo** | 247.62 MiB | **221.42 MiB** | **−10.6%** |
+| GDQuest **3D third-person** | 27.66 MiB | **24.43 MiB** | **−11.7%** |
+| MechanicalFlower/**Marble** | 6.55 MiB | **5.68 MiB** | **−13.2%** |
 
 - **Re-downloads cost ~0 bytes** of payload (persistent content-addressable cache).
 - **Server storage dedup**: ingesting two versions of a real game into the
@@ -42,7 +59,8 @@ version downloads, versus downloading the full new release compressed with zstd.
   each `.cavs` separately.
 - **Client RAM is constant at ~7 MiB**, whether the game is 9 MB or 569 MB.
 - **Honest negatives**: on a single video, ABR ladders, or already-compressed
-  files, savings are ~0 and the packaging overhead is +0.03–2%.
+  files, savings are ~0 and the packaging overhead is +0.03–2% (the payload
+  classifier keeps it at the low end by using large chunks there).
 
 Full methodology and comparisons vs xdelta3/bsdiff/rdiff/rsync are in
 [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md). Design rationale and results are in
@@ -95,20 +113,26 @@ Package two versions of a build, serve them, and watch a client download only
 what changed on the second fetch:
 
 ```sh
-# 1. Package two versions of a game build (FastCDC 64 KiB + zstd, signed optional)
-./target/release/cavs pack --raw game_v1.pck -o game_v1.cavs
-./target/release/cavs pack --raw game_v2.pck -o game_v2.cavs
+# 1. Package two versions of a game build. --profile auto picks the chunking
+#    per payload, --bootstrap makes cold installs cost the full artifact, and
+#    --prev keeps the chunk profile consistent with the published version.
+./target/release/cavs pack --raw game_v1.pck --profile auto --bootstrap -o game_v1.cavs
+./target/release/cavs pack --raw game_v2.pck --profile auto --prev game_v1.cavs --bootstrap -o game_v2.cavs
 
 # 2. Inspect and verify
 ./target/release/cavs info game_v1.cavs
 ./target/release/cavs verify game_v1.cavs
 
-# 3. Serve both versions
+# 3. Serve both versions (the .bootstrap.zst sidecars are picked up next to them)
 ./target/release/cavs-server game_v1.cavs game_v2.cavs --listen 127.0.0.1:8990
 
-# 4. A client installs v1, then updates to v2 — the second fetch is a fraction
+# 4. A cold client installs v1 (routed to the bootstrap, cache auto-seeded),
+#    then updates to v2 — the second fetch downloads only the changed chunks
 ./target/release/cavs-client fetch http://127.0.0.1:8990 game_v1 -o out1 --cache ./cache
 ./target/release/cavs-client fetch http://127.0.0.1:8990 game_v2 -o out2 --cache ./cache
+
+# Optional: measure which chunk profile is cheapest for YOUR builds
+./target/release/cavs sweep game_v2.pck --prev game_v1.cavs
 ```
 
 Signing (optional, recommended for distribution):
@@ -145,13 +169,17 @@ See [`godot-plugin/README.md`](godot-plugin/README.md) for game integration and
 ## Components
 
 - **`cavs`** (CLI): package files/builds into `.cavs` (FastCDC + zstd +
-  optional Ed25519 signature), inspect, verify, reconstruct, and manage a
-  global store (`add` / `rm` / `gc` / `stat`).
+  optional Ed25519 signature) with payload classification, `--profile auto`
+  chunk-profile selection, `--bootstrap` cold-install artifacts and a
+  `sweep` cost report; inspect, verify, reconstruct, and manage a global
+  store (`add` / `rm` / `gc` / `stat`).
 - **`cavs-server`**: stateful HTTP/HTTPS origin. Per-session have-set,
-  inline/reference planning, CVSP binary batches, immutable CDN-cacheable
-  chunk endpoint, Prometheus metrics, and a `--store` mode.
+  inline/reference planning, dual-route decision (bootstrap vs chunks) per
+  client, CVSP binary batches, immutable CDN-cacheable chunk endpoint,
+  Prometheus metrics, and a `--store` mode.
 - **`cavs-client`**: native streaming client with a persistent cache and
-  atomic, verified reconstruction; resumable and retry-safe.
+  atomic, verified reconstruction; takes the bootstrap route when offered
+  (seeding its cache); resumable and retry-safe.
 - **Godot plugin**: `CavsClient` in pure GDScript (no native binaries) —
   install as an addon, mount packs at runtime. See
   [`godot-plugin/README.md`](godot-plugin/README.md).

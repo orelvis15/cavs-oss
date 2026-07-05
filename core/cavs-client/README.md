@@ -14,6 +14,15 @@ place. Peak memory is one chunk regardless of asset size; interrupted fetches
 resume without re-downloading, and a failed verification never leaves a corrupt
 file.
 
+**Dual route (v2)**: when the server measures that the full bootstrap
+artifact is cheaper for this cache (typically a first install), the client
+downloads it instead — streamed to disk, BLAKE3-verified on the wire,
+SHA-256-verified after decompression, installed atomically — and then **seeds
+its chunk cache** by slicing the installed file along the manifest's chunk
+plan. The next update therefore only pays for changed chunks. Any failure on
+this path falls back to the normal chunk route. `--stats-json` reports which
+route was taken (`delivery_mode`), plus `seeded_chunks` and `seed_ms`.
+
 ## Use
 
 ```sh

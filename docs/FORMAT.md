@@ -143,6 +143,20 @@ Packers emit per-file `sha256:<name>` entries so thin clients without BLAKE3
 (for example the Godot GDScript runtime) can verify reconstruction with their
 built-in hasher. A signed asset also carries `sig.ed25519` and `sig.pubkey`.
 
+Since 0.1.2 the packer may also record (all additive — older readers ignore
+unknown keys):
+
+- `profile:<name>` / `payload_kind:<name>` — the chunk profile chosen for a
+  track and the classified payload kind, for reproducibility and diagnostics.
+- `bootstrap.name`, `bootstrap.size`, `bootstrap.blake3` — metadata of the
+  **bootstrap sidecar**: a `<output>.cavs.bootstrap.zst` file written next to
+  the container holding the whole (single-input) asset zstd-compressed. The
+  sidecar is *outside* the container so chunks are never stored twice; its
+  BLAKE3 recorded here is what binds it to the (optionally signed) container.
+  A server only offers a sidecar that verifies against these entries, and a
+  client verifies the artifact again end to end (BLAKE3 of the wire bytes +
+  per-file SHA-256) before installing and seeding its cache from it.
+
 ## INTEGRITY section
 
 ```

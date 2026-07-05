@@ -7,6 +7,26 @@ history. "Update" means what a player who already has the previous version
 downloads; the baseline is downloading the full new release compressed with
 zstd -3.
 
+## Real games — cold install (dual delivery route)
+
+First install used to be CAVS's weak spot: chunk-level compression cost +2–4%
+over downloading the whole release as one `.zst`. The **dual route** removes
+it: `cavs pack --bootstrap` also emits the full artifact zstd-19-compressed,
+the server offers it to cold clients whenever it beats the chunk path, and the
+client **seeds its chunk cache from it** — so the next update is incremental
+with zero extra downloads.
+
+| Game | PCK v1 | Full zstd-3 | Chunk path (old cold) | **Dual route cold** | vs zstd-3 |
+|---|---:|---:|---:|---:|---:|
+| godotengine/tps-demo | 569.15 MiB | 247.62 MiB | 251.91 MiB (+1.7%) | **221.42 MiB** | **−10.6%** |
+| GDQuest 3D third-person | 61.09 MiB | 27.66 MiB | 28.20 MiB (+2.0%) | **24.43 MiB** | **−11.7%** |
+| MechanicalFlower/Marble | 9.59 MiB | 6.55 MiB | 6.68 MiB (+2.0%) | **5.68 MiB** | **−13.2%** |
+| Godot 4.7 export suite | 5.39 MiB | 4.52 MiB | 4.71 MiB (+4.1%) | **4.20 MiB** | **−7.1%** |
+
+The server routed all four games to the bootstrap automatically (its per-
+session estimate vs the 2% threshold), an incompressible payload correctly
+stays on the chunk path, and every reconstruction was byte-identical.
+
 ## Real games — update payload
 
 | Game | Update | Full (zstd) | CAVS (64 KiB) | Saved |
@@ -19,6 +39,8 @@ zstd -3.
   resolves from the persistent cache as references).
 - All reconstructions were **byte-identical** (SHA-256 verified), and the Godot
   runtime mounted the reconstructed PCKs via `load_resource_pack()`.
+- A client that cold-installed via the bootstrap route pays the same update
+  prices: cache seeding reproduces the exact chunk plan of the served version.
 
 ## CAVS vs dedicated delta tools
 
@@ -50,6 +72,15 @@ zstd level 3 was the sweet spot (level 5 saved ~1.5% more cold egress for +33%
 packing time). These results set the current defaults: **FastCDC 64 KiB +
 zstd 3**.
 
+Since 0.1.2 the sweep is built in: `cavs sweep new.pck --prev old.cavs`
+measures six candidate profiles (fixed 256K/512K/1M, FastCDC 64K/128K/256K) on
+the real bytes — chunk counts, sampled compression, manifest weight and real
+chunk reuse — and `cavs pack --profile auto` applies the cheapest. It catches
+per-title cases a fixed default cannot: for Marble (an in-place patch with no
+byte shifting) `fixed-256k` beats `fastcdc-64k` on update egress, 72 vs
+153 KiB. Passing `--prev` the *published* `.cavs` keeps the choice consistent
+across a version stream, which is what preserves chunk reuse.
+
 ## Client cost (tps-demo update, 569 MB, release binaries)
 
 | Metric | Before | After (streaming) |
@@ -78,7 +109,9 @@ CAVS is not a codec and doesn't pretend to be:
 - **ABR ladder** (same title, multiple bitrates): ~0% cross-bitrate dedup —
   different bitstreams share no bytes. Expected and reported.
 - **Already-compressed files** (JPEG, MP4, ZIP): overhead +0.08%, near-zero
-  savings — the value is elsewhere.
+  savings — the value is elsewhere. The payload classifier now detects these
+  (entropy + zstd probe) and packs them with large fixed chunks so the
+  overhead stays minimal instead of paying for useless small chunks.
 - Where redundancy *does* cross content (shared episode intros): 7–21% storage
   savings by codec; warm re-watch: −100% egress.
 

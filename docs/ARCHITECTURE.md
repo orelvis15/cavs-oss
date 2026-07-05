@@ -23,7 +23,7 @@ store each unique chunk once, and transmit only the chunks a client lacks.
 | `cavs-store` | In-memory dedup index used while packing, and the **global content-addressable store** (on-disk CAS with reference counting and GC) |
 | `cavs-format` | The `.cavs` binary format: types, streaming writer, hardened reader/verifier, Ed25519 signing |
 | `cavs-proto` | CVSP wire protocol: JSON manifests/sessions + compact binary batches; the Bloom-filter have-set |
-| `cavs-cli` | The `cavs` binary: pack / unpack / info / verify / keygen / store / play |
+| `cavs-cli` | The `cavs` binary: pack / unpack / info / verify / keygen / store / play / sweep, plus the payload classifier and chunk-profile cost model |
 | `cavs-server` | Stateful HTTP/HTTPS origin: sessions, inline/ref planning, `--store` mode, HLS passthrough, metrics |
 | `cavs-client` | Native streaming client: persistent cache, `.part`→verify→rename reconstruction |
 
@@ -33,24 +33,40 @@ that reuses `cavs-hash` and `cavs-chunker`.
 
 ## How an update flows
 
-1. **Pack once (publisher).** FastCDC splits each release into ~64 KiB chunks
-   identified by BLAKE3. They are stored deduplicated and zstd-compressed in a
-   signable `.cavs`. Unchanged regions across versions produce identical chunks
-   (deduplicated for free); changed regions produce new chunks.
+1. **Pack once (publisher).** `--profile auto` classifies the payload (magic
+   bytes, sampled entropy, a zstd probe) and measures candidate chunk profiles
+   on the real bytes; engine packs default to FastCDC ~64 KiB chunks
+   identified by BLAKE3. Chunks are stored deduplicated and zstd-compressed in
+   a signable `.cavs`; `--bootstrap` additionally emits the whole artifact as
+   one zstd-19 sidecar for cold installs. Unchanged regions across versions
+   produce identical chunks (deduplicated for free); changed regions produce
+   new chunks. Packing the next version with `--prev <published .cavs>` keeps
+   the profile consistent with what clients already cached.
 
 2. **The client announces what it has.** It opens a session sending the
    have-set of its persistent cache — either an exact hash list, or a compact
    Bloom filter for large caches. The server decides per chunk: send a
    *reference* if the client already has it, or *inline* the payload if not.
 
-3. **Only the new bytes travel.** Binary CVSP batches carry chunks exactly as
-   stored (already compressed — zero recompression), decoded incrementally from
-   the socket so peak memory is one chunk.
+3. **The server picks the cheapest route (dual delivery).** At session open it
+   estimates the chunk-path payload for this specific client. A cold client
+   (<5% of chunks cached) whose estimate is beaten by ≥2% by the bootstrap
+   artifact is routed to it: one immutable, CDN-cacheable download at
+   full-artifact price. Everyone else gets the chunk path. The routing is
+   advisory and the chunk path always remains valid.
 
-4. **Atomic, verified reconstruction.** The client writes a `.part` temp file,
-   appending chunks from its cache in order, verifies the manifest's SHA-256 on
-   the fly, then atomically renames into place. An interrupted download never
-   leaves a corrupt file, and retrying only fetches what's missing.
+4. **Only the new bytes travel.** Binary CVSP batches carry chunks exactly as
+   stored (already compressed — zero recompression), decoded incrementally from
+   the socket so peak memory is one chunk. A bootstrap download streams to
+   disk the same way.
+
+5. **Atomic, verified reconstruction — and cache seeding.** The client writes
+   a `.part` temp file, verifies the manifest's SHA-256 on the fly, then
+   atomically renames into place. A bootstrap install is additionally sliced
+   along the manifest's chunk plan (each slice BLAKE3-verified) straight into
+   the local cache, so the *next* update only pays for changed chunks. An
+   interrupted download never leaves a corrupt file, and retrying only fetches
+   what's missing.
 
 ## Integrity chain
 

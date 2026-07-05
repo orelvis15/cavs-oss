@@ -13,13 +13,29 @@ Ed25519 signature. Reconstruction (`unpack`) verifies every chunk and produces
 the original files exactly. The video mode (without `--raw`) segments inputs
 with ffmpeg first, then packages the segments.
 
+With `--profile auto` the packer first **classifies** each input (format
+magic, sampled entropy, a zstd probe) and **measures** candidate chunk
+profiles on the real bytes, picking the cheapest by a weighted cost model:
+already-compressed payloads get large fixed chunks, engine packs get CDC.
+`--bootstrap` additionally writes `<output>.bootstrap.zst` — the whole input
+compressed at zstd-19 — which the server offers to cache-less clients so a
+first install costs the full artifact (and seeds the client's cache). When
+packing the next version, pass `--prev <published .cavs>` so profile choice
+stays consistent with the chunks clients already have.
+
 ## Commands
 
 ```sh
 # Package (game assets / arbitrary files)
 cavs pack --raw build_v42.pck -o v42.cavs
+cavs pack --raw build_v42.pck --profile auto --bootstrap -o v42.cavs  # v2 pipeline
+cavs pack --raw build_v43.pck --profile auto --prev v42.cavs --bootstrap -o v43.cavs
 cavs pack --raw --sign-key publisher.key data/* -o release.cavs   # signed
 cavs pack --raw --mode screen capture.bin -o capture.cavs         # aggressive CDC
+
+# Measure candidate chunk profiles on your own builds (optionally vs the
+# published previous version, to see real chunk reuse)
+cavs sweep build_v43.pck --prev v42.cavs --json sweep.json
 
 # Package video (needs ffmpeg on PATH)
 cavs pack movie.mp4 -o movie.cavs --segment-time 4
