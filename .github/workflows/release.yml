@@ -27,7 +27,10 @@ jobs:
         include:
           - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu }
           - { os: macos-14,       target: aarch64-apple-darwin }
-          - { os: macos-13,       target: x86_64-apple-darwin }
+          # GitHub's Intel macOS runners (macos-13) are deprecated and often
+          # never get picked up, so build the x86_64 binary by cross-compiling
+          # on an arm64 runner (the Apple toolchain targets both archs).
+          - { os: macos-14,       target: x86_64-apple-darwin }
           - { os: windows-latest, target: x86_64-pc-windows-msvc }
     steps:
       - uses: actions/checkout@v4
