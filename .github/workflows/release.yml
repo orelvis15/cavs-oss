@@ -71,9 +71,28 @@ jobs:
             *.tar.gz
             *.zip
 
+  godot-plugin:
+    name: package godot plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build installable plugin zip (addons/ at zip root)
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.inputs.tag || github.ref_name }}"
+          sh godot-plugin/package.sh "${VERSION#v}"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-plugin
+          path: godot-plugin/dist/*.zip
+
   release:
     name: publish release
-    needs: build
+    needs: [build, godot-plugin]
     runs-on: ubuntu-latest
     permissions:
       contents: write
