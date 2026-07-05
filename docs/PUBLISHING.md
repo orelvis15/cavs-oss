@@ -124,3 +124,50 @@ and depend on the libraries (`cavs-hash`, `cavs-chunker`, `cavs-store`,
 > Publishing to crates.io is independent of GitHub Releases. Binaries for
 > Linux/macOS/Windows are produced by the tag-triggered
 > [release workflow](../.github/workflows/release.yml) when you push a `v*` tag.
+
+## Godot Asset Library
+
+The Godot plugin (`godot-plugin/addons/cavs`) is distributed on the
+[Godot Asset Library](https://godotengine.org/asset-library) separately from the
+crates. The Asset Library installs the archive of a single commit and expects
+`addons/` at its root, so a CI step splits `godot-plugin/` onto a dedicated
+`godot-asset` branch (root = `addons/cavs/...`) and points the library at it.
+
+### First submission (manual, one time)
+
+The Asset Library has no API to *create* an asset, so the first version is
+submitted through the web form to obtain a numeric asset id:
+
+1. Generate/refresh the distribution branch locally and push it:
+   ```sh
+   git subtree split --prefix=godot-plugin -b godot-asset
+   git push -f origin godot-asset
+   git rev-parse godot-asset   # copy this commit hash
+   ```
+2. Sign in at godotengine.org and open **Asset Library → Submit Asset**, then:
+   - **Category**: Tools · **Godot version**: 4.2 (or your minimum)
+   - **Repository**: `https://github.com/orelvis15/cavs-oss`
+   - **Issues URL**: `https://github.com/orelvis15/cavs-oss/issues`
+   - **Commit**: the hash from step 1
+   - **Icon URL**:
+     `https://raw.githubusercontent.com/orelvis15/cavs-oss/main/godot-plugin/addons/cavs/icon.png`
+   - **License**: Apache-2.0 · fill in the name/description.
+3. Wait for moderator approval (up to a few days). Note the asset id in the URL
+   (`.../asset-library/asset/<ID>`).
+
+### Automatic updates (every release)
+
+Once the asset exists, configure the repository (Settings → Secrets and
+variables → Actions):
+
+- Variable `GODOT_ASSET_ID` = the numeric asset id
+- Variable `GODOT_ASSET_LIB_USERNAME` = your godotengine.org username
+- Secret `GODOT_ASSET_LIB_PASSWORD` = your godotengine.org password
+
+> The API logs in with username + password. If your godotengine.org account was
+> created via GitHub sign-in, set an account password first so API login works.
+
+After that, each published GitHub Release triggers
+[`godot-asset.yml`](../.github/workflows/godot-asset.yml), which regenerates the
+`godot-asset` branch and submits an edit with the new version and commit. Like
+all Asset Library changes, the edit is queued for manual moderation.
