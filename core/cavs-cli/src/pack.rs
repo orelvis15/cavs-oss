@@ -9,7 +9,8 @@
 //! Raw mode: arbitrary files are chunked with FastCDC and stored as data
 //! tracks; unpacking reproduces them byte-for-byte.
 
-use crate::{ffmpeg, report, ChunkModeArg};
+use crate::profile::{self, ChunkProfile, CostWeights};
+use crate::{classify, ffmpeg, report, ChunkModeArg};
 use anyhow::{bail, Context, Result};
 use cavs_chunker::ChunkMode;
 use cavs_format::{SegmentRecord, TrackKind, TrackRecord, Writer, SEGMENT_FLAG_RANDOM_ACCESS};
@@ -24,6 +25,13 @@ pub struct PackOptions {
     pub segment_time: f64,
     pub mode: Option<ChunkModeArg>,
     pub chunk_size: Option<usize>,
+    /// `auto`, or a fixed profile label (see [`ChunkProfile`]). Wins over
+    /// `mode`/`chunk_size` when set.
+    pub profile: Option<String>,
+    /// Previous version of the (single) input for update-aware auto profile.
+    pub prev: Option<PathBuf>,
+    /// Also emit `<output>.bootstrap.zst` (raw mode, single input).
+    pub bootstrap: bool,
     pub compress: bool,
     pub zstd_level: i32,
     pub force_transcode: bool,
@@ -64,6 +72,92 @@ impl PackOptions {
             None => ChunkMode::asset_default(),
         }
     }
+}
+
+/// Resolve the chunk mode for one raw input. With `--profile auto` the
+/// payload is classified and the recommended candidate profiles are measured
+/// on the real bytes (against `--prev` when given); a forced profile label
+/// maps directly; otherwise the legacy `--mode`/default applies.
+/// Returns the mode plus the profile label to record in metadata.
+fn resolve_raw_mode(
+    input: &Path,
+    data: &[u8],
+    opts: &PackOptions,
+) -> Result<(ChunkMode, Option<&'static str>, Option<&'static str>)> {
+    let Some(profile_arg) = opts.profile.as_deref() else {
+        return Ok((opts.asset_mode(), None, None));
+    };
+    if profile_arg != "auto" {
+        let p = ChunkProfile::parse(profile_arg)?;
+        return Ok((p.to_mode(), Some(p.label()), None));
+    }
+
+    let payload = classify::classify(input, data);
+    let prev = match &opts.prev {
+        Some(p) => Some(profile::load_prev(p)?),
+        None => None,
+    };
+
+    // Update-heavy payload, first version, bootstrap covers the cold path:
+    // there is nothing to measure updates against yet, so pick the
+    // benchmark-validated update profile instead of letting the cold-egress
+    // sweep lock the whole version stream into large chunks. Subsequent
+    // versions (--prev) measure real reuse and keep continuity.
+    if payload.likely_update_heavy && prev.is_none() && opts.bootstrap {
+        let p = ChunkProfile::FastCdc64K;
+        eprintln!(
+            "[pack] {} classified as {} -> profile {} (update-heavy; cold path served by bootstrap)",
+            input.display(),
+            payload.kind.label(),
+            p.label(),
+        );
+        return Ok((p.to_mode(), Some(p.label()), Some(payload.kind.label())));
+    }
+
+    let weights = if prev.is_some() {
+        CostWeights::live_updates()
+    } else {
+        CostWeights::cold_install()
+    };
+    let estimates: Vec<_> = payload
+        .recommended_profiles
+        .iter()
+        .map(|&p| profile::estimate(data, prev.as_ref(), p, opts.zstd_level))
+        .collect();
+    let best = profile::choose_best(&estimates, &weights);
+    eprintln!(
+        "[pack] {} classified as {} (entropy {:.2}, zstd probe {:.3}) -> profile {}",
+        input.display(),
+        payload.kind.label(),
+        payload.entropy_score,
+        payload.zstd_sample_ratio,
+        best.label(),
+    );
+    Ok((best.to_mode(), Some(best.label()), Some(payload.kind.label())))
+}
+
+/// Write the full bootstrap artifact next to the `.cavs`: the whole input
+/// zstd-compressed at a high level, so a cache-less client can install at
+/// full-artifact cost and seed its chunk cache locally (P0-1 dual route).
+/// Level 19 spends pack-time CPU once to minimise every cold install.
+const BOOTSTRAP_ZSTD_LEVEL: i32 = 19;
+
+fn write_bootstrap(output: &Path, name: &str, data: &[u8], w: &mut Writer) -> Result<()> {
+    let path = PathBuf::from(format!("{}.bootstrap.zst", output.display()));
+    let compressed = zstd::bulk::compress(data, BOOTSTRAP_ZSTD_LEVEL)
+        .context("compressing bootstrap artifact")?;
+    std::fs::write(&path, &compressed)
+        .with_context(|| format!("cannot write {}", path.display()))?;
+    let blake3_hex = cavs_hash::to_hex(&cavs_hash::hash_chunk(&compressed));
+    w.set_meta("bootstrap.name", name);
+    w.set_meta("bootstrap.size", &compressed.len().to_string());
+    w.set_meta("bootstrap.blake3", &blake3_hex);
+    eprintln!(
+        "[pack] bootstrap artifact: {} ({} bytes, zstd-{BOOTSTRAP_ZSTD_LEVEL})",
+        path.display(),
+        compressed.len()
+    );
+    Ok(())
 }
 
 /// Add `data` as chunks and return the chunk indices.
@@ -247,7 +341,21 @@ pub fn pack_raw(inputs: &[PathBuf], output: &Path, opts: &PackOptions) -> Result
             let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
             w.set_meta(&format!("sha256:{name}"), &hex);
         }
-        let chunks = add_chunked(&mut w, &data, opts.asset_mode())?;
+        let (mode, profile_label, kind_label) = resolve_raw_mode(input, &data, opts)?;
+        if let Some(label) = profile_label {
+            w.set_meta(&format!("profile:{name}"), label);
+        }
+        if let Some(kind) = kind_label {
+            w.set_meta(&format!("payload_kind:{name}"), kind);
+        }
+        if opts.bootstrap {
+            if inputs.len() == 1 {
+                write_bootstrap(output, &name, &data, &mut w)?;
+            } else if i == 0 {
+                eprintln!("[pack] --bootstrap ignored: it requires a single input");
+            }
+        }
+        let chunks = add_chunked(&mut w, &data, mode)?;
         let track_id = i as u32 + 1;
         w.add_track(TrackRecord {
             track_id,

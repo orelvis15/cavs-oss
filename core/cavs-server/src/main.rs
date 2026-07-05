@@ -88,6 +88,7 @@ async fn main() -> Result<()> {
         .route("/api/assets", get(list_assets))
         .route("/api/assets/{asset}/manifest", get(manifest))
         .route("/api/assets/{asset}/sessions", post(open_session))
+        .route("/api/assets/{asset}/bootstrap", get(get_bootstrap))
         .route("/api/assets/{asset}/chunks/{hash}", get(get_chunk))
         .route("/api/sessions/{session}/batch", post(batch))
         .route("/hls/{asset}/{track}/{file}", get(hls_file))
@@ -214,6 +215,34 @@ async fn batch(
         .plan_batch(&session, &req)
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
     Ok(([(header::CONTENT_TYPE, "application/octet-stream")], bytes).into_response())
+}
+
+/// Full bootstrap artifact (whole asset, zstd): the cold-install fast path.
+/// Streamed from disk so a multi-hundred-MiB artifact never sits in RAM.
+async fn get_bootstrap(
+    State(state): State<SharedState>,
+    Path(asset): Path<String>,
+) -> Result<Response, AppError> {
+    let (path, size) = state
+        .bootstrap_file(&asset)
+        .ok_or_else(|| not_found(format!("bootstrap for {asset}")))?;
+    let file = tokio::fs::File::open(&path)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let stream = tokio_util::io::ReaderStream::new(file);
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/zstd".to_string()),
+            (header::CONTENT_LENGTH, size.to_string()),
+            // Tied to the packed content: immutable, edge-cacheable.
+            (
+                header::CACHE_CONTROL,
+                "public, max-age=31536000, immutable".to_string(),
+            ),
+        ],
+        axum::body::Body::from_stream(stream),
+    )
+        .into_response())
 }
 
 async fn get_chunk(

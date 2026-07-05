@@ -3,10 +3,13 @@
 //! Converts videos into `.cavs` (via ffmpeg CMAF/fMP4 segmentation),
 //! reconstructs them back to playable MP4/HLS, inspects, verifies and plays.
 
+mod classify;
 mod ffmpeg;
 mod pack;
+mod profile;
 mod report;
 mod store;
+mod sweep;
 mod unpack;
 
 use anyhow::Result;
@@ -93,6 +96,21 @@ enum Command {
         /// Chunk size in bytes (fixed size, or CDC average).
         #[arg(long)]
         chunk_size: Option<usize>,
+        /// Chunk profile: `auto` classifies the payload and sweeps candidate
+        /// profiles by cost, or force one of fixed-256k/fixed-512k/fixed-1m/
+        /// fastcdc-64k/fastcdc-128k/fastcdc-256k. Overrides --mode.
+        #[arg(long)]
+        profile: Option<String>,
+        /// Previous version of the (single) input, so `--profile auto`
+        /// optimises for update egress instead of first install.
+        #[arg(long)]
+        prev: Option<PathBuf>,
+        /// Also write a full bootstrap artifact (`<output>.bootstrap.zst`):
+        /// the whole input zstd-compressed, so cache-less clients can install
+        /// at full-artifact cost and seed their cache locally (raw mode,
+        /// single input).
+        #[arg(long)]
+        bootstrap: bool,
         /// Disable zstd compression of stored chunks.
         #[arg(long)]
         no_compress: bool,
@@ -106,6 +124,25 @@ enum Command {
         /// (as produced by `cavs keygen`).
         #[arg(long)]
         sign_key: Option<PathBuf>,
+    },
+    /// Measure candidate chunk profiles on a payload (optionally against its
+    /// previous version) and report the cheapest per cost model.
+    Sweep {
+        /// The payload to analyse (e.g. the new build).
+        input: PathBuf,
+        /// Previous version of the payload, to measure real chunk reuse.
+        #[arg(long)]
+        prev: Option<PathBuf>,
+        /// Comma-separated profiles to test (default: recommended by the
+        /// payload classifier).
+        #[arg(long)]
+        profiles: Option<String>,
+        /// zstd level assumed for storage estimates.
+        #[arg(long, default_value_t = 3)]
+        zstd_level: i32,
+        /// Write the full estimates as JSON to this path.
+        #[arg(long)]
+        json: Option<PathBuf>,
     },
     /// Reconstruct the original media from a .cavs file.
     Unpack {
@@ -183,6 +220,9 @@ fn main() -> Result<()> {
             segment_time,
             mode,
             chunk_size,
+            profile,
+            prev,
+            bootstrap,
             no_compress,
             zstd_level,
             transcode,
@@ -192,6 +232,9 @@ fn main() -> Result<()> {
                 segment_time,
                 mode,
                 chunk_size,
+                profile,
+                prev,
+                bootstrap,
                 compress: !no_compress,
                 zstd_level,
                 force_transcode: transcode,
@@ -203,6 +246,19 @@ fn main() -> Result<()> {
                 pack::pack_video(&inputs, &output, &opts)
             }
         }
+        Command::Sweep {
+            input,
+            prev,
+            profiles,
+            zstd_level,
+            json,
+        } => sweep::sweep(
+            &input,
+            prev.as_deref(),
+            profiles.as_deref(),
+            zstd_level,
+            json.as_deref(),
+        ),
         Command::Unpack {
             input,
             output,

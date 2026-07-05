@@ -163,11 +163,34 @@ pub struct SessionOpenRequest {
     pub have_bloom: Option<BloomFilter>,
 }
 
+/// How the server suggests delivering this asset to this client (v2 dual
+/// route). Advisory: a client may always fall back to the chunk path.
+pub const DELIVERY_BOOTSTRAP: &str = "bootstrap";
+pub const DELIVERY_CHUNKS: &str = "chunks";
+pub const DELIVERY_REFERENCES: &str = "references";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionOpenResponse {
     pub session_id: String,
     /// How many of the client's `have` hashes matched this asset.
     pub known_chunks: usize,
+    /// Suggested delivery route: `bootstrap` (download the full compressed
+    /// artifact and seed the cache locally — cheaper for cold clients),
+    /// `chunks` (missing chunks via batches) or `references` (client already
+    /// has everything). Absent on v1 servers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_mode: Option<String>,
+    /// Size in bytes of the bootstrap artifact, when `delivery_mode` is
+    /// `bootstrap`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bootstrap_size: Option<u64>,
+    /// Hex BLAKE3 of the bootstrap artifact bytes (integrity check).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bootstrap_blake3: Option<String>,
+    /// Estimated wire bytes of the chunk path for this client, so clients
+    /// can log/verify the server's routing decision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimated_chunk_payload: Option<u64>,
 }
 
 /// Batch request: which track inits and segments to deliver.

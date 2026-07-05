@@ -41,6 +41,7 @@ rustls-pemfile = "2"
 ruzstd = "0.8"
 sha2 = "0.10"
 memmap2 = "0.9"
+tokio-util = { version = "0.7", features = ["io"] }
 
 blake3 = "1.5"
 fastcdc = "3.1"

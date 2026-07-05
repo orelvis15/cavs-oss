@@ -23,7 +23,8 @@ zstd = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
 uuid = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["fs"] }
+tokio-util = { workspace = true }
 axum = { workspace = true }
 axum-server = { workspace = true }
 rcgen = { workspace = true }

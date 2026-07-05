@@ -8,8 +8,8 @@ use cavs_format::{
 use cavs_hash::{from_hex, hash_chunk, to_hex, ChunkHash};
 use cavs_proto::{
     AssetSummary, BatchRequest, BatchResponse, ChunkRef, DeliveryInstr, InitDelivery, Manifest,
-    ManifestSegment, ManifestTrack, SegmentDelivery, SessionOpenResponse, WIRE_COMPRESSION_NONE,
-    WIRE_COMPRESSION_ZSTD,
+    ManifestSegment, ManifestTrack, SegmentDelivery, SessionOpenResponse, DELIVERY_BOOTSTRAP,
+    DELIVERY_CHUNKS, DELIVERY_REFERENCES, WIRE_COMPRESSION_NONE, WIRE_COMPRESSION_ZSTD,
 };
 use cavs_store::GlobalStore;
 use std::collections::{HashMap, HashSet};
@@ -71,12 +71,21 @@ impl ChunkSource {
     }
 }
 
+/// A packed full-artifact sidecar (`<asset>.cavs.bootstrap.zst`): the whole
+/// asset zstd-compressed, offered to cache-less clients when it beats the
+/// chunk path (v2 dual route).
+pub struct Bootstrap {
+    pub path: PathBuf,
+    pub size: u64,
+    pub blake3_hex: String,
+}
+
 pub struct Asset {
     source: ChunkSource,
     tracks: Vec<TrackRecord>,
     segments: Vec<SegmentRecord>,
-    /// chunk index -> (hash, raw length, storage flags)
-    chunk_meta: Vec<(ChunkHash, u32, u32)>,
+    /// chunk index -> (hash, raw length, stored length, storage flags)
+    chunk_meta: Vec<(ChunkHash, u32, u32, u32)>,
     index_by_hash: HashMap<ChunkHash, u32>,
     dict: Vec<u32>,
     uuid_hex: String,
@@ -84,7 +93,17 @@ pub struct Asset {
     /// (signature hex, pubkey hex) when signed.
     signature: Option<(String, String)>,
     meta: Vec<(String, String)>,
+    bootstrap: Option<Bootstrap>,
 }
+
+/// Bootstrap routing (v2 dual route): a client is "cold" below this share of
+/// known chunks…
+const BOOTSTRAP_HAVE_RATIO_MAX: f64 = 0.05;
+/// …and the bootstrap must be at least this much cheaper than the estimated
+/// chunk payload (0.98 = 2% margin, per the v2 plan).
+const BOOTSTRAP_COLD_THRESHOLD: f64 = 0.98;
+/// Per-instruction overhead of the CVSP wire encoding (tag + hash + lens).
+const WIRE_OVERHEAD_PER_CHUNK: u64 = 42;
 
 struct Session {
     asset: String,
@@ -102,6 +121,9 @@ pub struct Metrics {
     pub bundle_collapses_total: AtomicU64,
     pub hls_requests_total: AtomicU64,
     pub chunk_requests_total: AtomicU64,
+    pub bootstrap_sessions_total: AtomicU64,
+    pub bootstraps_served_total: AtomicU64,
+    pub bootstrap_bytes_total: AtomicU64,
 }
 
 pub struct AppState {
@@ -133,15 +155,15 @@ impl AppState {
             };
             let tracks = reader.tracks().to_vec();
             let segments = reader.segments().to_vec();
-            let chunk_meta: Vec<(ChunkHash, u32, u32)> = reader
+            let chunk_meta: Vec<(ChunkHash, u32, u32, u32)> = reader
                 .chunks()
                 .iter()
-                .map(|c| (c.hash, c.len_raw, c.flags))
+                .map(|c| (c.hash, c.len_raw, c.len_stored, c.flags))
                 .collect();
             let index_by_hash = chunk_meta
                 .iter()
                 .enumerate()
-                .map(|(i, (h, _, _))| (*h, i as u32))
+                .map(|(i, (h, _, _, _))| (*h, i as u32))
                 .collect();
             let dict = reader.dict().to_vec();
             let uuid_hex = reader
@@ -152,6 +174,7 @@ impl AppState {
                 .collect();
             let merkle_root_hex = to_hex(&reader.integrity().merkle_root);
             let meta = reader.meta().to_vec();
+            let bootstrap = load_bootstrap_sidecar(path, &meta);
             assets.insert(
                 name,
                 Asset {
@@ -165,6 +188,7 @@ impl AppState {
                     merkle_root_hex,
                     signature,
                     meta,
+                    bootstrap,
                 },
             );
         }
@@ -205,7 +229,7 @@ impl AppState {
                     let info = guard
                         .chunk_info(&hash)
                         .ok_or_else(|| anyhow::anyhow!("{name} references missing chunk {hex}"))?;
-                    chunk_meta.push((hash, info.len_raw, info.flags));
+                    chunk_meta.push((hash, info.len_raw, info.len_stored, info.flags));
                     hashes.push(hash);
                     index_by_hash.insert(hash, i as u32);
                 }
@@ -276,6 +300,9 @@ impl AppState {
                     merkle_root_hex: record.merkle_root.clone(),
                     signature,
                     meta: record.meta.clone(),
+                    // Bootstrap sidecars are not ingested into the global
+                    // store yet; store-served assets use the chunk path.
+                    bootstrap: None,
                 },
             );
         }
@@ -330,7 +357,7 @@ impl AppState {
     pub fn manifest(&self, asset_name: &str) -> Option<Manifest> {
         let asset = self.assets.get(asset_name)?;
         let chunk_ref = |idx: &u32| {
-            let (hash, len, _) = &asset.chunk_meta[*idx as usize];
+            let (hash, len, _, _) = &asset.chunk_meta[*idx as usize];
             ChunkRef {
                 hash: to_hex(hash),
                 len: *len,
@@ -368,7 +395,11 @@ impl AppState {
                 .iter()
                 .map(|i| to_hex(&asset.chunk_meta[*i as usize].0))
                 .collect(),
-            chunk_table: asset.chunk_meta.iter().map(|(h, _, _)| to_hex(h)).collect(),
+            chunk_table: asset
+                .chunk_meta
+                .iter()
+                .map(|(h, _, _, _)| to_hex(h))
+                .collect(),
             merkle_root: asset.merkle_root_hex.clone(),
             signature: asset.signature.as_ref().map(|(sig, _)| sig.clone()),
             signer_pubkey: asset.signature.as_ref().map(|(_, pk)| pk.clone()),
@@ -403,6 +434,37 @@ impl AppState {
             }
         }
         let known_chunks = known.len();
+
+        // v2 dual route: estimate what the chunk path would cost this client
+        // and offer the full bootstrap artifact when it is meaningfully
+        // cheaper for a cold cache. Advisory — the chunk path stays valid.
+        let estimated_chunk_payload: u64 = asset
+            .chunk_meta
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !known.contains(&(*i as u32)))
+            .map(|(_, (_, _, len_stored, _))| *len_stored as u64 + WIRE_OVERHEAD_PER_CHUNK)
+            .sum();
+        let total = asset.chunk_meta.len().max(1);
+        let have_ratio = known_chunks as f64 / total as f64;
+        let (delivery_mode, bootstrap_size, bootstrap_blake3) = if estimated_chunk_payload == 0 {
+            (DELIVERY_REFERENCES, None, None)
+        } else {
+            match &asset.bootstrap {
+                Some(b)
+                    if have_ratio < BOOTSTRAP_HAVE_RATIO_MAX
+                        && (b.size as f64)
+                            <= estimated_chunk_payload as f64 * BOOTSTRAP_COLD_THRESHOLD =>
+                {
+                    self.metrics
+                        .bootstrap_sessions_total
+                        .fetch_add(1, Ordering::Relaxed);
+                    (DELIVERY_BOOTSTRAP, Some(b.size), Some(b.blake3_hex.clone()))
+                }
+                _ => (DELIVERY_CHUNKS, None, None),
+            }
+        };
+
         let session_id = uuid::Uuid::new_v4().to_string();
         self.sessions.lock().unwrap().insert(
             session_id.clone(),
@@ -417,6 +479,10 @@ impl AppState {
         Some(SessionOpenResponse {
             session_id,
             known_chunks,
+            delivery_mode: Some(delivery_mode.to_string()),
+            bootstrap_size,
+            bootstrap_blake3,
+            estimated_chunk_payload: Some(estimated_chunk_payload),
         })
     }
 
@@ -514,6 +580,19 @@ impl AppState {
         Ok(instrs)
     }
 
+    /// Path and size of the asset's verified bootstrap sidecar, if any.
+    /// Counts the request in the bootstrap metrics.
+    pub fn bootstrap_file(&self, asset_name: &str) -> Option<(PathBuf, u64)> {
+        let b = self.assets.get(asset_name)?.bootstrap.as_ref()?;
+        self.metrics
+            .bootstraps_served_total
+            .fetch_add(1, Ordering::Relaxed);
+        self.metrics
+            .bootstrap_bytes_total
+            .fetch_add(b.size, Ordering::Relaxed);
+        Some((b.path.clone(), b.size))
+    }
+
     pub fn chunk_by_hash(&self, asset_name: &str, hash_hex: &str) -> Option<Vec<u8>> {
         let asset = self.assets.get(asset_name)?;
         let idx = *asset.index_by_hash.get(&from_hex(hash_hex)?)?;
@@ -586,6 +665,9 @@ impl AppState {
             ("cavs_bundle_collapses_total", &m.bundle_collapses_total),
             ("cavs_hls_requests_total", &m.hls_requests_total),
             ("cavs_chunk_requests_total", &m.chunk_requests_total),
+            ("cavs_bootstrap_sessions_total", &m.bootstrap_sessions_total),
+            ("cavs_bootstraps_served_total", &m.bootstraps_served_total),
+            ("cavs_bootstrap_bytes_total", &m.bootstrap_bytes_total),
         ];
         let mut out = String::new();
         for (name, counter) in counters {
@@ -598,6 +680,60 @@ impl AppState {
 
 fn to_hex_slice(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Look for `<asset>.cavs.bootstrap.zst` next to the served file and verify
+/// it against the packer's `bootstrap.size` / `bootstrap.blake3` metadata.
+/// A missing or tampered sidecar simply disables the bootstrap route.
+fn load_bootstrap_sidecar(cavs_path: &std::path::Path, meta: &[(String, String)]) -> Option<Bootstrap> {
+    let get = |key: &str| meta.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str());
+    let expected_size: u64 = get("bootstrap.size")?.parse().ok()?;
+    let expected_blake3 = get("bootstrap.blake3")?.to_string();
+
+    let path = PathBuf::from(format!("{}.bootstrap.zst", cavs_path.display()));
+    let file = match std::fs::File::open(&path) {
+        Ok(f) => f,
+        Err(_) => {
+            eprintln!(
+                "[server] {}: manifest declares a bootstrap but {} is missing; \
+                 serving chunks only",
+                cavs_path.display(),
+                path.display()
+            );
+            return None;
+        }
+    };
+
+    // Streaming hash: bootstraps can be hundreds of MiB.
+    let mut hasher = cavs_hash::Hasher::new();
+    let mut reader = std::io::BufReader::new(file);
+    let mut buf = [0u8; 64 * 1024];
+    let mut size = 0u64;
+    loop {
+        use std::io::Read as _;
+        match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                hasher.update(&buf[..n]);
+                size += n as u64;
+            }
+            Err(_) => return None,
+        }
+    }
+    let blake3_hex = to_hex(&hasher.finalize());
+    if size != expected_size || !blake3_hex.eq_ignore_ascii_case(&expected_blake3) {
+        eprintln!(
+            "[server] {}: bootstrap sidecar does not match its manifest \
+             (size {size} vs {expected_size}); ignoring it",
+            path.display()
+        );
+        return None;
+    }
+    Some(Bootstrap {
+        path,
+        size,
+        blake3_hex,
+    })
 }
 
 fn concat_track_segments(asset: &Asset, track_id: u32) -> Option<Vec<u8>> {

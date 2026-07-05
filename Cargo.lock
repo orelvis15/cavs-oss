@@ -266,9 +266,11 @@ dependencies = [
  "clap",
  "ed25519-dalek",
  "rand_core",
+ "serde_json",
  "sha2",
  "tempfile",
  "uuid",
+ "zstd",
 ]
 
 [[package]]
@@ -334,6 +336,7 @@ dependencies = [
  "rustls",
  "serde_json",
  "tokio",
+ "tokio-util",
  "uuid",
  "zstd",
 ]
