@@ -1,0 +1,56 @@
+name: Bug report
+description: Report something that isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. A minimal reproduction helps
+        enormously. Please do **not** report security issues here — see the
+        Security policy instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what actually happened?
+      placeholder: |
+        1. Ran `cavs pack --raw build.pck -o out.cavs`
+        2. Expected …
+        3. Instead …
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Exact commands, minimal inputs, or a small snippet that reproduces the issue.
+      render: shell
+    validations:
+      required: false
+  - type: input
+    id: component
+    attributes:
+      label: Component
+      description: Which part is affected?
+      placeholder: cavs (CLI) / cavs-server / cavs-client / cavs-steam / Godot plugin / format
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, `rustc --version`, and the CAVS version or commit.
+      placeholder: |
+        OS: macOS 15 / Ubuntu 24.04 / Windows 11
+        rustc: 1.x
+        CAVS: v0.1.0 or commit abc1234
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / output
+      description: Relevant error output. This is automatically formatted as code.
+      render: shell
+    validations:
+      required: false

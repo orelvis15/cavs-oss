@@ -5,7 +5,8 @@ make a change, and open a pull request.
 
 ## Ground rules
 
-- Be respectful and constructive.
+- Be respectful and constructive — this project follows a
+  [Code of Conduct](CODE_OF_CONDUCT.md).
 - By contributing, you agree that your contributions are licensed under the
   project's [Apache License 2.0](LICENSE).
 - Keep pull requests focused: one logical change per PR is much easier to review

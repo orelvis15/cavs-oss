@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest an improvement or new capability
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For anything large, please open an issue to discuss the approach before
+        writing a lot of code.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what's getting in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: If you have one, sketch the approach (API, CLI flag, workflow…).
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches, or existing workarounds.
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Core (format / server / client / store)
+        - CLI (cavs)
+        - SteamPipe analyzer
+        - Godot plugin
+        - Unity plugin (planned)
+        - Unreal plugin (planned)
+        - Docs
+        - Other
+    validations:
+      required: true
