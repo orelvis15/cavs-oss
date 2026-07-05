@@ -14,7 +14,7 @@ CAVS is pre-1.0. Security fixes are applied to the latest release and `main`.
 **Please do not open a public issue for security problems.**
 
 Report privately using GitHub's private vulnerability reporting:
-<https://github.com/orelvis15/cavs/security/advisories/new>
+<https://github.com/orelvis15/cavs-oss/security/advisories/new>
 
 Or email **orelvis15@gmail.com** with:
 

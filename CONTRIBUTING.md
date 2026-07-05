@@ -17,9 +17,9 @@ make a change, and open a pull request.
 You need a stable Rust toolchain ([rustup](https://rustup.rs)). Then:
 
 ```sh
-# clone your fork (upstream is https://github.com/orelvis15/cavs)
-git clone https://github.com/<your-username>/cavs
-cd cavs
+# clone your fork (upstream is https://github.com/orelvis15/cavs-oss)
+git clone https://github.com/<your-username>/cavs-oss
+cd cavs-oss
 cargo build            # build all crates and tools
 cargo test             # run the test suite
 ```

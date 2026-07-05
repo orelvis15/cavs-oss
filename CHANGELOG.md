@@ -27,5 +27,5 @@ Initial public release.
 - `cavs-steam`: SteamPipe update-size analyzer for game builds.
 - Documentation: format specification, architecture, benchmarks, and paper.
 
-[Unreleased]: https://github.com/orelvis15/cavs/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/orelvis15/cavs/releases/tag/v0.1.0
+[Unreleased]: https://github.com/orelvis15/cavs-oss/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/orelvis15/cavs-oss/releases/tag/v0.1.0

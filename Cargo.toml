@@ -17,8 +17,8 @@ version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 authors = ["Orelvis Lago Vasallo <orelvis15@gmail.com>"]
-repository = "https://github.com/orelvis15/cavs"
-homepage = "https://github.com/orelvis15/cavs"
+repository = "https://github.com/orelvis15/cavs-oss"
+homepage = "https://github.com/orelvis15/cavs-oss"
 
 [workspace.dependencies]
 cavs-hash = { path = "core/cavs-hash", version = "0.1.0" }

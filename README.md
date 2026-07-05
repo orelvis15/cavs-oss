@@ -1,6 +1,6 @@
 # CAVS — Content-Addressable Verified Streaming
 
-[![CI](https://github.com/orelvis15/cavs/actions/workflows/ci.yml/badge.svg)](https://github.com/orelvis15/cavs/actions/workflows/ci.yml)
+[![CI](https://github.com/orelvis15/cavs-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/orelvis15/cavs-oss/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 **Ship game updates that weigh what *changed*, not what the game weighs.**
@@ -71,7 +71,7 @@ the paper, [`docs/PAPER.md`](docs/PAPER.md).
 ### Build
 
 ```sh
-git clone https://github.com/orelvis15/cavs.git && cd cavs
+git clone https://github.com/orelvis15/cavs-oss.git && cd cavs-oss
 cargo build --release
 ```
 
