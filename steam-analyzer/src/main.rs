@@ -117,7 +117,10 @@ fn parse_size(s: &str) -> Result<u64> {
     } else {
         (s, 1)
     };
-    let v: f64 = num.trim().parse().with_context(|| format!("bad size: {s}"))?;
+    let v: f64 = num
+        .trim()
+        .parse()
+        .with_context(|| format!("bad size: {s}"))?;
     Ok((v * mult as f64) as u64)
 }
 
@@ -190,7 +193,11 @@ fn run() -> Result<ExitCode> {
 }
 
 fn print_summary(r: &analyze::Report) {
-    println!("build   : {} -> {}", human(r.old_size_bytes), human(r.new_size_bytes));
+    println!(
+        "build   : {} -> {}",
+        human(r.old_size_bytes),
+        human(r.new_size_bytes)
+    );
     println!(
         "changed : {} files changed, {} new",
         r.changed_files, r.new_files

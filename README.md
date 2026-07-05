@@ -154,6 +154,14 @@ See [`godot-plugin/README.md`](godot-plugin/README.md) for game integration and
   [`godot-plugin/README.md`](godot-plugin/README.md).
 - **SteamPipe Analyzer**: see [`steam-analyzer/README.md`](steam-analyzer/README.md).
 
+## Contributing
+
+Contributions are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup,
+the PR workflow, and the checklist. Every PR runs CI (format, clippy, tests).
+Releases are cut by the maintainer by pushing a version tag (`v*`), which
+triggers the [release workflow](.github/workflows/release.yml) to build and
+publish versioned binaries for Linux, macOS and Windows.
+
 ## License
 
 Licensed under the **Apache License, Version 2.0** — see [`LICENSE`](LICENSE)

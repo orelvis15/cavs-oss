@@ -144,9 +144,22 @@ fn video_pack_unpack_verify() {
     let clip = dir.path().join("clip.mp4");
     let ok = Command::new("ffmpeg")
         .args(["-y", "-hide_banner", "-loglevel", "error"])
-        .args(["-f", "lavfi", "-i", "testsrc2=duration=6:size=640x360:rate=30"])
+        .args([
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=duration=6:size=640x360:rate=30",
+        ])
         .args(["-f", "lavfi", "-i", "sine=frequency=440:duration=6"])
-        .args(["-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", "-shortest"])
+        .args([
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-c:a",
+            "aac",
+            "-shortest",
+        ])
         .arg(&clip)
         .status()
         .unwrap()

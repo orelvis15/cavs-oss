@@ -120,8 +120,8 @@ impl AppState {
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_else(|| "asset".to_string());
-            let reader = Reader::open(path)
-                .with_context(|| format!("cannot open {}", path.display()))?;
+            let reader =
+                Reader::open(path).with_context(|| format!("cannot open {}", path.display()))?;
             // Refuse to serve content whose embedded signature is invalid.
             let signature = match reader.verify_signature() {
                 Ok(cavs_format::SignatureStatus::Valid(pk)) => {
@@ -179,7 +179,11 @@ impl AppState {
 
     /// Serve every published asset from a shared global content-addressable
     /// store (chunks deduplicated across all assets and versions).
-    pub fn load_store(store_dir: &std::path::Path, max_cold: usize, web_wasm: PathBuf) -> Result<Self> {
+    pub fn load_store(
+        store_dir: &std::path::Path,
+        max_cold: usize,
+        web_wasm: PathBuf,
+    ) -> Result<Self> {
         let store = GlobalStore::open(store_dir)
             .with_context(|| format!("cannot open store {}", store_dir.display()))?;
         let shared = Arc::new(Mutex::new(store));
@@ -224,7 +228,11 @@ impl AppState {
                     codec: t.codec.clone(),
                     name: t.name.clone(),
                     timescale: t.timescale,
-                    init_chunks: t.init_chunks.iter().map(|h| idx_of(h)).collect::<Result<_>>()?,
+                    init_chunks: t
+                        .init_chunks
+                        .iter()
+                        .map(|h| idx_of(h))
+                        .collect::<Result<_>>()?,
                 });
             }
             let mut segments = Vec::new();
@@ -234,11 +242,19 @@ impl AppState {
                     track_id: s.track_id,
                     pts_start: s.pts_start,
                     duration: s.duration,
-                    flags: if s.random_access { SEGMENT_FLAG_RANDOM_ACCESS } else { 0 },
+                    flags: if s.random_access {
+                        SEGMENT_FLAG_RANDOM_ACCESS
+                    } else {
+                        0
+                    },
                     chunks: s.chunks.iter().map(|h| idx_of(h)).collect::<Result<_>>()?,
                 });
             }
-            let dict = record.dict.iter().map(|h| idx_of(h)).collect::<Result<_>>()?;
+            let dict = record
+                .dict
+                .iter()
+                .map(|h| idx_of(h))
+                .collect::<Result<_>>()?;
             let signature = match (&record.signature, &record.signer_pubkey) {
                 (Some(sig), Some(pk)) => Some((sig.clone(), pk.clone())),
                 _ => None,
@@ -247,7 +263,10 @@ impl AppState {
             assets.insert(
                 name.clone(),
                 Asset {
-                    source: ChunkSource::Store { store: shared.clone(), hashes },
+                    source: ChunkSource::Store {
+                        store: shared.clone(),
+                        hashes,
+                    },
                     tracks,
                     segments,
                     chunk_meta,
@@ -425,8 +444,7 @@ impl AppState {
                 .iter()
                 .find(|t| t.track_id == track_id)
                 .ok_or_else(|| format!("unknown track {track_id}"))?;
-            let instrs =
-                self.plan_chunks(asset, &mut session.known, &track.init_chunks, false)?;
+            let instrs = self.plan_chunks(asset, &mut session.known, &track.init_chunks, false)?;
             resp.inits.push(InitDelivery { track_id, instrs });
         }
 
@@ -526,10 +544,9 @@ impl AppState {
             return Some((bytes, "application/vnd.apple.mpegurl"));
         }
 
-        let track = asset
-            .tracks
-            .iter()
-            .find(|t| t.name == track_name && matches!(t.kind, TrackKind::Video | TrackKind::Audio))?;
+        let track = asset.tracks.iter().find(|t| {
+            t.name == track_name && matches!(t.kind, TrackKind::Video | TrackKind::Audio)
+        })?;
 
         if file == "init.mp4" {
             let mut out = Vec::new();

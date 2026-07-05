@@ -220,7 +220,10 @@ impl GlobalStore {
             .assets
             .insert(record.name.clone(), distinct.into_iter().collect());
         let json = serde_json::to_vec_pretty(record)?;
-        let path = self.root.join("assets").join(format!("{}.json", record.name));
+        let path = self
+            .root
+            .join("assets")
+            .join(format!("{}.json", record.name));
         let tmp = path.with_extension("json.tmp");
         std::fs::write(&tmp, &json)?;
         std::fs::rename(&tmp, &path)?;
@@ -282,15 +285,26 @@ impl GlobalStore {
 
     pub fn get_asset(&self, name: &str) -> Result<AssetRecord> {
         let path = self.root.join("assets").join(format!("{name}.json"));
-        let bytes = std::fs::read(&path).map_err(|_| StoreError::AssetNotFound(name.to_string()))?;
+        let bytes =
+            std::fs::read(&path).map_err(|_| StoreError::AssetNotFound(name.to_string()))?;
         Ok(serde_json::from_slice(&bytes)?)
     }
 
     pub fn stats(&self) -> StoreStats {
         let unique_chunks = self.index.chunks.len() as u64;
-        let stored_bytes: u64 = self.index.chunks.values().map(|i| i.len_stored as u64).sum();
+        let stored_bytes: u64 = self
+            .index
+            .chunks
+            .values()
+            .map(|i| i.len_stored as u64)
+            .sum();
         let unique_raw_bytes: u64 = self.index.chunks.values().map(|i| i.len_raw as u64).sum();
-        let zero_ref_chunks = self.index.chunks.values().filter(|i| i.refcount == 0).count() as u64;
+        let zero_ref_chunks = self
+            .index
+            .chunks
+            .values()
+            .filter(|i| i.refcount == 0)
+            .count() as u64;
         // Logical = if every asset stored its own copy of every chunk.
         let mut logical = 0u64;
         for chunks in self.index.assets.values() {
@@ -390,7 +404,10 @@ mod tests {
             assert!(store.put_chunk(&hb, &b, 0, b.len() as u32).unwrap());
             store.publish_asset(&rec("game_v1", &[&ha, &hb])).unwrap();
             // v2 = {a, c}  — 'a' shared, stored once
-            assert!(!store.put_chunk(&ha, &a, 0, a.len() as u32).unwrap(), "dup stored twice");
+            assert!(
+                !store.put_chunk(&ha, &a, 0, a.len() as u32).unwrap(),
+                "dup stored twice"
+            );
             assert!(store.put_chunk(&hc, &c, 0, c.len() as u32).unwrap());
             store.publish_asset(&rec("game_v2", &[&ha, &hc])).unwrap();
 
@@ -430,7 +447,7 @@ mod tests {
         store.put_chunk(&ha, &a, 0, 500).unwrap();
         store.publish_asset(&rec("x", &[&ha])).unwrap();
         store.publish_asset(&rec("x", &[&ha])).unwrap(); // republish
-        // refcount stays 1, not 2.
+                                                         // refcount stays 1, not 2.
         assert_eq!(store.chunk_info(&ha).unwrap().refcount, 1);
     }
 

@@ -67,11 +67,8 @@ pub fn split(input: &[u8], mode: ChunkMode) -> Vec<Range<usize>> {
             out
         }
         ChunkMode::Cdc { min, avg, max } => {
-            let chunker =
-                fastcdc::v2020::FastCDC::new(input, min as u32, avg as u32, max as u32);
-            chunker
-                .map(|c| c.offset..c.offset + c.length)
-                .collect()
+            let chunker = fastcdc::v2020::FastCDC::new(input, min as u32, avg as u32, max as u32);
+            chunker.map(|c| c.offset..c.offset + c.length).collect()
         }
     }
 }

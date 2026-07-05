@@ -112,11 +112,19 @@ pub fn pack_video(inputs: &[PathBuf], output: &Path, opts: &PackOptions) -> Resu
         eprintln!("[pack] segmenting {} with ffmpeg...", input.display());
 
         let workdir = tempfile::tempdir().context("cannot create temp dir")?;
-        let copied =
-            ffmpeg::segment_to_cmaf(input, workdir.path(), opts.segment_time, opts.force_transcode)?;
+        let copied = ffmpeg::segment_to_cmaf(
+            input,
+            workdir.path(),
+            opts.segment_time,
+            opts.force_transcode,
+        )?;
         eprintln!(
             "[pack]   mode: {}",
-            if copied { "stream copy" } else { "transcode h264+aac" }
+            if copied {
+                "stream copy"
+            } else {
+                "transcode h264+aac"
+            }
         );
 
         // Init segment: pinned into the global dictionary (bootstrap payload).
@@ -223,8 +231,8 @@ pub fn pack_raw(inputs: &[PathBuf], output: &Path, opts: &PackOptions) -> Result
             }
             candidate
         };
-        let data = std::fs::read(input)
-            .with_context(|| format!("cannot read {}", input.display()))?;
+        let data =
+            std::fs::read(input).with_context(|| format!("cannot read {}", input.display()))?;
         eprintln!(
             "[pack] {} ({} bytes) as raw asset track",
             input.display(),

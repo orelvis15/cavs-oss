@@ -37,7 +37,10 @@ fn signature_roundtrip_and_signer_key() {
     let expected_pk = ed25519_dalek::SigningKey::from_bytes(&secret)
         .verifying_key()
         .to_bytes();
-    assert_eq!(r.verify_signature().unwrap(), SignatureStatus::Valid(expected_pk));
+    assert_eq!(
+        r.verify_signature().unwrap(),
+        SignatureStatus::Valid(expected_pk)
+    );
 }
 
 #[test]

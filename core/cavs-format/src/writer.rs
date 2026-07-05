@@ -116,20 +116,19 @@ impl Writer {
 
         let mut flags = 0u32;
         let stored: Vec<u8>;
-        let stored_slice: &[u8] = if self.compression == COMPRESSION_ZSTD
-            && raw.len() >= COMPRESS_MIN_LEN
-        {
-            stored = zstd::bulk::compress(raw, self.zstd_level).map_err(FormatError::Zstd)?;
-            // Keep compression only if it actually pays for itself.
-            if stored.len() < raw.len() - raw.len() / 16 {
-                flags |= CHUNK_FLAG_ZSTD;
-                &stored
+        let stored_slice: &[u8] =
+            if self.compression == COMPRESSION_ZSTD && raw.len() >= COMPRESS_MIN_LEN {
+                stored = zstd::bulk::compress(raw, self.zstd_level).map_err(FormatError::Zstd)?;
+                // Keep compression only if it actually pays for itself.
+                if stored.len() < raw.len() - raw.len() / 16 {
+                    flags |= CHUNK_FLAG_ZSTD;
+                    &stored
+                } else {
+                    raw
+                }
             } else {
                 raw
-            }
-        } else {
-            raw
-        };
+            };
 
         self.out.write_all(stored_slice)?;
         self.data_hasher.update(stored_slice);

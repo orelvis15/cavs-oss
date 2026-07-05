@@ -325,15 +325,21 @@ pub fn decode_stream<R: std::io::Read>(
                 let track_id = u32::from_le_bytes(u32buf);
                 r.read_exact(&mut u32buf).map_err(io)?;
                 instr_count = u32::from_le_bytes(u32buf);
-                on_item(BatchItem::Init { track_id, instr_count })
-                    .map_err(ProtoError::Consumer)?;
+                on_item(BatchItem::Init {
+                    track_id,
+                    instr_count,
+                })
+                .map_err(ProtoError::Consumer)?;
             } else {
                 r.read_exact(&mut u64buf).map_err(io)?;
                 let segment_id = u64::from_le_bytes(u64buf);
                 r.read_exact(&mut u32buf).map_err(io)?;
                 instr_count = u32::from_le_bytes(u32buf);
-                on_item(BatchItem::Segment { segment_id, instr_count })
-                    .map_err(ProtoError::Consumer)?;
+                on_item(BatchItem::Segment {
+                    segment_id,
+                    instr_count,
+                })
+                .map_err(ProtoError::Consumer)?;
             }
             for _ in 0..instr_count {
                 let mut tag_hash = [0u8; 33];
@@ -349,11 +355,15 @@ pub fn decode_stream<R: std::io::Read>(
                             return Err(ProtoError::Malformed);
                         }
                         let len_raw = u32::from_le_bytes(meta[1..5].try_into().unwrap());
-                        let len_stored =
-                            u32::from_le_bytes(meta[5..9].try_into().unwrap());
+                        let len_stored = u32::from_le_bytes(meta[5..9].try_into().unwrap());
                         let mut payload = vec![0u8; len_stored as usize];
                         r.read_exact(&mut payload).map_err(io)?;
-                        DeliveryInstr::Inline { hash, len_raw, compression, payload }
+                        DeliveryInstr::Inline {
+                            hash,
+                            len_raw,
+                            compression,
+                            payload,
+                        }
                     }
                     _ => return Err(ProtoError::Malformed),
                 };
@@ -486,7 +496,9 @@ mod tests {
         let resp = BatchResponse {
             inits: vec![InitDelivery {
                 track_id: 3,
-                instrs: vec![DeliveryInstr::Ref { hash: hash_chunk(b"x") }],
+                instrs: vec![DeliveryInstr::Ref {
+                    hash: hash_chunk(b"x"),
+                }],
             }],
             segments: vec![SegmentDelivery {
                 segment_id: 9,
@@ -512,9 +524,7 @@ mod tests {
 
     #[test]
     fn bloom_membership_no_false_negatives() {
-        let members: Vec<ChunkHash> = (0..500u32)
-            .map(|i| hash_chunk(&i.to_le_bytes()))
-            .collect();
+        let members: Vec<ChunkHash> = (0..500u32).map(|i| hash_chunk(&i.to_le_bytes())).collect();
         let mut bf = BloomFilter::with_capacity(members.len());
         for h in &members {
             bf.insert(h);

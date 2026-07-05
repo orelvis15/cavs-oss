@@ -427,8 +427,7 @@ fn decode_meta(buf: &[u8]) -> Result<Vec<(String, String)>> {
     for _ in 0..count {
         let key = cur.str16()?;
         let value_bytes = cur.bytes32()?;
-        let value =
-            String::from_utf8(value_bytes).map_err(|_| FormatError::Malformed("meta"))?;
+        let value = String::from_utf8(value_bytes).map_err(|_| FormatError::Malformed("meta"))?;
         out.push((key, value));
     }
     Ok(out)

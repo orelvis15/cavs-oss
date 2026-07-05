@@ -55,8 +55,7 @@ fn percent(part: u64, whole: u64) -> f64 {
 }
 
 pub fn info(input: &Path, list_segments: bool, list_chunks: bool) -> Result<()> {
-    let r = Reader::open(input)
-        .with_context(|| format!("cannot open {}", input.display()))?;
+    let r = Reader::open(input).with_context(|| format!("cannot open {}", input.display()))?;
     let sb = r.superblock();
 
     println!("file      : {}", input.display());
@@ -179,8 +178,7 @@ pub fn info(input: &Path, list_segments: bool, list_chunks: bool) -> Result<()> 
 }
 
 pub fn verify(input: &Path, pubkey: Option<&str>) -> Result<()> {
-    let mut r = Reader::open(input)
-        .with_context(|| format!("cannot open {}", input.display()))?;
+    let mut r = Reader::open(input).with_context(|| format!("cannot open {}", input.display()))?;
     let report = r.verify()?;
     println!(
         "OK: {} chunks verified ({}), merkle root and DATA section hash match",

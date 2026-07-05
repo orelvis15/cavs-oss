@@ -10,9 +10,7 @@ mod cache;
 use anyhow::{bail, Context, Result};
 use cache::ChunkCache;
 use cavs_hash::to_hex;
-use cavs_proto::{
-    BatchRequest, DeliveryInstr, Manifest, SessionOpenRequest, SessionOpenResponse,
-};
+use cavs_proto::{BatchRequest, DeliveryInstr, Manifest, SessionOpenRequest, SessionOpenResponse};
 use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
 
@@ -117,7 +115,14 @@ fn main() -> Result<()> {
         } => {
             let agent = build_agent(ca.as_deref())?;
             let tmp = tempfile::tempdir()?;
-            let (primaries, _) = fetch(&agent, &server, &asset, tmp.path(), &cache, pubkey.as_deref())?;
+            let (primaries, _) = fetch(
+                &agent,
+                &server,
+                &asset,
+                tmp.path(),
+                &cache,
+                pubkey.as_deref(),
+            )?;
             let Some(target) = primaries.first() else {
                 bail!("no playable track in asset {asset}");
             };
@@ -213,8 +218,8 @@ fn verify_manifest_signature(manifest: &Manifest, trusted_pubkey_hex: &str) -> R
 
     let pk_bytes: [u8; 32] = decode_hex(signer_hex, 32)?.try_into().unwrap();
     let sig_bytes: [u8; 64] = decode_hex(sig_hex, 64)?.try_into().unwrap();
-    let key = ed25519_dalek::VerifyingKey::from_bytes(&pk_bytes)
-        .context("invalid signer public key")?;
+    let key =
+        ed25519_dalek::VerifyingKey::from_bytes(&pk_bytes).context("invalid signer public key")?;
     let message = cavs_hash::content_signature_message(&root, leaves.len() as u64);
     use ed25519_dalek::Verifier;
     key.verify(&message, &ed25519_dalek::Signature::from_bytes(&sig_bytes))
@@ -251,8 +256,7 @@ fn fetch(
     let cache = ChunkCache::open(cache_dir)?;
 
     // 1. Manifest (+ optional signature enforcement).
-    let manifest_json =
-        http_get_string(agent, &format!("{server}/api/assets/{asset}/manifest"))?;
+    let manifest_json = http_get_string(agent, &format!("{server}/api/assets/{asset}/manifest"))?;
     let manifest: Manifest = serde_json::from_str(&manifest_json)?;
     if let Some(pk) = pubkey {
         // Accept a literal hex key or a path to a .pub file.
@@ -322,7 +326,11 @@ fn fetch(
     let mut first = true;
     for group in segment_ids.chunks(BATCH_SIZE.max(1)) {
         let req = BatchRequest {
-            track_inits: if first { all_tracks.clone() } else { Vec::new() },
+            track_inits: if first {
+                all_tracks.clone()
+            } else {
+                Vec::new()
+            },
             segment_ids: group.to_vec(),
         };
         first = false;
@@ -383,10 +391,7 @@ fn fetch(
         );
         for hash in &missing_refs {
             let hex = to_hex(hash);
-            let raw = http_get_bytes(
-                agent,
-                &format!("{server}/api/assets/{asset}/chunks/{hex}"),
-            )?;
+            let raw = http_get_bytes(agent, &format!("{server}/api/assets/{asset}/chunks/{hex}"))?;
             if cavs_hash::hash_chunk(&raw) != *hash {
                 bail!("repaired chunk {hex} failed hash verification");
             }
@@ -497,8 +502,8 @@ impl PartFile {
 
     fn append_chunk(&mut self, cache: &ChunkCache, hash_hex: &str) -> Result<()> {
         use std::io::Write as _;
-        let hash = cavs_hash::from_hex(hash_hex)
-            .with_context(|| format!("bad chunk hash {hash_hex}"))?;
+        let hash =
+            cavs_hash::from_hex(hash_hex).with_context(|| format!("bad chunk hash {hash_hex}"))?;
         let bytes = cache
             .get(&hash)?
             .with_context(|| format!("chunk {hash_hex} missing after fetch"))?;
@@ -584,8 +589,7 @@ fn reconstruct_streaming(
                     bail!("unsafe track name: {}", track.name);
                 }
                 let expected = sha_by_name.get(track.name.as_str()).copied();
-                let mut part =
-                    PartFile::create(output.join(&track.name), expected.is_some())?;
+                let mut part = PartFile::create(output.join(&track.name), expected.is_some())?;
                 for seg in &segs {
                     for c in &seg.chunks {
                         part.append_chunk(cache, &c.hash)?;
@@ -632,7 +636,10 @@ fn http_get_string(agent: &ureq::Agent, url: &str) -> Result<String> {
 
 fn http_get_bytes(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>> {
     use std::io::Read as _;
-    let resp = agent.get(url).call().with_context(|| format!("GET {url}"))?;
+    let resp = agent
+        .get(url)
+        .call()
+        .with_context(|| format!("GET {url}"))?;
     let mut out = Vec::new();
     resp.into_reader()
         .read_to_end(&mut out)

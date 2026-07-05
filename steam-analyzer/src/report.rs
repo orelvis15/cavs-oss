@@ -62,7 +62,10 @@ pub fn markdown(r: &Report) -> String {
         human(r.estimated_cdc_update_bytes),
         pct(r.cdc_reuse_ratio)
     ));
-    m.push_str(&format!("- **Risk: {}**\n\n", r.risk.label().to_uppercase()));
+    m.push_str(&format!(
+        "- **Risk: {}**\n\n",
+        r.risk.label().to_uppercase()
+    ));
 
     m.push_str("## Top offenders\n\n");
     m.push_str("| # | File | Size | Steam update | CDC update | Risk | Reasons |\n");
@@ -213,7 +216,10 @@ td{{color:#8fa89a}} td.f{{color:#e8f2ec}} .pill{{padding:2px 7px;border-radius:2
         newb = human(r.new_size_bytes),
         oldb = human(r.old_size_bytes),
         risklabel = r.risk.label().to_uppercase(),
-        sw = bar_width(r.estimated_steam_update_bytes, r.estimated_steam_update_bytes),
+        sw = bar_width(
+            r.estimated_steam_update_bytes,
+            r.estimated_steam_update_bytes
+        ),
         cw = bar_width(r.estimated_cdc_update_bytes, r.estimated_steam_update_bytes),
         offenders = offenders,
         recs = recs,
@@ -244,5 +250,7 @@ fn offender_row(rank: usize, d: &FileDiff) -> String {
 }
 
 fn esc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }

@@ -12,8 +12,8 @@ use std::path::Path;
 /// Ingest a `.cavs` file into the store under `asset_name`, deduplicating
 /// its chunks against everything already stored.
 pub fn add(store_dir: &Path, asset_name: &str, cavs_path: &Path) -> Result<()> {
-    let mut reader = Reader::open(cavs_path)
-        .with_context(|| format!("cannot open {}", cavs_path.display()))?;
+    let mut reader =
+        Reader::open(cavs_path).with_context(|| format!("cannot open {}", cavs_path.display()))?;
     // Refuse to ingest content whose embedded signature is invalid.
     let signature = match reader.verify_signature()? {
         cavs_format::SignatureStatus::Valid(_) => reader.embedded_signature(),
@@ -74,7 +74,9 @@ pub fn add(store_dir: &Path, asset_name: &str, cavs_path: &Path) -> Result<()> {
         dict: reader.dict().iter().map(|&i| hex(i)).collect(),
         chunk_table: chunks.iter().map(|c| to_hex(&c.hash)).collect(),
         merkle_root: to_hex(&reader.integrity().merkle_root),
-        signature: signature.map(|(sig, _)| to_hex(&sig[..32].try_into().unwrap()) + &to_hex(&sig[32..].try_into().unwrap())),
+        signature: signature.map(|(sig, _)| {
+            to_hex(&sig[..32].try_into().unwrap()) + &to_hex(&sig[32..].try_into().unwrap())
+        }),
         signer_pubkey: signature.map(|(_, pk)| to_hex(&pk)),
         meta: reader.meta().to_vec(),
     };
@@ -95,7 +97,10 @@ pub fn add(store_dir: &Path, asset_name: &str, cavs_path: &Path) -> Result<()> {
 pub fn remove(store_dir: &Path, asset_name: &str) -> Result<()> {
     let mut store = GlobalStore::open(store_dir)?;
     if store.unpublish_asset(asset_name)? {
-        println!("removed : {asset_name} (run `cavs store {} gc` to reclaim space)", store_dir.display());
+        println!(
+            "removed : {asset_name} (run `cavs store {} gc` to reclaim space)",
+            store_dir.display()
+        );
         print_stats(&store);
     } else {
         println!("not found: {asset_name}");
@@ -106,7 +111,10 @@ pub fn remove(store_dir: &Path, asset_name: &str) -> Result<()> {
 pub fn gc(store_dir: &Path, grace_secs: u64) -> Result<()> {
     let mut store = GlobalStore::open(store_dir)?;
     let (removed, bytes) = store.gc(grace_secs)?;
-    println!("gc      : removed {removed} zero-ref chunks, reclaimed {}", human_bytes(bytes));
+    println!(
+        "gc      : removed {removed} zero-ref chunks, reclaimed {}",
+        human_bytes(bytes)
+    );
     print_stats(&store);
     Ok(())
 }

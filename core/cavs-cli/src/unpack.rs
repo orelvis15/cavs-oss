@@ -19,8 +19,7 @@ use std::path::{Path, PathBuf};
 ///
 /// Returns the list of "primary" playable files (combined mp4s, or raw files).
 pub fn unpack(input: &Path, output: &Path, combined_mp4: bool) -> Result<Vec<PathBuf>> {
-    let mut r = Reader::open(input)
-        .with_context(|| format!("cannot open {}", input.display()))?;
+    let mut r = Reader::open(input).with_context(|| format!("cannot open {}", input.display()))?;
     fs::create_dir_all(output)?;
 
     let tracks = r.tracks().to_vec();
@@ -40,7 +39,11 @@ pub fn unpack(input: &Path, output: &Path, combined_mp4: bool) -> Result<Vec<Pat
                     .into_iter()
                     .cloned()
                     .collect();
-                let mut combined = if combined_mp4 { init.clone() } else { Vec::new() };
+                let mut combined = if combined_mp4 {
+                    init.clone()
+                } else {
+                    Vec::new()
+                };
                 for (ordinal, seg) in segs.iter().enumerate() {
                     let bytes = r.segment_bytes(seg)?;
                     fs::write(dir.join(format!("seg_{ordinal:05}.m4s")), &bytes)?;
@@ -66,7 +69,11 @@ pub fn unpack(input: &Path, output: &Path, combined_mp4: bool) -> Result<Vec<Pat
                 // Logical name may contain a relative sub-path (e.g.
                 // "stem/media.m3u8"); sanitize against traversal.
                 if track.name.contains("..") || track.name.starts_with('/') {
-                    bail!("track {} has an unsafe name: {}", track.track_id, track.name);
+                    bail!(
+                        "track {} has an unsafe name: {}",
+                        track.track_id,
+                        track.name
+                    );
                 }
                 let path = output.join(&track.name);
                 if let Some(parent) = path.parent() {

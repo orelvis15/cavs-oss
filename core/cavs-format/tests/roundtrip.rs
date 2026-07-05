@@ -81,11 +81,7 @@ fn full_roundtrip_with_dedup() {
     );
 
     assert_eq!(r.track_init_bytes(1).unwrap(), init);
-    let segs: Vec<SegmentRecord> = r
-        .segments_for_track(1)
-        .into_iter()
-        .cloned()
-        .collect();
+    let segs: Vec<SegmentRecord> = r.segments_for_track(1).into_iter().cloned().collect();
     assert_eq!(r.segment_bytes(&segs[0]).unwrap(), seg_a);
     assert_eq!(r.segment_bytes(&segs[1]).unwrap(), seg_b);
     assert_eq!(r.segment_bytes(&segs[2]).unwrap(), seg_c);
@@ -187,7 +183,10 @@ fn patch_u64_expect_err(src: &std::path::Path, dst: &std::path::Path, off: u64, 
     f.write_all(&val.to_le_bytes()).unwrap();
     drop(f);
     // Must return an error, and must return quickly (no huge allocation).
-    assert!(Reader::open(dst).is_err(), "reader accepted a malformed file");
+    assert!(
+        Reader::open(dst).is_err(),
+        "reader accepted a malformed file"
+    );
 }
 
 #[test]
@@ -220,10 +219,20 @@ fn rejects_truncated_files() {
     let src = valid_file(dir.path());
     let full = std::fs::read(&src).unwrap();
     // Every truncation point must error, never panic.
-    for cut in [0usize, 4, 32, 64, full.len() / 2, full.len().saturating_sub(1)] {
+    for cut in [
+        0usize,
+        4,
+        32,
+        64,
+        full.len() / 2,
+        full.len().saturating_sub(1),
+    ] {
         let p = dir.path().join(format!("trunc_{cut}.cavs"));
         std::fs::write(&p, &full[..cut]).unwrap();
-        assert!(Reader::open(&p).is_err(), "accepted a file truncated to {cut} bytes");
+        assert!(
+            Reader::open(&p).is_err(),
+            "accepted a file truncated to {cut} bytes"
+        );
     }
 }
 

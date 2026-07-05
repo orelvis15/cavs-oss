@@ -154,9 +154,6 @@ mod tests {
             "1ea34f80f682f6cb859845f2d26c52f9f3b7052be7bdf641844e19b01d3d329e"
         );
         // And a single known chunk hash.
-        assert_eq!(
-            to_hex(&hash_chunk(b"cavs-vector-0")),
-            to_hex(&leaves[0])
-        );
+        assert_eq!(to_hex(&hash_chunk(b"cavs-vector-0")), to_hex(&leaves[0]));
     }
 }

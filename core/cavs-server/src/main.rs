@@ -25,7 +25,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 #[derive(Parser)]
-#[command(name = "cavs-server", version, about = "CAVS-1 streaming origin server")]
+#[command(
+    name = "cavs-server",
+    version,
+    about = "CAVS-1 streaming origin server"
+)]
 struct Cli {
     /// .cavs files to serve (asset name = file stem). Omit when using --store.
     assets: Vec<PathBuf>,
@@ -110,7 +114,13 @@ async fn main() -> Result<()> {
         Some((cert, key)) => {
             let config = axum_server::tls_rustls::RustlsConfig::from_pem_file(&cert, &key)
                 .await
-                .with_context(|| format!("loading TLS cert {} / key {}", cert.display(), key.display()))?;
+                .with_context(|| {
+                    format!(
+                        "loading TLS cert {} / key {}",
+                        cert.display(),
+                        key.display()
+                    )
+                })?;
             println!("listening on https://{addr}");
             axum_server::from_tcp_rustls(listener, config)
                 .serve(app.into_make_service())
@@ -137,7 +147,10 @@ fn ensure_self_signed(dir: &PathBuf) -> Result<(PathBuf, PathBuf)> {
         .context("generating self-signed certificate")?;
         std::fs::write(&cert_path, cert.cert.pem())?;
         std::fs::write(&key_path, cert.key_pair.serialize_pem())?;
-        eprintln!("[server] self-signed TLS cert written to {}", cert_path.display());
+        eprintln!(
+            "[server] self-signed TLS cert written to {}",
+            cert_path.display()
+        );
     }
     Ok((cert_path, key_path))
 }
@@ -200,11 +213,7 @@ async fn batch(
     let bytes = state
         .plan_batch(&session, &req)
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
-    Ok((
-        [(header::CONTENT_TYPE, "application/octet-stream")],
-        bytes,
-    )
-        .into_response())
+    Ok(([(header::CONTENT_TYPE, "application/octet-stream")], bytes).into_response())
 }
 
 async fn get_chunk(
@@ -260,11 +269,7 @@ async fn web_wasm(State(state): State<SharedState>) -> Result<Response, AppError
             ),
         )
     })?;
-    Ok((
-        [(header::CONTENT_TYPE, "application/wasm")],
-        bytes,
-    )
-        .into_response())
+    Ok(([(header::CONTENT_TYPE, "application/wasm")], bytes).into_response())
 }
 
 async fn metrics(State(state): State<SharedState>) -> Response {

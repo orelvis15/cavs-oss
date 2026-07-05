@@ -26,8 +26,8 @@ const CDC_MANIFEST_PER_CHUNK: u64 = 48;
 
 /// Pack-file extensions across the major engines (case-insensitive).
 const PACK_EXTS: &[&str] = &[
-    "pak", "ucas", "utoc", "pck", "bundle", "assets", "ress", "archive", "big",
-    "dat", "blob", "pack", "zip",
+    "pak", "ucas", "utoc", "pck", "bundle", "assets", "ress", "archive", "big", "dat", "blob",
+    "pack", "zip",
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -196,16 +196,15 @@ pub struct FileDiff {
 
 /// Analyze one v2 file against the old index. Returns None for unchanged
 /// files (identical hash) to keep reports focused.
-fn diff_file(
-    rel: &str,
-    data: &[u8],
-    v2_fixed: &[ChunkHash],
-    old: &OldIndex,
-) -> FileDiff {
+fn diff_file(rel: &str, data: &[u8], v2_fixed: &[ChunkHash], old: &OldIndex) -> FileDiff {
     let new_size = data.len() as u64;
     let is_pack = is_pack(rel);
     let old_fixed = old.per_file_fixed.get(rel);
-    let status = if old_fixed.is_none() { "new" } else { "changed" };
+    let status = if old_fixed.is_none() {
+        "new"
+    } else {
+        "changed"
+    };
 
     // --- SteamPipe fixed model (same-path) ---
     let empty = HashSet::new();
@@ -219,10 +218,9 @@ fn diff_file(
         if !same.contains(h) {
             steam_new += 1;
             new_raw += len as u64;
-            new_compressed +=
-                zstd::bulk::compress(&data[off..off + len], ZSTD_LEVEL)
-                    .map(|c| c.len() as u64)
-                    .unwrap_or(len as u64);
+            new_compressed += zstd::bulk::compress(&data[off..off + len], ZSTD_LEVEL)
+                .map(|c| c.len() as u64)
+                .unwrap_or(len as u64);
         }
         off += len;
     }
@@ -267,11 +265,21 @@ fn diff_file(
         if new_size > 8 << 30 {
             bump(RiskLevel::High, "large_pack_file", &mut reasons, &mut risk);
         } else if new_size > 2 << 30 {
-            bump(RiskLevel::Medium, "large_pack_file", &mut reasons, &mut risk);
+            bump(
+                RiskLevel::Medium,
+                "large_pack_file",
+                &mut reasons,
+                &mut risk,
+            );
         }
         // Scattered small changes across a big pack.
         if new_size > 256 << 20 && changed_window_ratio > 0.30 {
-            bump(RiskLevel::High, "scattered_changes", &mut reasons, &mut risk);
+            bump(
+                RiskLevel::High,
+                "scattered_changes",
+                &mut reasons,
+                &mut risk,
+            );
         }
     }
     // Misalignment: content is present but 1 MiB reuse is far below CDC reuse.
@@ -385,9 +393,17 @@ pub fn compare(old_root: &Path, new_root: &Path, engine: Engine) -> anyhow::Resu
     }
 
     // Overall reuse ratios (weighted by changed data).
-    let overall_risk = diffs.iter().map(|d| d.risk).fold(RiskLevel::None, |a, b| {
-        if b.rank() > a.rank() { b } else { a }
-    });
+    let overall_risk =
+        diffs.iter().map(|d| d.risk).fold(
+            RiskLevel::None,
+            |a, b| {
+                if b.rank() > a.rank() {
+                    b
+                } else {
+                    a
+                }
+            },
+        );
     // Escalate risk if the whole update is a large fraction of the build.
     let risk = if new_total > 0 && steam_payload as f64 / new_total as f64 > 0.25 {
         RiskLevel::High
@@ -456,7 +472,8 @@ fn recommend(diffs: &[FileDiff], engine: Engine) -> Vec<Recommendation> {
                      present but misaligned). SteamPipe's 1 MiB diff can't reuse chunks \
                      whose byte offsets shifted. Split the pack by level/feature, keep \
                      asset order stable between builds, centralize the TOC, and check for \
-                     absolute offsets that cascade on small edits.".into(),
+                     absolute offsets that cascade on small edits."
+                .into(),
         });
     }
     if has("large_pack_file") {
@@ -465,7 +482,8 @@ fn recommend(diffs: &[FileDiff], engine: Engine) -> Vec<Recommendation> {
             title: "Split oversized pack files".into(),
             detail: "Pack files over ~2 GiB force SteamPipe to reconstruct huge files on \
                      the client even for small changes. Split into 1–2 GiB packs aligned \
-                     to depots/features.".into(),
+                     to depots/features."
+                .into(),
         });
     }
     if has("full_rewrite") {
@@ -474,7 +492,8 @@ fn recommend(diffs: &[FileDiff], engine: Engine) -> Vec<Recommendation> {
             title: "Avoid rewriting whole packs for small changes".into(),
             detail: "A large file was almost fully rewritten (very low chunk reuse). Add \
                      new assets to a new pack instead of rewriting existing packs, and \
-                     disable non-deterministic compression/build metadata.".into(),
+                     disable non-deterministic compression/build metadata."
+                .into(),
         });
     }
     // Engine-specific guidance when the offenders belong to a known engine.
@@ -482,28 +501,35 @@ fn recommend(diffs: &[FileDiff], engine: Engine) -> Vec<Recommendation> {
         .iter()
         .filter(|d| d.risk.rank() >= RiskLevel::Medium.rank())
         .find_map(|d| engine_of(&d.path))
-        .or(if engine != Engine::Auto { Some(engine) } else { None });
+        .or(if engine != Engine::Auto {
+            Some(engine)
+        } else {
+            None
+        });
     match offender_engine {
         Some(Engine::Unreal) => recs.push(Recommendation {
             severity: "info".into(),
             title: "Unreal: check PAK/IoStore alignment".into(),
             detail: "Review patch padding alignment (1 MiB aligns PAK chunks to \
                      SteamPipe's block size), split packs by map/feature, and inspect \
-                     .ucas/.utoc IoStore containers for offset churn.".into(),
+                     .ucas/.utoc IoStore containers for offset churn."
+                .into(),
         }),
         Some(Engine::Unity) => recs.push(Recommendation {
             severity: "info".into(),
             title: "Unity: stabilize AssetBundles/Addressables".into(),
             detail: "Group Addressables by update cadence, avoid moving assets between \
                      bundles, keep naming/versioning stable, and avoid full bundle \
-                     rebuilds for small changes.".into(),
+                     rebuilds for small changes."
+                .into(),
         }),
         Some(Engine::Godot) => recs.push(Recommendation {
             severity: "info".into(),
             title: "Godot: split base PCK from patches".into(),
             detail: "Ship a stable base PCK and per-feature/level patch PCKs instead of \
                      rewriting the whole PCK for small updates. CAVS Delivery can serve \
-                     these updates externally.".into(),
+                     these updates externally."
+                .into(),
         }),
         _ => {}
     }
@@ -512,7 +538,8 @@ fn recommend(diffs: &[FileDiff], engine: Engine) -> Vec<Recommendation> {
             severity: "info".into(),
             title: "No major SteamPipe risks detected".into(),
             detail: "Changes appear localized and chunk-aligned. The estimated update \
-                     should patch efficiently.".into(),
+                     should patch efficiently."
+                .into(),
         });
     }
     recs

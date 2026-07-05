@@ -66,8 +66,13 @@ fn localized_change_is_low_risk() {
     ]);
     assert_eq!(code, 0);
     // A localized change patches efficiently: small steam update, not high risk.
-    let steam = field(&out, "estimated_steam_update_bytes").as_u64().unwrap();
-    assert!(steam < 4 * 1024 * 1024, "localized change should be small, got {steam}");
+    let steam = field(&out, "estimated_steam_update_bytes")
+        .as_u64()
+        .unwrap();
+    assert!(
+        steam < 4 * 1024 * 1024,
+        "localized change should be small, got {steam}"
+    );
     assert_ne!(field(&out, "risk").as_str().unwrap(), "high");
 }
 
@@ -90,10 +95,18 @@ fn reorder_flags_high_risk_and_misalignment() {
         out.to_str().unwrap(),
     ]);
     // SteamPipe re-downloads almost everything; CAVS FastCDC would not.
-    let steam = field(&out, "estimated_steam_update_bytes").as_u64().unwrap();
+    let steam = field(&out, "estimated_steam_update_bytes")
+        .as_u64()
+        .unwrap();
     let cdc = field(&out, "estimated_cdc_update_bytes").as_u64().unwrap();
-    assert!(steam > 15 * 1024 * 1024, "reorder should blow up steam update, got {steam}");
-    assert!(cdc < steam / 10, "CDC should stay tiny vs steam: cdc={cdc} steam={steam}");
+    assert!(
+        steam > 15 * 1024 * 1024,
+        "reorder should blow up steam update, got {steam}"
+    );
+    assert!(
+        cdc < steam / 10,
+        "CDC should stay tiny vs steam: cdc={cdc} steam={steam}"
+    );
     assert_eq!(field(&out, "risk").as_str().unwrap(), "high");
     let json = std::fs::read_to_string(out.join("results.json")).unwrap();
     assert!(json.contains("cdc_reuse_much_higher_than_fixed_reuse"));

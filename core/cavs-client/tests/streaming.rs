@@ -156,10 +156,7 @@ fn cold_then_warm_fetch_saves_egress() {
     );
     assert!(ok, "warm fetch failed:\n{warm}");
     let warm_bytes = parse_inline_bytes(&warm);
-    assert_eq!(
-        warm_bytes, 0.0,
-        "warm fetch must be all refs:\n{warm}"
-    );
+    assert_eq!(warm_bytes, 0.0, "warm fetch must be all refs:\n{warm}");
     assert_eq!(std::fs::read(out2.join("bundle.bin")).unwrap(), payload);
 }
 
@@ -174,7 +171,10 @@ fn tls_and_signature_verification() {
     let (ok, out) = run("cavs", &["keygen", "-o", key.to_str().unwrap()]);
     assert!(ok, "keygen failed:\n{out}");
     let pubkey_file = key.with_extension("pub");
-    let pubkey_hex = std::fs::read_to_string(&pubkey_file).unwrap().trim().to_string();
+    let pubkey_hex = std::fs::read_to_string(&pubkey_file)
+        .unwrap()
+        .trim()
+        .to_string();
 
     let payload = pseudo_random(800_000, 33);
     let src = dir.path().join("asset.bin");
@@ -183,19 +183,31 @@ fn tls_and_signature_verification() {
     let (ok, out) = run(
         "cavs",
         &[
-            "pack", "--raw",
+            "pack",
+            "--raw",
             src.to_str().unwrap(),
-            "-o", cavs.to_str().unwrap(),
-            "--sign-key", key.to_str().unwrap(),
+            "-o",
+            cavs.to_str().unwrap(),
+            "--sign-key",
+            key.to_str().unwrap(),
         ],
     );
     assert!(ok, "signed pack failed:\n{out}");
 
     // `cavs verify --pubkey` accepts the right key and rejects a wrong one.
-    let (ok, out) = run("cavs", &["verify", cavs.to_str().unwrap(), "--pubkey", &pubkey_hex]);
-    assert!(ok && out.contains("signer matches"), "verify --pubkey failed:\n{out}");
+    let (ok, out) = run(
+        "cavs",
+        &["verify", cavs.to_str().unwrap(), "--pubkey", &pubkey_hex],
+    );
+    assert!(
+        ok && out.contains("signer matches"),
+        "verify --pubkey failed:\n{out}"
+    );
     let wrong = "ab".repeat(32);
-    let (ok, _) = run("cavs", &["verify", cavs.to_str().unwrap(), "--pubkey", &wrong]);
+    let (ok, _) = run(
+        "cavs",
+        &["verify", cavs.to_str().unwrap(), "--pubkey", &wrong],
+    );
     assert!(!ok, "verify must fail with a wrong pubkey");
 
     // HTTPS server with self-signed cert.
@@ -203,8 +215,10 @@ fn tls_and_signature_verification() {
     let mut child = Command::new(bin("cavs-server"))
         .args([
             cavs.to_str().unwrap(),
-            "--listen", "127.0.0.1:0",
-            "--tls-self-signed", tls_dir.to_str().unwrap(),
+            "--listen",
+            "127.0.0.1:0",
+            "--tls-self-signed",
+            tls_dir.to_str().unwrap(),
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -214,8 +228,15 @@ fn tls_and_signature_verification() {
     let mut line = String::new();
     BufReader::new(stdout).read_line(&mut line).unwrap();
     let _guard = ServerGuard(child);
-    let url = line.trim().strip_prefix("listening on ").unwrap().to_string();
-    assert!(url.starts_with("https://"), "expected https banner, got {url}");
+    let url = line
+        .trim()
+        .strip_prefix("listening on ")
+        .unwrap()
+        .to_string();
+    assert!(
+        url.starts_with("https://"),
+        "expected https banner, got {url}"
+    );
     let ca = tls_dir.join("cert.pem");
 
     // Fetch over TLS with signature enforcement.
@@ -223,35 +244,50 @@ fn tls_and_signature_verification() {
     let (ok, out) = run(
         "cavs-client",
         &[
-            "fetch", &url, "asset",
-            "-o", outdir.to_str().unwrap(),
-            "--cache", dir.path().join("cache").to_str().unwrap(),
-            "--ca", ca.to_str().unwrap(),
-            "--pubkey", &pubkey_hex,
+            "fetch",
+            &url,
+            "asset",
+            "-o",
+            outdir.to_str().unwrap(),
+            "--cache",
+            dir.path().join("cache").to_str().unwrap(),
+            "--ca",
+            ca.to_str().unwrap(),
+            "--pubkey",
+            &pubkey_hex,
         ],
     );
     assert!(ok, "tls+signed fetch failed:\n{out}");
-    assert!(out.contains("content signature OK"), "missing signature check:\n{out}");
+    assert!(
+        out.contains("content signature OK"),
+        "missing signature check:\n{out}"
+    );
     assert_eq!(std::fs::read(outdir.join("asset.bin")).unwrap(), payload);
 
     // Wrong trusted key must be rejected.
     let (ok, out) = run(
         "cavs-client",
         &[
-            "fetch", &url, "asset",
-            "-o", dir.path().join("r2").to_str().unwrap(),
-            "--cache", dir.path().join("cache").to_str().unwrap(),
-            "--ca", ca.to_str().unwrap(),
-            "--pubkey", &wrong,
+            "fetch",
+            &url,
+            "asset",
+            "-o",
+            dir.path().join("r2").to_str().unwrap(),
+            "--cache",
+            dir.path().join("cache").to_str().unwrap(),
+            "--ca",
+            ca.to_str().unwrap(),
+            "--pubkey",
+            &wrong,
         ],
     );
-    assert!(!ok && out.contains("untrusted key"), "wrong key must fail:\n{out}");
+    assert!(
+        !ok && out.contains("untrusted key"),
+        "wrong key must fail:\n{out}"
+    );
 
     // Without --ca, TLS trust must fail against the self-signed cert.
-    let (ok, _) = run(
-        "cavs-client",
-        &["list", &url],
-    );
+    let (ok, _) = run("cavs-client", &["list", &url]);
     assert!(!ok, "TLS must fail without trusting the self-signed cert");
 }
 
@@ -272,7 +308,12 @@ fn hls_endpoints_serve_playable_artifacts() {
     let clip = dir.path().join("clip.mp4");
     assert!(Command::new("ffmpeg")
         .args(["-y", "-hide_banner", "-loglevel", "error"])
-        .args(["-f", "lavfi", "-i", "testsrc2=duration=4:size=320x180:rate=30"])
+        .args([
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=duration=4:size=320x180:rate=30"
+        ])
         .args(["-c:v", "libx264", "-preset", "veryfast"])
         .arg(&clip)
         .status()
@@ -325,8 +366,32 @@ fn global_store_dedup_serve_and_gc() {
     // Pack each version.
     let c1 = dir.path().join("v1.cavs");
     let c2 = dir.path().join("v2.cavs");
-    assert!(run("cavs", &["pack", "--raw", p1.to_str().unwrap(), "-o", c1.to_str().unwrap()]).0);
-    assert!(run("cavs", &["pack", "--raw", p2.to_str().unwrap(), "-o", c2.to_str().unwrap()]).0);
+    assert!(
+        run(
+            "cavs",
+            &[
+                "pack",
+                "--raw",
+                p1.to_str().unwrap(),
+                "-o",
+                c1.to_str().unwrap()
+            ]
+        )
+        .0
+    );
+    assert!(
+        run(
+            "cavs",
+            &[
+                "pack",
+                "--raw",
+                p2.to_str().unwrap(),
+                "-o",
+                c2.to_str().unwrap()
+            ]
+        )
+        .0
+    );
 
     // Ingest both into a global store.
     let store = dir.path().join("store");
@@ -347,18 +412,52 @@ fn global_store_dedup_serve_and_gc() {
         .spawn()
         .unwrap();
     let mut line = String::new();
-    BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
-    let url = line.trim().strip_prefix("listening on ").unwrap().to_string();
+    BufReader::new(child.stdout.take().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    let url = line
+        .trim()
+        .strip_prefix("listening on ")
+        .unwrap()
+        .to_string();
     let _guard = ServerGuard(child);
 
     let cache = dir.path().join("cache");
     let out1 = dir.path().join("f1");
     let out2 = dir.path().join("f2");
-    assert!(run("cavs-client", &["fetch", &url, "v1", "-o", out1.to_str().unwrap(),
-        "--cache", cache.to_str().unwrap()]).0);
+    assert!(
+        run(
+            "cavs-client",
+            &[
+                "fetch",
+                &url,
+                "v1",
+                "-o",
+                out1.to_str().unwrap(),
+                "--cache",
+                cache.to_str().unwrap()
+            ]
+        )
+        .0
+    );
     let s2 = dir.path().join("s2.json");
-    assert!(run("cavs-client", &["fetch", &url, "v2", "-o", out2.to_str().unwrap(),
-        "--cache", cache.to_str().unwrap(), "--stats-json", s2.to_str().unwrap()]).0);
+    assert!(
+        run(
+            "cavs-client",
+            &[
+                "fetch",
+                &url,
+                "v2",
+                "-o",
+                out2.to_str().unwrap(),
+                "--cache",
+                cache.to_str().unwrap(),
+                "--stats-json",
+                s2.to_str().unwrap()
+            ]
+        )
+        .0
+    );
 
     // Byte-identical reconstruction from the store.
     assert_eq!(std::fs::read(out1.join("v1.bin")).unwrap(), v1);
@@ -368,17 +467,35 @@ fn global_store_dedup_serve_and_gc() {
     let stats: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&s2).unwrap()).unwrap();
     let inline = stats["inline_bytes"].as_u64().unwrap();
-    assert!(inline < 600_000, "v2 update should be small, got {inline} bytes");
-    assert!(stats["refs"].as_u64().unwrap() > 0, "v2 should resolve refs from cache");
+    assert!(
+        inline < 600_000,
+        "v2 update should be small, got {inline} bytes"
+    );
+    assert!(
+        stats["refs"].as_u64().unwrap() > 0,
+        "v2 should resolve refs from cache"
+    );
 
     // Unpublish v1, GC: v1-unique chunks reclaimed, v2 still fully intact.
     assert!(run("cavs", &["store", sd, "rm", "v1"]).0);
     assert!(run("cavs", &["store", sd, "gc", "--grace", "0"]).0);
-    let (ok, _) = run("cavs-client", &["fetch", &url, "v2",
-        "-o", dir.path().join("f3").to_str().unwrap(),
-        "--cache", dir.path().join("c2").to_str().unwrap()]);
+    let (ok, _) = run(
+        "cavs-client",
+        &[
+            "fetch",
+            &url,
+            "v2",
+            "-o",
+            dir.path().join("f3").to_str().unwrap(),
+            "--cache",
+            dir.path().join("c2").to_str().unwrap(),
+        ],
+    );
     assert!(ok, "v2 must still serve after v1 GC");
-    assert_eq!(std::fs::read(dir.path().join("f3").join("v2.bin")).unwrap(), v2);
+    assert_eq!(
+        std::fs::read(dir.path().join("f3").join("v2.bin")).unwrap(),
+        v2
+    );
 }
 
 /// Force the Bloom-filter have-set path: an asset with far more than the
@@ -393,25 +510,71 @@ fn bloom_haveset_large_asset() {
     let src = dir.path().join("big.bin");
     std::fs::write(&src, &data).unwrap();
     let cavs = dir.path().join("big.cavs");
-    assert!(run("cavs", &["pack", "--raw", src.to_str().unwrap(), "-o", cavs.to_str().unwrap()]).0);
+    assert!(
+        run(
+            "cavs",
+            &[
+                "pack",
+                "--raw",
+                src.to_str().unwrap(),
+                "-o",
+                cavs.to_str().unwrap()
+            ]
+        )
+        .0
+    );
 
     let (_guard, url) = spawn_server(cavs.to_str().unwrap());
     let cache = dir.path().join("cache");
     // Cold seeds the cache with hundreds of chunks.
-    assert!(run("cavs-client", &["fetch", &url, "big",
-        "-o", dir.path().join("f1").to_str().unwrap(), "--cache", cache.to_str().unwrap()]).0);
+    assert!(
+        run(
+            "cavs-client",
+            &[
+                "fetch",
+                &url,
+                "big",
+                "-o",
+                dir.path().join("f1").to_str().unwrap(),
+                "--cache",
+                cache.to_str().unwrap()
+            ]
+        )
+        .0
+    );
     // Warm: have-set > 256 -> client sends a Bloom filter.
     let s = dir.path().join("warm.json");
     let out = dir.path().join("f2");
-    let (ok, log) = run("cavs-client", &["fetch", &url, "big",
-        "-o", out.to_str().unwrap(), "--cache", cache.to_str().unwrap(),
-        "--stats-json", s.to_str().unwrap()]);
+    let (ok, log) = run(
+        "cavs-client",
+        &[
+            "fetch",
+            &url,
+            "big",
+            "-o",
+            out.to_str().unwrap(),
+            "--cache",
+            cache.to_str().unwrap(),
+            "--stats-json",
+            s.to_str().unwrap(),
+        ],
+    );
     assert!(ok, "warm bloom fetch failed:\n{log}");
-    assert_eq!(std::fs::read(out.join("big.bin")).unwrap(), data, "bloom path must reconstruct exactly");
+    assert_eq!(
+        std::fs::read(out.join("big.bin")).unwrap(),
+        data,
+        "bloom path must reconstruct exactly"
+    );
     let stats: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&s).unwrap()).unwrap();
     // Warm fetch resolves everything from cache; inline stays near zero even
     // accounting for the odd bloom false-positive repair.
-    assert!(stats["refs"].as_u64().unwrap() > 256, "expected a large ref set via bloom");
-    assert!(stats["inline_bytes"].as_u64().unwrap() < 2_000_000, "warm bloom fetch downloaded too much");
+    assert!(
+        stats["refs"].as_u64().unwrap() > 256,
+        "expected a large ref set via bloom"
+    );
+    assert!(
+        stats["inline_bytes"].as_u64().unwrap() < 2_000_000,
+        "warm bloom fetch downloaded too much"
+    );
 }

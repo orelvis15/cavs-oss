@@ -1,0 +1,90 @@
+name: Release
+
+# Maintainer-controlled: binaries are built and published only when a version
+# tag is pushed (e.g. `git tag v0.1.0 && git push origin v0.1.0`). This is the
+# standard open-source release trigger — merging a PR does nothing on its own;
+# you cut a release by tagging. `workflow_dispatch` allows a manual run too.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag to build (e.g. v0.1.0)'
+        required: true
+
+permissions:
+  contents: write   # required to create the GitHub Release
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu }
+          - { os: macos-14,       target: aarch64-apple-darwin }
+          - { os: macos-13,       target: x86_64-apple-darwin }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build binaries
+        run: >
+          cargo build --release --target ${{ matrix.target }}
+          --bin cavs --bin cavs-server --bin cavs-client --bin cavs-steam
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.inputs.tag || github.ref_name }}"
+          DIST="cavs-${VERSION}-${{ matrix.target }}"
+          BINDIR="target/${{ matrix.target }}/release"
+          mkdir "$DIST"
+          for b in cavs cavs-server cavs-client cavs-steam; do
+            if [ -f "$BINDIR/$b.exe" ]; then cp "$BINDIR/$b.exe" "$DIST/"; else cp "$BINDIR/$b" "$DIST/"; fi
+          done
+          cp README.md LICENSE NOTICE "$DIST/"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "$DIST.zip" "$DIST" >/dev/null
+          else
+            tar czf "$DIST.tar.gz" "$DIST"
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            *.tar.gz
+            *.zip
+
+  release:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
