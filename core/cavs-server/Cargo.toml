@@ -1,0 +1,25 @@
+[package]
+name = "cavs-server"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+
+[[bin]]
+name = "cavs-server"
+path = "src/main.rs"
+
+[dependencies]
+cavs-hash = { workspace = true }
+cavs-format = { workspace = true }
+cavs-proto = { workspace = true }
+cavs-store = { workspace = true }
+zstd = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+uuid = { workspace = true }
+tokio = { workspace = true }
+axum = { workspace = true }
+axum-server = { workspace = true }
+rcgen = { workspace = true }
+rustls = { workspace = true }
+serde_json = { workspace = true }

@@ -1,0 +1,13 @@
+[package]
+name = "cavs-proto"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+
+[dependencies]
+cavs-hash = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

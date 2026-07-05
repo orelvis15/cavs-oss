@@ -1,0 +1,15 @@
+; Proyecto demo del plugin CAVS.
+; Copia también addons/cavs/ dentro de esta carpeta para ejecutarlo:
+;   cp -r ../addons .
+;   godot --path . (o abrir en el editor)
+config_version=5
+
+[application]
+
+config/name="CavsDemo"
+run/main_scene="res://boot.tscn"
+config/features=PackedStringArray("4.7")
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/cavs/plugin.cfg")

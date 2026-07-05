@@ -1,0 +1,54 @@
+[workspace]
+resolver = "2"
+members = [
+    "core/cavs-hash",
+    "core/cavs-chunker",
+    "core/cavs-store",
+    "core/cavs-format",
+    "core/cavs-proto",
+    "core/cavs-cli",
+    "core/cavs-server",
+    "core/cavs-client",
+    "steam-analyzer",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license-file = "LICENSE"
+authors = ["BitLakeLab"]
+
+[workspace.dependencies]
+cavs-hash = { path = "core/cavs-hash" }
+cavs-chunker = { path = "core/cavs-chunker" }
+cavs-format = { path = "core/cavs-format" }
+cavs-store = { path = "core/cavs-store" }
+cavs-proto = { path = "core/cavs-proto" }
+
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = "2.10"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+rcgen = "0.13"
+rustls = { version = "0.23", features = ["ring"] }
+rustls-pemfile = "2"
+ruzstd = "0.8"
+sha2 = "0.10"
+memmap2 = "0.9"
+
+blake3 = "1.5"
+fastcdc = "3.1"
+zstd = "0.13"
+anyhow = "1.0"
+thiserror = "2.0"
+clap = { version = "4.5", features = ["derive"] }
+uuid = { version = "1.10", features = ["v4"] }
+tempfile = "3.10"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

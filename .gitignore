@@ -1,0 +1,29 @@
+# Rust
+target/
+**/*.rs.bk
+
+# CAVS artifacts and caches (regenerable)
+*.cavs
+.cavs-cache/
+releases/
+store/
+
+# signing keys — never commit secrets
+*.key
+*.key.pub
+
+# Godot plugin demo / build scratch
+godot-plugin/demo/.work/
+godot-plugin/demo/.godot/
+godot-plugin/demo/addons/
+godot-plugin/dist/
+**/.godot/
+
+# analyzer reports
+cavs-steam-report/
+
+# system / editor
+.DS_Store
+*.log
+.idea/
+.vscode/

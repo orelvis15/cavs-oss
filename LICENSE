@@ -1,0 +1,57 @@
+CAVS — Content-Addressable Versioned Streaming
+Copyright (c) 2026 BitLakeLab. Todos los derechos reservados. / All rights reserved.
+
+================================================================================
+LICENCIA PROPIETARIA DE EVALUACIÓN — v1.0 (2026-07-04)
+================================================================================
+
+[ES] ESPAÑOL
+
+1. TITULARIDAD. Este software, su código fuente, formato de archivo (.cavs),
+   protocolo (CVSP), documentación y resultados de benchmark son propiedad de
+   BitLakeLab ("el Titular"). No se otorga ninguna cesión de propiedad.
+
+2. USO PERMITIDO (sin coste). Se permite únicamente:
+   a) leer y compilar el código fuente;
+   b) ejecutar el software con fines de EVALUACIÓN interna, pruebas y
+      benchmarks;
+   c) reproducir los benchmarks y compartir sus resultados citando la fuente.
+
+3. USO PROHIBIDO sin acuerdo comercial escrito con el Titular:
+   a) uso en producción o con usuarios finales;
+   b) redistribución, sublicencia, venta o publicación del código, el formato
+      o los binarios, total o parcial;
+   c) obras derivadas o incorporación en otros productos;
+   d) eliminar o alterar avisos de copyright.
+
+4. LICENCIA COMERCIAL. Para pilotos, producción, integración en engines,
+   launchers o CDNs: contactar al Titular (BitLakeLab).
+
+5. SIN GARANTÍA. EL SOFTWARE SE ENTREGA "TAL CUAL", SIN GARANTÍA DE NINGÚN
+   TIPO. EL TITULAR NO SERÁ RESPONSABLE DE DAÑO ALGUNO DERIVADO DE SU USO.
+
+--------------------------------------------------------------------------------
+
+[EN] ENGLISH
+
+1. OWNERSHIP. This software, its source code, file format (.cavs), protocol
+   (CVSP), documentation and benchmark results are property of BitLakeLab
+   ("the Owner"). No ownership is transferred.
+
+2. PERMITTED USE (free of charge). You may only:
+   a) read and build the source code;
+   b) run the software for internal EVALUATION, testing and benchmarking;
+   c) reproduce the benchmarks and share their results citing the source.
+
+3. PROHIBITED without a written commercial agreement with the Owner:
+   a) production use or use with end users;
+   b) redistribution, sublicensing, sale or publication of the code, format
+      or binaries, in whole or in part;
+   c) derivative works or incorporation into other products;
+   d) removing or altering copyright notices.
+
+4. COMMERCIAL LICENSING. For pilots, production, engine/launcher/CDN
+   integration: contact the Owner (BitLakeLab).
+
+5. NO WARRANTY. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+   KIND. THE OWNER SHALL NOT BE LIABLE FOR ANY DAMAGES ARISING FROM ITS USE.

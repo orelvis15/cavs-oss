@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CAVS-1 Web Player</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 2rem; background: #0d1117; color: #e6edf3;
+    font: 15px/1.5 system-ui, -apple-system, sans-serif;
+    max-width: 960px; margin-inline: auto;
+  }
+  h1 { font-size: 1.3rem; letter-spacing: .02em; }
+  h1 span { color: #58a6ff; }
+  .row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; margin: 1rem 0; }
+  select, button {
+    background: #161b22; color: #e6edf3; border: 1px solid #30363d;
+    border-radius: 6px; padding: .5rem .9rem; font: inherit; cursor: pointer;
+  }
+  button:hover { border-color: #58a6ff; }
+  button:disabled { opacity: .5; cursor: default; }
+  video { width: 100%; background: #000; border-radius: 8px; margin-top: .5rem; }
+  #stats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: .75rem; margin-top: 1rem;
+  }
+  .stat { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: .75rem 1rem; }
+  .stat b { display: block; font-size: 1.25rem; color: #58a6ff; }
+  .stat small { color: #8b949e; }
+  #log { color: #8b949e; font-family: ui-monospace, monospace; font-size: .85rem;
+         white-space: pre-wrap; margin-top: 1rem; }
+</style>
+</head>
+<body>
+<h1><span>CAVS-1</span> — reproductor web (WASM + MSE)</h1>
+<p>El manifiesto y las sesiones viajan como JSON; los batches binarios CVSP se
+verifican y reconstruyen en WebAssembly (BLAKE3 por chunk) y se anexan a un
+<code>SourceBuffer</code> de Media Source Extensions.</p>
+
+<div class="row">
+  <select id="asset"></select>
+  <button id="play">▶ Reproducir (sesión fría)</button>
+  <button id="replay" disabled>↻ Repetir (sesión caliente, have-set del caché WASM)</button>
+</div>
+
+<video id="video" controls></video>
+
+<div id="stats">
+  <div class="stat"><b id="s-inline">0 B</b><small>egress inline (payload descargado)</small></div>
+  <div class="stat"><b id="s-refs">0</b><small>referencias resueltas del caché</small></div>
+  <div class="stat"><b id="s-cache">0</b><small>chunks en caché WASM</small></div>
+  <div class="stat"><b id="s-known">–</b><small>chunks reconocidos por el servidor</small></div>
+</div>
+
+<div id="log"></div>
+<script src="/web/player.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+[package]
+name = "cavs-format"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+
+[dependencies]
+cavs-hash = { workspace = true }
+cavs-store = { workspace = true }
+zstd = { workspace = true }
+thiserror = { workspace = true }
+ed25519-dalek = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
