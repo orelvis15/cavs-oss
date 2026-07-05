@@ -95,4 +95,6 @@ Releases are cut by the maintainer, not by merging. When a set of changes is
 ready, the maintainer pushes a version tag (e.g. `v0.2.0`); the
 [release workflow](.github/workflows/release.yml) then builds versioned binaries
 for Linux, macOS and Windows and publishes them as a GitHub Release. You don't
-need to bump versions in your PR unless asked.
+need to bump versions in your PR unless asked. Publishing the crates to
+crates.io is a separate maintainer step documented in
+[`docs/PUBLISHING.md`](docs/PUBLISHING.md).

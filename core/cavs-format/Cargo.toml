@@ -3,6 +3,12 @@ name = "cavs-format"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "The .cavs binary container format: streaming writer, hardened reader, Ed25519 signing."
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["cavs", "format", "dedup", "packaging", "encoding"]
+categories = ["encoding", "compression"]
 
 [dependencies]
 cavs-hash = { workspace = true }

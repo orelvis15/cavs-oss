@@ -3,6 +3,12 @@ name = "cavs-proto"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "CVSP wire protocol types for CAVS content delivery (manifests, sessions, binary batches)."
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["cavs", "protocol", "streaming", "dedup", "bloom"]
+categories = ["network-programming", "encoding"]
 
 [dependencies]
 cavs-hash = { workspace = true }

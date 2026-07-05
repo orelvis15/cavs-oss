@@ -3,6 +3,12 @@ name = "cavs-chunker"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Fixed-size and FastCDC content-defined chunking used by CAVS."
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["cavs", "chunking", "fastcdc", "cdc", "dedup"]
+categories = ["compression", "algorithms"]
 
 [dependencies]
 fastcdc = { workspace = true }

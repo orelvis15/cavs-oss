@@ -3,6 +3,12 @@ name = "cavs-hash"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "BLAKE3-256 chunk hashing and Merkle roots for the CAVS content-addressable format."
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["cavs", "blake3", "hash", "merkle", "dedup"]
+categories = ["cryptography"]
 
 [dependencies]
 blake3 = { workspace = true }

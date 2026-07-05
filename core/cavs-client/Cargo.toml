@@ -3,6 +3,12 @@ name = "cavs-client"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Native streaming client with a persistent cache for CAVS content delivery."
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["cavs", "client", "dedup", "cache", "cdn"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "cavs-client"

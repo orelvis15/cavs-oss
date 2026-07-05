@@ -3,6 +3,12 @@ name = "cavs-store"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Content-addressable store with reference counting and garbage collection for CAVS."
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["cavs", "content-addressable", "dedup", "storage", "cas"]
+categories = ["filesystem", "caching"]
 
 [dependencies]
 cavs-hash = { workspace = true }

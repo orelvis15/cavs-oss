@@ -3,6 +3,12 @@ name = "cavs-steam"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Estimate a game build's SteamPipe update size and detect pack files causing update bloat."
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["steam", "steampipe", "gamedev", "dedup", "cavs"]
+categories = ["command-line-utilities", "game-development"]
 
 [[bin]]
 name = "cavs-steam"

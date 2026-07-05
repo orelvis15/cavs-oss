@@ -3,6 +3,12 @@ name = "cavs-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "HTTP/HTTPS origin server for CAVS content delivery."
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["cavs", "server", "cdn", "dedup", "streaming"]
+categories = ["command-line-utilities", "web-programming"]
 
 [[bin]]
 name = "cavs-server"
