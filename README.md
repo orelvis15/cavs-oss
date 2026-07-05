@@ -52,34 +52,92 @@ the paper, [`docs/PAPER.md`](docs/PAPER.md).
 | [`core/`](core) | The delivery engine (Rust): chunking, hashing, the `.cavs` format, the global content-addressable store, the CVSP protocol, and the `cavs` / `cavs-server` / `cavs-client` binaries |
 | [`steam-analyzer/`](steam-analyzer) | `cavs-steam` — estimates the SteamPipe update size of a build and flags pack files that cause update bloat, before you publish to Steam |
 | [`godot-plugin/`](godot-plugin) | Godot 4 runtime client in pure GDScript: downloads, verifies and mounts packs with `load_resource_pack()` |
+| [`unity-plugin/`](unity-plugin) | Unity package — **coming soon** |
+| [`unreal-plugin/`](unreal-plugin) | Unreal Engine plugin — **coming soon** |
 | [`docs/`](docs) | Format specification, architecture, benchmarks, and the technical paper |
 
-## Quick start
+## Getting started
+
+### Prerequisites
+
+- **Rust** (stable) — install via [rustup](https://rustup.rs). No other
+  dependency is needed for the game-asset (`--raw`) path.
+- **ffmpeg** on `PATH` — only for the optional video packaging mode.
+- **Godot 4** — only if you use the Godot plugin.
+
+### Build
 
 ```sh
+git clone <this-repo> && cd cavs
 cargo build --release
+```
 
-# 1. Package two versions of a game build
+This produces the binaries in `target/release/`:
+
+- `cavs` — the packaging CLI
+- `cavs-server` — the origin server
+- `cavs-client` — the native client
+- `cavs-steam` — the SteamPipe analyzer
+
+### Test
+
+```sh
+cargo test            # unit + integration + end-to-end tests
+cargo clippy --all-targets   # lints
+```
+
+### Try it end to end
+
+Package two versions of a build, serve them, and watch a client download only
+what changed on the second fetch:
+
+```sh
+# 1. Package two versions of a game build (FastCDC 64 KiB + zstd, signed optional)
 ./target/release/cavs pack --raw game_v1.pck -o game_v1.cavs
 ./target/release/cavs pack --raw game_v2.pck -o game_v2.cavs
 
-# 2. Serve them
+# 2. Inspect and verify
+./target/release/cavs info game_v1.cavs
+./target/release/cavs verify game_v1.cavs
+
+# 3. Serve both versions
 ./target/release/cavs-server game_v1.cavs game_v2.cavs --listen 127.0.0.1:8990
 
-# 3. A client installs v1, then updates to v2 downloading only what changed
+# 4. A client installs v1, then updates to v2 — the second fetch is a fraction
 ./target/release/cavs-client fetch http://127.0.0.1:8990 game_v1 -o out1 --cache ./cache
 ./target/release/cavs-client fetch http://127.0.0.1:8990 game_v2 -o out2 --cache ./cache
-#                                                          ↑ this second fetch is a fraction of the size
 ```
 
-Global content-addressable store (dedup at rest across all versions):
+Signing (optional, recommended for distribution):
+
+```sh
+./target/release/cavs keygen -o publisher.key                     # → publisher.key(.pub)
+./target/release/cavs pack --raw game_v2.pck --sign-key publisher.key -o game_v2.cavs
+./target/release/cavs-client fetch <url> game_v2 -o out --cache ./cache --pubkey publisher.key.pub
+```
+
+### Global content-addressable store (dedup at rest across all versions)
+
+Store each unique chunk once across every version/title, with reference
+counting and garbage collection:
 
 ```sh
 ./target/release/cavs store ./store add game_v1 game_v1.cavs
 ./target/release/cavs store ./store add game_v2 game_v2.cavs   # shared chunks stored once
 ./target/release/cavs store ./store stat                        # storage savings
+./target/release/cavs store ./store gc --grace 0                # reclaim unreferenced chunks
 ./target/release/cavs-server --store ./store --listen 127.0.0.1:8990
 ```
+
+### Analyze a Steam build
+
+```sh
+./target/release/cavs-steam compare ./build_v1 ./build_v2 --out report
+open report/index.html
+```
+
+See [`godot-plugin/README.md`](godot-plugin/README.md) for game integration and
+[`steam-analyzer/README.md`](steam-analyzer/README.md) for the analyzer.
 
 ## Components
 
@@ -96,15 +154,8 @@ Global content-addressable store (dedup at rest across all versions):
   [`godot-plugin/README.md`](godot-plugin/README.md).
 - **SteamPipe Analyzer**: see [`steam-analyzer/README.md`](steam-analyzer/README.md).
 
-## Requirements
-
-- Rust (stable).
-- `ffmpeg` on `PATH` only for the optional video packaging mode; the `--raw`
-  (game asset) mode needs nothing extra.
-
 ## License
 
-See [`LICENSE`](LICENSE). This is currently a source-available / evaluation
-license: reading, building and reproducing the benchmarks are free; production
-use requires a commercial agreement. Choose your final open-source license
-before publishing if you intend a permissive model.
+Licensed under the **Apache License, Version 2.0** — see [`LICENSE`](LICENSE)
+and [`NOTICE`](NOTICE). You may use, modify and distribute this software freely
+under its terms; it includes an express patent grant.

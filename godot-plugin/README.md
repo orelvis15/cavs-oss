@@ -32,15 +32,51 @@ versus downloading the full compressed PCK, with near-free re-downloads. See
 
 ## Install
 
-1. Copy `addons/cavs/` into your project and enable the plugin in
-   *Project -> Project Settings -> Plugins* (the runtime also works with a
-   plain `preload` even if the plugin is not enabled).
-2. Publish releases from CI:
+1. Copy the `addons/cavs/` folder from this directory into your Godot
+   project's root (so you get `res://addons/cavs/`).
+2. Enable it in *Project → Project Settings → Plugins* (the runtime also works
+   with a plain `preload("res://addons/cavs/cavs_client.gd")` even if the
+   plugin is not enabled).
+3. That's it on the client side — no native binaries, no GDExtension. It runs
+   on every platform Godot exports to.
+
+## Getting started (end to end)
+
+You need the CAVS command-line tools once, to package and serve your builds.
+Build them from the repository root:
 
 ```sh
-./tools/pack_release.sh ~/my-game pck game_v42 keys/publisher.key
+cargo build --release      # produces target/release/{cavs,cavs-server}
+```
+
+**1. (once) Create a signing key** so clients can verify your releases:
+
+```sh
+cavs keygen -o publisher.key          # → publisher.key (secret) + publisher.key.pub
+```
+
+**2. Publish a release** — export your PCK and package it. The included helper
+does both:
+
+```sh
+./tools/pack_release.sh /path/to/your-godot-project pck game_v42 publisher.key
+# → releases/game_v42.cavs
+```
+
+(Or manually: `godot --headless --path <proj> --export-pack pck game.pck`
+then `cavs pack --raw game.pck --sign-key publisher.key -o game_v42.cavs`.)
+
+**3. Serve the releases** (behind TLS in production):
+
+```sh
 cavs-server releases/*.cavs --listen 0.0.0.0:8990 --tls-cert cert.pem --tls-key key.pem
 ```
+
+**4. Fetch and mount from the game** — see the next section. The first fetch
+installs the pack; later versions download only the chunks that changed.
+
+A runnable demo project lives in [`demo/`](demo); `demo/run_demo.sh` wires the
+whole flow (export → package → serve → fetch → mount) automatically.
 
 ## Runtime usage
 

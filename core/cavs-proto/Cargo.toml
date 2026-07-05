@@ -2,7 +2,7 @@
 name = "cavs-proto"
 version.workspace = true
 edition.workspace = true
-license-file.workspace = true
+license.workspace = true
 
 [dependencies]
 cavs-hash = { workspace = true }
