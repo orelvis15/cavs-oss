@@ -370,3 +370,163 @@ fn packfile_store_add_stat_verify_export() {
     ]);
     assert!(!ok, "layout mismatch must be rejected:\n{out}");
 }
+
+#[test]
+fn corruption_matrix_passes_on_valid_container() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let payload = pseudo_random(1_500_000, 71);
+    std::fs::write(d.join("m.bin"), &payload).unwrap();
+    let (ok, out) = run(&[
+        "pack",
+        "--raw",
+        d.join("m.bin").to_str().unwrap(),
+        "--bootstrap",
+        "-o",
+        d.join("m.cavs").to_str().unwrap(),
+    ]);
+    assert!(ok, "pack failed:\n{out}");
+
+    let report = d.join("corrupt-report.json");
+    let (ok, out) = run(&[
+        "test",
+        "corrupt",
+        d.join("m.cavs").to_str().unwrap(),
+        "--out",
+        report.to_str().unwrap(),
+    ]);
+    assert!(ok, "corruption matrix failed:\n{out}");
+    assert!(
+        out.contains("all corrupted inputs were rejected cleanly"),
+        "{out}"
+    );
+    // Every family of targets ran, including bootstrap and packfiles.
+    for target in [
+        "container_magic",
+        "manifest_magic",
+        "varint",
+        "bootstrap_sidecar",
+        "packfile_header",
+        "pack_index_bytes",
+    ] {
+        assert!(out.contains(target), "matrix missing {target}:\n{out}");
+    }
+    let json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&report).unwrap()).unwrap();
+    let tests = json["tests"].as_array().unwrap();
+    assert!(tests.len() >= 15, "only {} matrix rows", tests.len());
+    assert!(tests.iter().all(|t| t["result"] == "pass"));
+}
+
+#[test]
+fn doctor_reports_ok_and_detects_corruption() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let payload = pseudo_random(800_000, 13);
+    std::fs::write(d.join("g.bin"), &payload).unwrap();
+    let (ok, out) = run(&[
+        "pack",
+        "--raw",
+        d.join("g.bin").to_str().unwrap(),
+        "--bootstrap",
+        "-o",
+        d.join("g.cavs").to_str().unwrap(),
+    ]);
+    assert!(ok, "pack failed:\n{out}");
+
+    // Healthy container + a packfile store holding it.
+    let (ok, out) = run(&[
+        "store",
+        d.join("store").to_str().unwrap(),
+        "add",
+        "g",
+        d.join("g.cavs").to_str().unwrap(),
+        "--storage",
+        "packfiles",
+    ]);
+    assert!(ok, "store add failed:\n{out}");
+    let (ok, out) = run(&[
+        "doctor",
+        d.join("g.cavs").to_str().unwrap(),
+        "--store",
+        d.join("store").to_str().unwrap(),
+    ]);
+    assert!(ok, "doctor failed on healthy deployment:\n{out}");
+    assert!(out.contains("Result: OK"), "{out}");
+    assert!(out.contains("Bootstrap: OK"), "{out}");
+
+    // Corrupt one chunk in the container: doctor must fail with the code.
+    let mut bytes = std::fs::read(d.join("g.cavs")).unwrap();
+    let mid = bytes.len() / 2;
+    bytes[mid] ^= 0xff;
+    std::fs::write(d.join("g.cavs"), &bytes).unwrap();
+    let (ok, out) = run(&["doctor", d.join("g.cavs").to_str().unwrap()]);
+    assert!(!ok, "doctor must fail on corruption:\n{out}");
+    assert!(out.contains("Result: FAIL"), "{out}");
+    assert!(out.contains("CAVS-E-"), "{out}");
+}
+
+#[test]
+fn bench_gen_and_suite_produce_reports() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let dataset = d.join("dataset");
+    let (ok, out) = run(&[
+        "bench",
+        "gen",
+        "--out",
+        dataset.to_str().unwrap(),
+        "--size",
+        "2MiB",
+    ]);
+    assert!(ok, "bench gen failed:\n{out}");
+    for f in [
+        "v1.bin",
+        "v2-small.bin",
+        "v2-medium.bin",
+        "v2-large.bin",
+        "v2-shifted.bin",
+        "v2-reordered.bin",
+        "dataset.json",
+    ] {
+        assert!(dataset.join(f).is_file(), "missing {f}");
+    }
+    // Determinism: the same seed regenerates identical bytes.
+    let first = std::fs::read(dataset.join("v2-small.bin")).unwrap();
+    let dataset2 = d.join("dataset2");
+    let (ok, _) = run(&[
+        "bench",
+        "gen",
+        "--out",
+        dataset2.to_str().unwrap(),
+        "--size",
+        "2MiB",
+    ]);
+    assert!(ok);
+    assert_eq!(first, std::fs::read(dataset2.join("v2-small.bin")).unwrap());
+
+    let results = d.join("results");
+    let (ok, out) = run(&[
+        "bench",
+        "suite",
+        "--dataset",
+        dataset.to_str().unwrap(),
+        "--out",
+        results.to_str().unwrap(),
+    ]);
+    assert!(ok, "bench suite failed:\n{out}");
+    let json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(results.join("summary.json")).unwrap())
+            .unwrap();
+    let versions = json["versions"].as_array().unwrap();
+    assert_eq!(versions.len(), 6);
+    // The small update must move far fewer bytes than the large one.
+    let egress = |name: &str| {
+        versions.iter().find(|v| v["name"] == name).unwrap()["update_egress_bytes"]
+            .as_u64()
+            .unwrap()
+    };
+    assert!(egress("v2-small.bin") < egress("v2-large.bin"));
+    assert!(json["packstore"]["packfiles"].as_u64().unwrap() >= 1);
+    assert!(results.join("summary.md").is_file());
+}

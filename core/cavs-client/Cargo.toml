@@ -20,6 +20,7 @@ cavs-manifest = { workspace = true }
 cavs-proto = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 ureq = { workspace = true }
 tempfile = { workspace = true }

@@ -78,6 +78,25 @@ impl Reader {
         if superblock.version_major != VERSION_MAJOR {
             return Err(FormatError::UnsupportedVersion(superblock.version_major));
         }
+        // v0.5.0 hardening: reject values a correct writer never produces.
+        // (The rest of the superblock — uuid, timescale, reserved fields —
+        // is intentionally unauthenticated metadata; content integrity is
+        // carried by the section hashes, chunk hashes and Merkle root.)
+        if cavs_hash::HashAlgo::from_u8(superblock.hash_algo).is_none() {
+            return Err(FormatError::UnknownValue {
+                what: "hash algorithm",
+                value: superblock.hash_algo as u32,
+            });
+        }
+        if superblock.compression_algo > crate::COMPRESSION_ZSTD {
+            return Err(FormatError::UnknownValue {
+                what: "compression algorithm",
+                value: superblock.compression_algo as u32,
+            });
+        }
+        if superblock.file_size != file_len {
+            return Err(FormatError::Malformed("declared file size"));
+        }
 
         // Section directory. Validate offset + size against the file before
         // allocating, so a bogus section_count can't ask for gigabytes.

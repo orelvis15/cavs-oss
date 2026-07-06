@@ -267,31 +267,109 @@ async fn batch(
 
 /// Full bootstrap artifact (whole asset, zstd): the cold-install fast path.
 /// Streamed from disk so a multi-hundred-MiB artifact never sits in RAM.
+/// Supports single `Range: bytes=start[-end]` requests (v0.5.0) so an
+/// interrupted download resumes instead of restarting; the artifact is
+/// immutable, so a resumed range always continues the same bytes.
 async fn get_bootstrap(
     State(state): State<SharedState>,
     Path(asset): Path<String>,
+    headers: HeaderMap,
 ) -> Result<Response, AppError> {
     let (path, size, blake3_hex) = state
         .bootstrap_file(&asset)
         .ok_or_else(|| not_found(format!("bootstrap for {asset}")))?;
-    let file = tokio::fs::File::open(&path)
+    let mut file = tokio::fs::File::open(&path)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let stream = tokio_util::io::ReaderStream::new(file);
-    Ok((
-        [
-            (header::CONTENT_TYPE, "application/zstd".to_string()),
-            (header::CONTENT_LENGTH, size.to_string()),
-            // Tied to the packed content: immutable, edge-cacheable.
-            (
-                header::CACHE_CONTROL,
-                "public, max-age=31536000, immutable".to_string(),
-            ),
-            (header::ETAG, format!("\"blake3-{blake3_hex}\"")),
-        ],
-        axum::body::Body::from_stream(stream),
-    )
-        .into_response())
+    let common = [
+        (header::CONTENT_TYPE, "application/zstd".to_string()),
+        (header::ACCEPT_RANGES, "bytes".to_string()),
+        // Tied to the packed content: immutable, edge-cacheable.
+        (
+            header::CACHE_CONTROL,
+            "public, max-age=31536000, immutable".to_string(),
+        ),
+        (header::ETAG, format!("\"blake3-{blake3_hex}\"")),
+    ];
+
+    let range = headers
+        .get(header::RANGE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| parse_byte_range(s, size));
+    match range {
+        // Malformed/multi/suffix ranges: answer with the full body (200).
+        None | Some(RangeParse::Full) => {
+            let stream = tokio_util::io::ReaderStream::new(file);
+            Ok((
+                common,
+                [(header::CONTENT_LENGTH, size.to_string())],
+                axum::body::Body::from_stream(stream),
+            )
+                .into_response())
+        }
+        Some(RangeParse::Unsatisfiable) => Ok((
+            StatusCode::RANGE_NOT_SATISFIABLE,
+            [(header::CONTENT_RANGE, format!("bytes */{size}"))],
+        )
+            .into_response()),
+        Some(RangeParse::Range(start, end)) => {
+            use tokio::io::AsyncSeekExt as _;
+            file.seek(std::io::SeekFrom::Start(start))
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let len = end - start + 1;
+            let stream =
+                tokio_util::io::ReaderStream::new(tokio::io::AsyncReadExt::take(file, len));
+            Ok((
+                StatusCode::PARTIAL_CONTENT,
+                common,
+                [
+                    (header::CONTENT_LENGTH, len.to_string()),
+                    (header::CONTENT_RANGE, format!("bytes {start}-{end}/{size}")),
+                ],
+                axum::body::Body::from_stream(stream),
+            )
+                .into_response())
+        }
+    }
+}
+
+enum RangeParse {
+    /// No usable single range: serve the whole body as 200.
+    Full,
+    /// Valid inclusive byte range within the resource.
+    Range(u64, u64),
+    /// Syntactically valid but beyond the resource: 416.
+    Unsatisfiable,
+}
+
+/// Parse a single `bytes=start[-end]` header value. Suffix ranges
+/// (`bytes=-N`) and multi-range requests fall back to the full body.
+fn parse_byte_range(value: &str, size: u64) -> RangeParse {
+    let Some(spec) = value.strip_prefix("bytes=") else {
+        return RangeParse::Full;
+    };
+    if spec.contains(',') {
+        return RangeParse::Full;
+    }
+    let Some((start_s, end_s)) = spec.split_once('-') else {
+        return RangeParse::Full;
+    };
+    let Ok(start) = start_s.trim().parse::<u64>() else {
+        return RangeParse::Full; // suffix range or garbage
+    };
+    let end = if end_s.trim().is_empty() {
+        size.saturating_sub(1)
+    } else {
+        match end_s.trim().parse::<u64>() {
+            Ok(e) => e.min(size.saturating_sub(1)),
+            Err(_) => return RangeParse::Full,
+        }
+    };
+    if size == 0 || start >= size || start > end {
+        return RangeParse::Unsatisfiable;
+    }
+    RangeParse::Range(start, end)
 }
 
 async fn get_chunk(

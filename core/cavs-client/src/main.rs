@@ -5,13 +5,22 @@
 //! plans, resolves references from the local cache, verifies every chunk by
 //! BLAKE3, reconstructs playable outputs and reports real egress savings.
 
-mod cache;
+// The retry closures deliberately return `ureq::Error` (272 bytes) so the
+// backoff policy can classify transient vs permanent failures; the cost of
+// the large Err variant on these cold paths is irrelevant.
+#![allow(clippy::result_large_err)]
 
-use anyhow::{bail, Context, Result};
+mod cache;
+mod journal;
+mod retry;
+
+use anyhow::{anyhow, bail, Context, Result};
 use cache::ChunkCache;
 use cavs_hash::to_hex;
+use cavs_proto::errors::ErrorCode;
 use cavs_proto::{BatchRequest, DeliveryInstr, Manifest, SessionOpenRequest, SessionOpenResponse};
 use clap::{Parser, Subcommand};
+use journal::{ResumeJournal, ResumeState};
 use std::path::{Path, PathBuf};
 
 /// Segments requested per batch round-trip.
@@ -58,6 +67,29 @@ enum Command {
         /// (64 hex chars, or a path to a .pub file).
         #[arg(long)]
         pubkey: Option<String>,
+        /// Start clean instead of resuming a previous interrupted fetch.
+        #[arg(long)]
+        no_resume: bool,
+    },
+    /// Resume interrupted fetches recorded in the cache's journal.
+    Resume {
+        /// Persistent chunk cache directory holding the journal.
+        #[arg(long, default_value = ".cavs-cache")]
+        cache: PathBuf,
+        /// Resume only this asset (default: every pending journal).
+        #[arg(long)]
+        asset: Option<String>,
+        /// Trust this PEM certificate (e.g. a self-signed dev cert).
+        #[arg(long)]
+        ca: Option<PathBuf>,
+        /// Require assets to be signed by this Ed25519 public key.
+        #[arg(long)]
+        pubkey: Option<String>,
+    },
+    /// Verify, repair or garbage-collect the persistent chunk cache.
+    Cache {
+        #[command(subcommand)]
+        action: CacheAction,
     },
     /// Fetch to a temp dir and play the first video track with ffplay.
     Play {
@@ -69,6 +101,42 @@ enum Command {
         ca: Option<PathBuf>,
         #[arg(long)]
         pubkey: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum CacheAction {
+    /// Re-hash every cached chunk (v0.5.0). Corrupt entries move to
+    /// `<cache>/quarantine/` (or are deleted with --delete); stray temp
+    /// files are removed. The cache heals itself: quarantined chunks are
+    /// simply re-fetched by the next update.
+    Verify {
+        #[arg(long, default_value = ".cavs-cache")]
+        cache: PathBuf,
+        /// Delete corrupt entries instead of quarantining them.
+        #[arg(long)]
+        delete: bool,
+    },
+    /// Re-fetch an asset's missing or corrupt chunks from a server, so the
+    /// next update starts from a fully valid cache.
+    Repair {
+        /// Server base URL, e.g. http://127.0.0.1:8990
+        server: String,
+        /// Asset name as listed by the server.
+        asset: String,
+        #[arg(long, default_value = ".cavs-cache")]
+        cache: PathBuf,
+        /// Trust this PEM certificate (e.g. a self-signed dev cert).
+        #[arg(long)]
+        ca: Option<PathBuf>,
+    },
+    /// Evict least-recently-used chunks until the cache fits --max-size.
+    Gc {
+        #[arg(long, default_value = ".cavs-cache")]
+        cache: PathBuf,
+        /// Size budget, e.g. 10GiB, 500MiB or plain bytes.
+        #[arg(long)]
+        max_size: String,
     },
 }
 
@@ -97,15 +165,66 @@ fn main() -> Result<()> {
             stats_json,
             ca,
             pubkey,
+            no_resume,
         } => {
             let agent = build_agent(ca.as_deref())?;
-            let (_, stats) = fetch(&agent, &server, &asset, &output, &cache, pubkey.as_deref())?;
+            let (_, stats) = fetch(
+                &agent,
+                &server,
+                &asset,
+                &output,
+                &cache,
+                pubkey.as_deref(),
+                !no_resume,
+            )?;
             if let Some(path) = stats_json {
                 std::fs::write(&path, stats.to_json())
                     .with_context(|| format!("cannot write {}", path.display()))?;
             }
             Ok(())
         }
+        Command::Resume {
+            cache,
+            asset,
+            ca,
+            pubkey,
+        } => {
+            let agent = build_agent(ca.as_deref())?;
+            let pending: Vec<ResumeJournal> = ResumeJournal::list(&cache)
+                .into_iter()
+                .filter(|j| asset.as_deref().is_none_or(|a| a == j.asset))
+                .collect();
+            if pending.is_empty() {
+                println!("nothing to resume");
+                return Ok(());
+            }
+            let mut failures = 0u32;
+            for j in pending {
+                eprintln!(
+                    "[resume] {} from {} -> {}",
+                    j.asset,
+                    j.server,
+                    j.output.display()
+                );
+                if let Err(e) = fetch(
+                    &agent,
+                    &j.server,
+                    &j.asset,
+                    &j.output,
+                    &cache,
+                    pubkey.as_deref(),
+                    true,
+                ) {
+                    eprintln!("[resume] {} failed: {e:#}", j.asset);
+                    failures += 1;
+                }
+            }
+            if failures > 0 {
+                bail!("{failures} resume(s) failed");
+            }
+            Ok(())
+        }
+        Command::Cache { action } => run_cache_action(action),
         Command::Play {
             server,
             asset,
@@ -122,6 +241,7 @@ fn main() -> Result<()> {
                 tmp.path(),
                 &cache,
                 pubkey.as_deref(),
+                true,
             )?;
             let Some(target) = primaries.first() else {
                 bail!("no playable track in asset {asset}");
@@ -138,6 +258,120 @@ fn main() -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn run_cache_action(action: CacheAction) -> Result<()> {
+    match action {
+        CacheAction::Verify { cache, delete } => {
+            let cache = ChunkCache::open(&cache)?;
+            let report = cache.verify(delete)?;
+            println!(
+                "cache   : {} chunks, {}",
+                report.total,
+                human_bytes(report.total_bytes)
+            );
+            if report.corrupt == 0 {
+                println!("verify  : OK — every entry matches its hash");
+            } else {
+                println!(
+                    "verify  : {} — {} corrupt entr{} {}",
+                    ErrorCode::CacheCorruptRecoverable,
+                    report.corrupt,
+                    if report.corrupt == 1 { "y" } else { "ies" },
+                    if delete {
+                        "deleted"
+                    } else {
+                        "quarantined (they will be re-fetched on the next update)"
+                    }
+                );
+            }
+            Ok(())
+        }
+        CacheAction::Repair {
+            server,
+            asset,
+            cache,
+            ca,
+        } => {
+            let agent = build_agent(ca.as_deref())?;
+            let cache = ChunkCache::open(&cache)?;
+            let manifest_bytes =
+                http_get_manifest(&agent, &format!("{server}/api/assets/{asset}/manifest"))?;
+            let manifest = decode_manifest(&manifest_bytes)?.manifest;
+            let mut present = 0u64;
+            let mut repaired = 0u64;
+            for hex in manifest_chunk_hashes(&manifest) {
+                let Some(hash) = cavs_hash::from_hex(&hex) else {
+                    bail!("bad chunk hash {hex} in manifest");
+                };
+                // get() verifies and drops corrupt entries, so one pass
+                // covers both "missing" and "corrupt".
+                if cache.get(&hash)?.is_some() {
+                    present += 1;
+                    continue;
+                }
+                let raw =
+                    http_get_bytes(&agent, &format!("{server}/api/assets/{asset}/chunks/{hex}"))?;
+                if cavs_hash::hash_chunk(&raw) != hash {
+                    bail!(
+                        "{}",
+                        ErrorCode::ChunkHashMismatch
+                            .msg(format!("repaired chunk {hex} failed hash verification"))
+                    );
+                }
+                cache.put(&hash, &raw)?;
+                repaired += 1;
+            }
+            println!("repair  : {present} chunks already valid, {repaired} re-fetched");
+            Ok(())
+        }
+        CacheAction::Gc { cache, max_size } => {
+            let budget = parse_size(&max_size)?;
+            let cache = ChunkCache::open(&cache)?;
+            let report = cache.gc(budget)?;
+            println!(
+                "gc      : {} of {} evicted ({} of {}) to fit {}",
+                report.evicted,
+                report.total_entries,
+                human_bytes(report.evicted_bytes),
+                human_bytes(report.total_bytes),
+                human_bytes(budget)
+            );
+            Ok(())
+        }
+    }
+}
+
+/// Parse a human size: plain bytes, or a KiB/MiB/GiB/TiB (KB/MB/GB/TB)
+/// suffix — all 1024-based.
+fn parse_size(s: &str) -> Result<u64> {
+    let t = s.trim();
+    let split = t
+        .find(|c: char| !c.is_ascii_digit() && c != '.')
+        .unwrap_or(t.len());
+    let (num, suffix) = t.split_at(split);
+    let value: f64 = num
+        .parse()
+        .map_err(|_| anyhow!("cannot parse size {s:?}"))?;
+    let mult: u64 = match suffix.trim().to_ascii_lowercase().as_str() {
+        "" | "b" => 1,
+        "k" | "kb" | "kib" => 1 << 10,
+        "m" | "mb" | "mib" => 1 << 20,
+        "g" | "gb" | "gib" => 1 << 30,
+        "t" | "tb" | "tib" => 1 << 40,
+        other => bail!("unknown size suffix {other:?} in {s:?}"),
+    };
+    Ok((value * mult as f64) as u64)
+}
+
+/// Decode manifest bytes with the structured error codes attached.
+fn decode_manifest(bytes: &[u8]) -> Result<cavs_manifest::LoadedManifest> {
+    cavs_manifest::read_manifest(bytes).map_err(|e| match e {
+        cavs_manifest::ManifestError::UnsupportedVersion(_) => {
+            anyhow!(ErrorCode::UnsupportedManifestVersion.msg(e))
+        }
+        e => anyhow!(ErrorCode::ManifestCorrupt.msg(format!("bad manifest: {e}"))),
+    })
 }
 
 /// Exact fetch statistics, exportable as JSON for benchmarking.
@@ -276,6 +510,7 @@ fn decode_hex(s: &str, len: usize) -> Result<Vec<u8>> {
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn fetch(
     agent: &ureq::Agent,
     server: &str,
@@ -283,6 +518,7 @@ fn fetch(
     output: &Path,
     cache_dir: &Path,
     pubkey: Option<&str>,
+    resume: bool,
 ) -> Result<(Vec<PathBuf>, FetchStats)> {
     let cache = ChunkCache::open(cache_dir)?;
 
@@ -292,9 +528,29 @@ fn fetch(
     let manifest_bytes =
         http_get_manifest(agent, &format!("{server}/api/assets/{asset}/manifest"))?;
     let parse_started = std::time::Instant::now();
-    let loaded = cavs_manifest::read_manifest(&manifest_bytes)
-        .map_err(|e| anyhow::anyhow!("bad manifest: {e}"))?;
+    let loaded = decode_manifest(&manifest_bytes)?;
     let manifest = loaded.manifest;
+    let manifest_b3 = to_hex(&cavs_hash::hash_chunk(&manifest_bytes));
+
+    // Resume journal (v0.5.0): honour a prior interrupted fetch only when
+    // it was against these exact manifest bytes; anything stale is
+    // discarded together with its partial artifacts.
+    let prior = match ResumeJournal::load(cache_dir, asset) {
+        Some(j) if !resume => {
+            j.discard(cache_dir);
+            None
+        }
+        Some(j) if j.server != server || j.manifest_blake3 != manifest_b3 => {
+            eprintln!("[resume] journal for {asset} is stale (asset republished or different server); starting clean");
+            j.discard(cache_dir);
+            None
+        }
+        Some(j) => {
+            eprintln!("[resume] continuing interrupted fetch of {asset}");
+            Some(j)
+        }
+        None => None,
+    };
     let manifest_stats = ManifestStats {
         format: loaded.format.label(),
         wire_bytes: manifest_bytes.len() as u64,
@@ -327,7 +583,8 @@ fn fetch(
                 .trim()
                 .to_string()
         };
-        verify_manifest_signature(&manifest, &pk_hex)?;
+        verify_manifest_signature(&manifest, &pk_hex)
+            .map_err(|e| anyhow!(ErrorCode::SignatureInvalid.msg(format!("{e:#}"))))?;
         eprintln!("[fetch] content signature OK (signer {})", &pk_hex[..16]);
     }
 
@@ -381,12 +638,38 @@ fn fetch(
             &cache,
             output,
             &manifest_stats,
+            cache_dir,
+            &manifest_b3,
+            prior.as_ref(),
         ) {
             Ok(result) => return Ok(result),
             Err(e) => {
-                eprintln!("[fetch] bootstrap route failed ({e}); falling back to chunks")
+                // The journal (and any .zst.part) stays on disk: a later
+                // fetch/resume continues the bootstrap download where it
+                // stopped, while this run falls back to the chunk path.
+                eprintln!("[fetch] bootstrap route failed ({e:#}); falling back to chunks")
             }
         }
+    }
+
+    // Chunk route: progress lives in the chunk cache itself, so the journal
+    // only needs to say "a fetch of this asset is in flight". A journal
+    // left by an interrupted bootstrap download is kept as-is — its
+    // partial artifact is worth more than this marker.
+    let bootstrap_in_flight = ResumeJournal::load(cache_dir, asset)
+        .is_some_and(|j| j.state == ResumeState::BootstrapDownloading);
+    if !bootstrap_in_flight {
+        let _ = ResumeJournal {
+            asset: asset.to_string(),
+            server: server.to_string(),
+            output: output.to_path_buf(),
+            manifest_blake3: manifest_b3.clone(),
+            state: ResumeState::ChunkDownloading,
+            bootstrap_part: None,
+            bootstrap_blake3: None,
+            updated_at: journal::now_unix(),
+        }
+        .save(cache_dir);
     }
 
     // 3. Batches, processed as a stream: each inline chunk is verified and
@@ -443,7 +726,8 @@ fn fetch(
                         other => return Err(format!("unknown wire compression {other}")),
                     };
                     if raw.len() != len_raw as usize || cavs_hash::hash_chunk(&raw) != hash {
-                        return Err(format!("inline chunk {hex} failed hash verification"));
+                        return Err(ErrorCode::ChunkHashMismatch
+                            .msg(format!("inline chunk {hex} failed hash verification")));
                     }
                     cache.put(&hash, &raw).map_err(|e| e.to_string())?;
                     inline_raw_bytes += raw.len() as u64;
@@ -475,7 +759,11 @@ fn fetch(
             let hex = to_hex(hash);
             let raw = http_get_bytes(agent, &format!("{server}/api/assets/{asset}/chunks/{hex}"))?;
             if cavs_hash::hash_chunk(&raw) != *hash {
-                bail!("repaired chunk {hex} failed hash verification");
+                bail!(
+                    "{}",
+                    ErrorCode::ChunkHashMismatch
+                        .msg(format!("repaired chunk {hex} failed hash verification"))
+                );
             }
             cache.put(hash, &raw)?;
             inline_bytes += raw.len() as u64;
@@ -487,6 +775,12 @@ fn fetch(
     // 4. Reconstrucción streaming a disco: temporal .part -> verificar
     //    sha256 -> rename. Peak RAM = one chunk, not the whole asset.
     let primaries = reconstruct_streaming(&manifest, &cache, output)?;
+
+    // The fetch is complete and verified: drop the journal and any
+    // leftover bootstrap partial from an earlier attempt.
+    if let Some(j) = ResumeJournal::load(cache_dir, asset) {
+        j.discard(cache_dir);
+    }
 
     let logical: u64 = manifest_logical_bytes(&manifest);
     println!(
@@ -535,7 +829,10 @@ fn fetch(
 /// end to end, install it atomically, and seed the local chunk cache by
 /// slicing the installed file along the manifest's chunk plan. Constant
 /// memory: the artifact streams to disk and chunks are read back one at a
-/// time.
+/// time. An interrupted download leaves the `.zst.part` plus a journal
+/// entry; the next attempt continues it with an HTTP Range request
+/// (v0.5.0) — the artifact is immutable, so the resumed bytes are the
+/// same bytes, and the final BLAKE3 check still covers the whole file.
 #[allow(clippy::too_many_arguments)]
 fn fetch_bootstrap(
     agent: &ureq::Agent,
@@ -546,6 +843,9 @@ fn fetch_bootstrap(
     cache: &ChunkCache,
     output: &Path,
     manifest_stats: &ManifestStats,
+    cache_dir: &Path,
+    manifest_b3: &str,
+    prior: Option<&ResumeJournal>,
 ) -> Result<(Vec<PathBuf>, FetchStats)> {
     // The bootstrap covers exactly one raw data track (the packer only emits
     // it for single-input packs). Anything else falls back to chunks.
@@ -567,16 +867,78 @@ fn fetch_bootstrap(
     }
 
     // 1. Stream the artifact to disk, hashing the wire bytes as they arrive.
+    //    A valid prior journal + partial file continues from its length.
     std::fs::create_dir_all(output)?;
     let zst_path = output.join(format!("{boot_name}.bootstrap.zst.part"));
-    let resp = agent
-        .get(&format!("{server}/api/assets/{asset}/bootstrap"))
-        .call()
-        .with_context(|| format!("GET {server}/api/assets/{asset}/bootstrap"))?;
-    let mut reader = resp.into_reader();
-    let mut file = std::io::BufWriter::new(std::fs::File::create(&zst_path)?);
+    let expected_b3 = session.bootstrap_blake3.as_deref();
+    let mut resume_from = 0u64;
+    if let (Some(p), Some(expected)) = (prior, expected_b3) {
+        if p.state == ResumeState::BootstrapDownloading
+            && p.bootstrap_part.as_deref() == Some(zst_path.as_path())
+            && p.bootstrap_blake3.as_deref() == Some(expected)
+        {
+            resume_from = std::fs::metadata(&zst_path).map(|m| m.len()).unwrap_or(0);
+        }
+    }
+
+    // Journal the download before it starts, so an interruption at any
+    // point leaves enough to resume.
+    let _ = ResumeJournal {
+        asset: asset.to_string(),
+        server: server.to_string(),
+        output: output.to_path_buf(),
+        manifest_blake3: manifest_b3.to_string(),
+        state: ResumeState::BootstrapDownloading,
+        bootstrap_part: Some(zst_path.clone()),
+        bootstrap_blake3: expected_b3.map(str::to_string),
+        updated_at: journal::now_unix(),
+    }
+    .save(cache_dir);
+
+    let url = format!("{server}/api/assets/{asset}/bootstrap");
     let mut hasher = cavs_hash::Hasher::new();
     let mut buf = [0u8; 64 * 1024];
+    let resp = if resume_from > 0 {
+        // Hash the bytes we already have; the request continues after them.
+        {
+            use std::io::Read as _;
+            let mut existing = std::io::BufReader::new(std::fs::File::open(&zst_path)?);
+            loop {
+                let n = existing.read(&mut buf)?;
+                if n == 0 {
+                    break;
+                }
+                hasher.update(&buf[..n]);
+            }
+        }
+        let resp = retry::with_retry(&format!("GET {url}"), || {
+            agent
+                .get(&url)
+                .set("range", &format!("bytes={resume_from}-"))
+                .call()
+        })?;
+        if resp.status() == 206 {
+            eprintln!(
+                "[resume] continuing bootstrap download at {}",
+                human_bytes(resume_from)
+            );
+        } else {
+            // Server ignored the range (older cavs-server): start over.
+            resume_from = 0;
+            hasher = cavs_hash::Hasher::new();
+        }
+        resp
+    } else {
+        retry::with_retry(&format!("GET {url}"), || agent.get(&url).call())?
+    };
+
+    let mut reader = resp.into_reader();
+    let file = if resume_from > 0 {
+        std::fs::File::options().append(true).open(&zst_path)?
+    } else {
+        std::fs::File::create(&zst_path)?
+    };
+    let mut file = std::io::BufWriter::new(file);
     let mut wire_bytes = 0u64;
     loop {
         use std::io::{Read as _, Write as _};
@@ -595,16 +957,27 @@ fn fetch_bootstrap(
     drop(file);
 
     // 2. Verify the wire artifact against the server-announced BLAKE3.
-    if let Some(expected) = &session.bootstrap_blake3 {
+    if let Some(expected) = expected_b3 {
         let got = to_hex(&hasher.finalize());
         if !got.eq_ignore_ascii_case(expected) {
+            // Not resumable: these bytes are wrong, not incomplete.
             let _ = std::fs::remove_file(&zst_path);
-            bail!("bootstrap artifact failed BLAKE3 verification");
+            ResumeJournal::clear(cache_dir, asset);
+            bail!(
+                "{}",
+                ErrorCode::BootstrapHashMismatch
+                    .msg("bootstrap artifact failed BLAKE3 verification")
+            );
         }
     }
     eprintln!(
-        "[fetch] bootstrap artifact: {} wire (chunk path estimate: {})",
+        "[fetch] bootstrap artifact: {} wire{} (chunk path estimate: {})",
         human_bytes(wire_bytes),
+        if resume_from > 0 {
+            format!(" (+{} resumed)", human_bytes(resume_from))
+        } else {
+            String::new()
+        },
         session
             .estimated_chunk_payload
             .map(human_bytes)
@@ -636,6 +1009,7 @@ fn fetch_bootstrap(
     }
     let installed = part.finish(expected_sha)?;
     let _ = std::fs::remove_file(&zst_path);
+    ResumeJournal::clear(cache_dir, asset);
 
     // 4. Seed the chunk cache from the installed artifact using the
     //    manifest's chunk plan: every future update starts warm.
@@ -659,7 +1033,11 @@ fn fetch_bootstrap(
                 let hash = cavs_hash::from_hex(&c.hash)
                     .with_context(|| format!("bad chunk hash {}", c.hash))?;
                 if cavs_hash::hash_chunk(&chunk_buf) != hash {
-                    bail!("seeded chunk {} failed hash verification", c.hash);
+                    bail!(
+                        "{}",
+                        ErrorCode::ChunkHashMismatch
+                            .msg(format!("seeded chunk {} failed hash verification", c.hash))
+                    );
                 }
                 cache.put(&hash, &chunk_buf)?;
                 seeded += 1;
@@ -802,8 +1180,11 @@ impl PartFile {
             if !digest.eq_ignore_ascii_case(expected) {
                 let _ = std::fs::remove_file(&self.part_path);
                 bail!(
-                    "sha256 mismatch for {} (expected {expected}, got {digest})",
-                    self.final_path.display()
+                    "{}",
+                    ErrorCode::OutputHashMismatch.msg(format!(
+                        "sha256 mismatch for {} (expected {expected}, got {digest})",
+                        self.final_path.display()
+                    ))
                 );
             }
         }
@@ -900,10 +1281,7 @@ fn human_bytes(n: u64) -> String {
 // ---------------------------------------------------------------------------
 
 fn http_get_string(agent: &ureq::Agent, url: &str) -> Result<String> {
-    agent
-        .get(url)
-        .call()
-        .with_context(|| format!("GET {url}"))?
+    retry::with_retry(&format!("GET {url}"), || agent.get(url).call())?
         .into_string()
         .context("reading response body")
 }
@@ -913,17 +1291,18 @@ fn http_get_string(agent: &ureq::Agent, url: &str) -> Result<String> {
 /// always answer JSON — both parse through `cavs_manifest::read_manifest`).
 fn http_get_manifest(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>> {
     use std::io::Read as _;
-    let resp = agent
-        .get(url)
-        .set(
-            "accept",
-            &format!(
-                "{}, application/json;q=0.5",
-                cavs_manifest::MANIFEST_V2_CONTENT_TYPE
-            ),
-        )
-        .call()
-        .with_context(|| format!("GET {url}"))?;
+    let resp = retry::with_retry(&format!("GET {url}"), || {
+        agent
+            .get(url)
+            .set(
+                "accept",
+                &format!(
+                    "{}, application/json;q=0.5",
+                    cavs_manifest::MANIFEST_V2_CONTENT_TYPE
+                ),
+            )
+            .call()
+    })?;
     let mut out = Vec::new();
     resp.into_reader()
         .read_to_end(&mut out)
@@ -933,10 +1312,7 @@ fn http_get_manifest(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>> {
 
 fn http_get_bytes(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>> {
     use std::io::Read as _;
-    let resp = agent
-        .get(url)
-        .call()
-        .with_context(|| format!("GET {url}"))?;
+    let resp = retry::with_retry(&format!("GET {url}"), || agent.get(url).call())?;
     let mut out = Vec::new();
     resp.into_reader()
         .read_to_end(&mut out)
@@ -945,26 +1321,30 @@ fn http_get_bytes(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>> {
 }
 
 fn http_post_json(agent: &ureq::Agent, url: &str, body: &str) -> Result<String> {
-    agent
-        .post(url)
-        .set("content-type", "application/json")
-        .send_string(body)
-        .with_context(|| format!("POST {url}"))?
-        .into_string()
-        .context("reading response body")
+    retry::with_retry(&format!("POST {url}"), || {
+        agent
+            .post(url)
+            .set("content-type", "application/json")
+            .send_string(body)
+    })?
+    .into_string()
+    .context("reading response body")
 }
 
 /// POST returning the body as a reader: large batches are consumed as a
-/// stream (peak RAM = one chunk) instead of being buffered whole.
+/// stream (peak RAM = one chunk) instead of being buffered whole. Retries
+/// cover request establishment; a failure mid-stream surfaces to the
+/// caller, and a re-run resumes from the chunk cache.
 fn http_post_reader(
     agent: &ureq::Agent,
     url: &str,
     body: &str,
 ) -> Result<Box<dyn std::io::Read + Send + Sync + 'static>> {
-    let resp = agent
-        .post(url)
-        .set("content-type", "application/json")
-        .send_string(body)
-        .with_context(|| format!("POST {url}"))?;
+    let resp = retry::with_retry(&format!("POST {url}"), || {
+        agent
+            .post(url)
+            .set("content-type", "application/json")
+            .send_string(body)
+    })?;
     Ok(resp.into_reader())
 }

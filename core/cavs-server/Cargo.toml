@@ -25,7 +25,7 @@ serde = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
 uuid = { workspace = true }
-tokio = { workspace = true, features = ["fs"] }
+tokio = { workspace = true, features = ["fs", "io-util"] }
 tokio-util = { workspace = true }
 axum = { workspace = true }
 axum-server = { workspace = true }

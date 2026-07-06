@@ -4,6 +4,8 @@
 //! reconstructs them back to playable MP4/HLS, inspects, verifies and plays.
 
 mod classify;
+mod corrupt;
+mod doctor;
 mod ffmpeg;
 mod manifest_cmd;
 mod pack;
@@ -11,6 +13,7 @@ mod profile;
 mod report;
 mod store;
 mod sweep;
+mod synth;
 mod unpack;
 
 use anyhow::Result;
@@ -195,6 +198,72 @@ enum Command {
         #[command(subcommand)]
         action: ManifestAction,
     },
+    /// Diagnose a deployment (v0.5.0): container integrity, manifest
+    /// encodability, bootstrap sidecar, store/pack consistency, cache
+    /// health. Read-only; exits non-zero on problems.
+    Doctor {
+        /// A .cavs file to check.
+        input: Option<PathBuf>,
+        /// A global store directory to check.
+        #[arg(long)]
+        store: Option<PathBuf>,
+        /// A client chunk-cache directory to check.
+        #[arg(long)]
+        cache: Option<PathBuf>,
+    },
+    /// Hardening test harnesses (v0.5.0).
+    Test {
+        #[command(subcommand)]
+        action: TestAction,
+    },
+    /// Synthetic large-build benchmarks (v0.5.0): generate deterministic
+    /// datasets and measure the whole pipeline on them.
+    Bench {
+        #[command(subcommand)]
+        action: BenchAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum TestAction {
+    /// Corruption matrix: mutate a copy of the .cavs (and its manifest,
+    /// packfile and bootstrap forms) byte by byte and assert every decoder
+    /// rejects the corrupt artifact cleanly.
+    Corrupt {
+        /// The .cavs file to mutate (a pristine copy is used per test).
+        input: PathBuf,
+        /// Write the matrix report as JSON to this path.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum BenchAction {
+    /// Generate a deterministic synthetic dataset: a base build plus
+    /// update variants (small/medium/large change, shifted, reordered).
+    Gen {
+        /// Output dataset directory.
+        #[arg(long)]
+        out: PathBuf,
+        /// Base build size, e.g. 100MiB, 1GiB.
+        #[arg(long, default_value = "100MiB")]
+        size: String,
+        /// PRNG seed (same seed + size => identical dataset).
+        #[arg(long, default_value_t = 5)]
+        seed: u64,
+    },
+    /// Pack and measure every version in a dataset directory: pack time,
+    /// manifest sizes, dedup, update egress, packfile counts. Writes
+    /// summary.md and summary.json.
+    Suite {
+        /// Dataset directory produced by `cavs bench gen`.
+        #[arg(long)]
+        dataset: PathBuf,
+        /// Results directory.
+        #[arg(long)]
+        out: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -337,6 +406,18 @@ fn main() -> Result<()> {
         Command::Manifest { action } => match action {
             ManifestAction::Export { input, out } => manifest_cmd::export(&input, out.as_deref()),
             ManifestAction::Bench { input, json } => manifest_cmd::bench(&input, json.as_deref()),
+        },
+        Command::Doctor {
+            input,
+            store,
+            cache,
+        } => doctor::doctor(input.as_deref(), store.as_deref(), cache.as_deref()),
+        Command::Test { action } => match action {
+            TestAction::Corrupt { input, out } => corrupt::corrupt(&input, out.as_deref()),
+        },
+        Command::Bench { action } => match action {
+            BenchAction::Gen { out, size, seed } => synth::generate(&out, &size, seed),
+            BenchAction::Suite { dataset, out } => synth::suite(&dataset, &out),
         },
     }
 }

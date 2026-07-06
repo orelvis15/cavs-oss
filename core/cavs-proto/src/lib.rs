@@ -23,6 +23,8 @@
 //! the origin never recompresses. `hash` always refers to the *uncompressed*
 //! bytes: receivers decompress first, then check `blake3(raw) == hash`.
 
+pub mod errors;
+
 use cavs_hash::ChunkHash;
 use serde::{Deserialize, Serialize};
 
@@ -32,6 +34,11 @@ pub const BATCH_VERSION: u8 = 2;
 /// Inline payload compression ids.
 pub const WIRE_COMPRESSION_NONE: u8 = 0;
 pub const WIRE_COMPRESSION_ZSTD: u8 = 1;
+
+/// Hard ceiling on one inline chunk's wire/raw length (matches the
+/// container's chunk limit). Real chunks are ≤ a few MiB; anything above
+/// this is a malformed or hostile stream, rejected before allocating.
+pub const MAX_WIRE_CHUNK: u32 = 256 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Control plane (JSON)
@@ -284,8 +291,10 @@ impl BatchResponse {
         if cur.take(4)? != BATCH_MAGIC || cur.u8()? != BATCH_VERSION {
             return Err(ProtoError::BadHeader);
         }
+        // Counts are untrusted: never pre-allocate more than the buffer
+        // could possibly encode (a crafted header must not OOM us).
         let init_count = cur.u32()?;
-        let mut inits = Vec::with_capacity(init_count as usize);
+        let mut inits = Vec::with_capacity((init_count as usize).min(cur.remaining() / 8));
         for _ in 0..init_count {
             let track_id = cur.u32()?;
             inits.push(InitDelivery {
@@ -294,7 +303,7 @@ impl BatchResponse {
             });
         }
         let seg_count = cur.u32()?;
-        let mut segments = Vec::with_capacity(seg_count as usize);
+        let mut segments = Vec::with_capacity((seg_count as usize).min(cur.remaining() / 12));
         for _ in 0..seg_count {
             let segment_id = cur.u64()?;
             segments.push(SegmentDelivery {
@@ -379,6 +388,10 @@ pub fn decode_stream<R: std::io::Read>(
                         }
                         let len_raw = u32::from_le_bytes(meta[1..5].try_into().unwrap());
                         let len_stored = u32::from_le_bytes(meta[5..9].try_into().unwrap());
+                        // Reject hostile lengths before allocating.
+                        if len_raw > MAX_WIRE_CHUNK || len_stored > MAX_WIRE_CHUNK {
+                            return Err(ProtoError::Malformed);
+                        }
                         let mut payload = vec![0u8; len_stored as usize];
                         r.read_exact(&mut payload).map_err(io)?;
                         DeliveryInstr::Inline {
@@ -424,7 +437,9 @@ fn encode_instrs(out: &mut Vec<u8>, instrs: &[DeliveryInstr]) {
 
 fn decode_instrs(cur: &mut Dec) -> Result<Vec<DeliveryInstr>, ProtoError> {
     let n = cur.u32()?;
-    let mut instrs = Vec::with_capacity(n as usize);
+    // Untrusted count: cap the pre-allocation at what could actually fit
+    // (a Ref is the smallest instruction: tag + 32-byte hash).
+    let mut instrs = Vec::with_capacity((n as usize).min(cur.remaining() / 33));
     for _ in 0..n {
         let tag = cur.u8()?;
         let hash: ChunkHash = cur.take(32)?.try_into().unwrap();
@@ -436,7 +451,11 @@ fn decode_instrs(cur: &mut Dec) -> Result<Vec<DeliveryInstr>, ProtoError> {
                     return Err(ProtoError::Malformed);
                 }
                 let len_raw = cur.u32()?;
-                let len_stored = cur.u32()? as usize;
+                let len_stored = cur.u32()?;
+                if len_raw > MAX_WIRE_CHUNK || len_stored > MAX_WIRE_CHUNK {
+                    return Err(ProtoError::Malformed);
+                }
+                let len_stored = len_stored as usize;
                 let payload = cur.take(len_stored)?.to_vec();
                 instrs.push(DeliveryInstr::Inline {
                     hash,
@@ -457,8 +476,11 @@ struct Dec<'a> {
 }
 
 impl<'a> Dec<'a> {
+    fn remaining(&self) -> usize {
+        self.buf.len() - self.pos
+    }
     fn take(&mut self, n: usize) -> Result<&'a [u8], ProtoError> {
-        if self.pos + n > self.buf.len() {
+        if n > self.remaining() {
             return Err(ProtoError::Malformed);
         }
         let s = &self.buf[self.pos..self.pos + n];

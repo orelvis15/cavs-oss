@@ -12,6 +12,9 @@ members = [
     "core/cavs-client",
     "steam-analyzer",
 ]
+# The libFuzzer harness needs nightly and its own profile; it builds from
+# fuzz/ with `cargo +nightly fuzz run <target>`.
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.4.0"
