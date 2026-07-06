@@ -162,8 +162,7 @@ pub fn plan(
                 let prev_score = score(0, c.len as u64, if contiguous { 0 } else { 1 }, 1);
                 let cache_score = score(0, c.len as u64, 1, 1);
                 // Ties break toward the previous artifact: one open file
-                // beats many small cache files (same rationale as Wharf's
-                // preferred file index).
+                // read sequentially beats many small cache files.
                 (prev_score <= cache_score, source_offset)
             }
         };

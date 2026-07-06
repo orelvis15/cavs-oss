@@ -1,44 +1,45 @@
-# CAVS vs Wharf (itch.io) — measured comparison
+# CAVS vs delta patching — measured comparison
 
-Wharf is itch.io's incremental upload/download protocol: an rsync-style
-diff over fixed 64 KiB blocks (weak rolling hash + strong hash), patch
-files made of `DATA`/`BLOCK_RANGE` operations, Brotli compression. It is a
-**pairwise patcher**: every old→new pair gets its own patch, generated and
-stored per pair. CAVS is a **version-stream delivery layer**: each release
+The established way to ship a game update in fewer bytes is a **pairwise
+delta patch**: diff the old version against the new one and send only the
+difference. Tools like `xdelta3` and `bsdiff` do this at the byte level;
+rsync-style tools do it over fixed blocks (a weak rolling hash finds
+unchanged blocks, unmatched regions travel as fresh data). They are
+excellent at the one thing they do — the smallest possible bytes for **one
+specific old→new jump** — and CAVS does not try to beat them at it.
+
+CAVS is a different shape: a **version-stream delivery layer**. Each release
 is packaged once into content-addressed chunks, and any client — from any
-older version, with any cache state — converges on the newest bytes.
-
-v0.6.0 exists because Wharf's best ideas apply to CAVS without changing
-that architecture: old-version range reuse, compact signatures, range
-coalescing, preferred sources, no-op detection and staged applies are now
-part of the client (see [HYBRID_RECONSTRUCTION.md](HYBRID_RECONSTRUCTION.md)).
+older version, with any cache state — converges on the newest bytes. v0.6.0
+brings the best idea of delta patchers *into* that model: reuse bytes from
+the version already installed on disk (see
+[HYBRID_RECONSTRUCTION.md](HYBRID_RECONSTRUCTION.md)), without giving up
+content-addressing, dedup, resume, repair or CDN-cacheability.
 
 ## Methodology — read this first
 
-`cavs bench wharf` measures a **Wharf-style model**, not the official
-`butler` binary: fixed 64 KiB blocks, weak rolling hash prefilter,
-strong-hash confirmation, `DATA`/`BLOCK_RANGE` planning with coalescing.
-Two deliberate substitutions: BLAKE3-256 as the strong hash (Wharf uses
-MD5) and zstd-1 as the patch transport compression (Wharf recommends
-Brotli q1; on our payloads they compress within 0.1 % of each other — see
-the compression table below). `xdelta3 -9` and `bsdiff` run as extra
-baselines when present on PATH. Reproduce with:
+`cavs bench delta` measures a **block-based delta model** built into CAVS:
+fixed 64 KiB blocks, a weak rolling-hash prefilter, strong-hash (BLAKE3-256)
+confirmation, and COPY/DATA planning with range coalescing; DATA payloads
+compressed with zstd-1. `xdelta3 -9` and `bsdiff` run as byte-level
+baselines when present on PATH. Every reconstruction is verified
+byte-identical before its size is reported. Reproduce with:
 
 ```bash
 cavs bench gen --out ds --size 128MiB --seed 5
-cavs bench wharf --old ds/v1.bin --new ds/v2-small.bin --out results/wharf-small
+cavs bench delta --old ds/v1.bin --new ds/v2-small.bin --out results/delta-small
 ```
 
 ## Patch size (128 MiB synthetic suite, seed 5)
 
-| Pair | Full re-download (zstd-19) | Wharf-style patch | xdelta3 -9 | bsdiff | CAVS update (chunks) |
+| Pair | Full re-download (zstd-19) | Block-delta patch | xdelta3 -9 | bsdiff | CAVS update (chunks) |
 |---|---:|---:|---:|---:|---:|
 | small change  | 64.05 MiB | 1.94 MiB | 1.94 MiB | 1.96 MiB | 6.06 MiB |
 | medium change | 64.05 MiB | 8.83 MiB | 8.82 MiB | 8.90 MiB | 26.28 MiB |
 | shifted (every byte moves) | 64.06 MiB | 4.04 KiB | 4.65 KiB | 4.67 KiB | 10.90 KiB |
 
-Generation: wharf-style 234–525 ms, CAVS 243–253 ms.
-Apply: wharf-style 136–160 ms, CAVS 58–62 ms. The Wharf-style signature
+Generation: block-delta 234–525 ms, CAVS 243–253 ms.
+Apply: block-delta 136–160 ms, CAVS 58–62 ms. The block-delta signature
 (exchanged once, reusable for any diff against that version) is 88 KiB.
 
 **Honest reading: pairwise patches win per-pair bytes.** A diff that ships
@@ -47,11 +48,11 @@ shipping whole content-addressed chunks — on this suite by ~3× for
 scattered small edits. That is inherent, not an implementation gap: chunk
 granularity is what buys CAVS its operational properties. Where the byte
 gap matters most (players updating over slow links, single title, adjacent
-versions), Wharf's model is genuinely strong — it is why itch.io built it.
+versions), a good delta patcher is genuinely strong.
 
 ## What the per-pair number does not capture
 
-| Property | Wharf / xdelta3 / bsdiff | CAVS |
+| Property | Pairwise delta (block-delta / xdelta3 / bsdiff) | CAVS |
 |---|---|---|
 | Packaging work per release | one patch **per old→new pair** (or a patch chain) | package **once**; all jumps served |
 | v1→v5 direct jump | needs that exact patch, or applies 4 chained patches | same chunk fetch as any update |
@@ -70,12 +71,12 @@ patch-size bytes instead of a full re-download:
 | CAVS v0.5, cold cache | 64.55 MiB |
 | **CAVS v0.6, cold cache + previous install** | **6.24 MiB (−90.3 %)** |
 | CAVS warm cache (v0.5 = v0.6) | 6.24 MiB |
-| Wharf-style patch (pairwise, pre-generated) | 1.94 MiB |
+| Block-delta patch (pairwise, pre-generated) | 1.94 MiB |
 
 ## Compression: zstd vs Brotli
 
-Wharf recommends Brotli q1 (transport) / q9 (storage). Measured on this
-suite's payload (`cavs bench compression`, 32 MiB sample, brotli feature
+CAVS ships zstd-3. Brotli is a common alternative for patch/asset transport,
+so `cavs bench compression` cross-checks it (32 MiB sample, brotli feature
 enabled):
 
 | algo | size | ratio | encode ms | decode ms |
@@ -93,7 +94,7 @@ for payload classes where it might win (rerun on your own builds).
 
 ## Framing
 
-Wharf inspired v0.6.0 to add hybrid reconstruction. CAVS now combines
-content-addressed storage with old-version range reuse — it does not claim
-to beat a pairwise patcher at its own single-pair game, and the numbers
-above say so explicitly.
+CAVS v0.6.0 combines content-addressed storage with old-version range
+reuse. It does not claim to beat a pairwise patcher at its own single-pair
+game — the numbers above say so explicitly — but it delivers most of the
+byte win while keeping the operational properties a per-pair patch cannot.

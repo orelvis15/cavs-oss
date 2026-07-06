@@ -234,8 +234,8 @@ update vs v0.5's cold path, −99.98 % on a shifted build — see
 ./target/release/cavs pack-dir ./Build_v2 -o build_v2.cavs
 ./target/release/cavs-client fetch http://127.0.0.1:8990 build_v2 -o ./InstalledGame --cache ./cache
 
-# Compare against a Wharf-style (itch.io) patching model, honestly labeled
-./target/release/cavs bench wharf --old game_v1.pck --new game_v2.pck --out results/wharf
+# Compare against a block-based delta patcher (and xdelta3/bsdiff if present)
+./target/release/cavs bench delta --old game_v1.pck --new game_v2.pck --out results/delta
 ```
 
 Already-current outputs are detected and skipped (no-op: 0 bytes), every

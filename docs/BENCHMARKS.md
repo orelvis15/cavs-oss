@@ -224,13 +224,13 @@ pairwise patcher assumes — and where v0.5 had to pay the full artifact).
 - `.cavssig` signature of the 128 MiB build: 88 KiB (0.067 %),
   deterministic, one flipped source byte detected.
 
-## CAVS vs Wharf (itch.io) — v0.6.0 baseline
+## CAVS vs delta patching — v0.6.0 baseline
 
-Wharf-style model (fixed 64 KiB blocks, weak rolling hash + BLAKE3
-confirmation, DATA/BLOCK_RANGE with coalescing, zstd-1 transport —
-labeled: not the official butler binary), same suite:
+Block-based delta model (fixed 64 KiB blocks, weak rolling hash + BLAKE3
+confirmation, COPY/DATA planning with coalescing, zstd-1 transport), plus
+`xdelta3 -9` and `bsdiff` as byte-level baselines, same suite:
 
-| Pair | Full re-download | Wharf-style patch | xdelta3 -9 | bsdiff | CAVS update |
+| Pair | Full re-download | Block-delta patch | xdelta3 -9 | bsdiff | CAVS update |
 |---|---:|---:|---:|---:|---:|
 | small | 64.05 MiB | 1.94 MiB | 1.94 MiB | 1.96 MiB | 6.06 MiB |
 | medium | 64.05 MiB | 8.83 MiB | 8.82 MiB | 8.90 MiB | 26.28 MiB |
@@ -240,7 +240,7 @@ Pairwise patches win per-pair bytes (inherent: they ship dirty regions,
 CAVS ships whole chunks); CAVS packages once per release, serves every
 version jump from one deduplicated, CDN-cacheable store, and resumes and
 self-repairs. Full tables, timings and framing:
-[WHARF_COMPARISON.md](WHARF_COMPARISON.md). Compression cross-check
+[DELTA_COMPARISON.md](DELTA_COMPARISON.md). Compression cross-check
 (`bench compression`): zstd and Brotli within 0.1 % on size here, zstd
 ~40× faster decode — zstd-3 stays the default.
 

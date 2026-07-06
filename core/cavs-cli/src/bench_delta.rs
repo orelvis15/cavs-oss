@@ -1,13 +1,13 @@
-//! `cavs bench wharf` (v0.6.0) — compare CAVS delivery against a
-//! Wharf-style patching model on a real old/new version pair.
+//! `cavs bench delta` (v0.6.0) — compare CAVS delivery against a
+//! block-based delta patching model on a real old/new version pair.
 //!
-//! Honesty note: this harness implements a *Wharf-style model* — fixed
-//! 64 KiB blocks, weak rolling hash prefilter, strong-hash confirmation,
-//! `DATA`/`BLOCK_RANGE` planning with range coalescing — not the official
-//! `butler` implementation. Two deliberate differences: BLAKE3-256 instead
-//! of MD5 as the strong hash, and zstd-1 instead of Brotli-q1 as the patch
-//! transport compression. Results are labeled accordingly. When `xdelta3`
-//! or `bsdiff` binaries are on PATH they are measured too.
+//! The built-in model is a generic rsync-style block delta: fixed 64 KiB
+//! blocks, a weak rolling-hash prefilter, strong-hash (BLAKE3-256)
+//! confirmation, and COPY/DATA planning with range coalescing. Its DATA
+//! payloads are compressed with zstd-1 (transport level). When the
+//! `xdelta3` or `bsdiff` binaries are on PATH they are measured too, as
+//! byte-level delta baselines. Every reconstruction is verified
+//! byte-identical before its size is reported.
 
 use anyhow::{bail, Context, Result};
 use cavs_chunker::ChunkMode;
@@ -16,8 +16,8 @@ use cavs_signature::CavsSignature;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-const WHARF_BLOCK: u32 = 64 * 1024;
-/// Rough per-op wire overhead of a Wharf-style patch stream (tag + varints).
+const DELTA_BLOCK: u32 = 64 * 1024;
+/// Rough per-op wire overhead of a block-delta patch stream (tag + varints).
 const OP_OVERHEAD: u64 = 16;
 /// Chunk model used by CAVS for update-heavy assets.
 const CAVS_MODE: ChunkMode = ChunkMode::Cdc {
@@ -27,7 +27,7 @@ const CAVS_MODE: ChunkMode = ChunkMode::Cdc {
 };
 
 #[derive(Default, serde::Serialize)]
-struct WharfReport {
+struct DeltaReport {
     mode: String,
     old_path: String,
     new_path: String,
@@ -35,12 +35,12 @@ struct WharfReport {
     new_size_bytes: u64,
     /// Baseline: ship the whole new version as one zstd-19 stream.
     full_zstd_bytes: u64,
-    /// Wharf-style model patch (inline data zstd-1 + op overhead).
-    wharf_style_patch_bytes: u64,
-    wharf_style_signature_bytes: u64,
-    wharf_style_reused_bytes: u64,
-    wharf_style_ops: u64,
-    wharf_style_ops_before_coalescing: u64,
+    /// Block-delta model patch (inline data zstd-1 + op overhead).
+    block_delta_patch_bytes: u64,
+    block_delta_signature_bytes: u64,
+    block_delta_reused_bytes: u64,
+    block_delta_ops: u64,
+    block_delta_ops_before_coalescing: u64,
     /// CAVS chunk route: compressed chunks the old version does not have
     /// (= update egress with a seeded cache, or v0.6 hybrid with only the
     /// previous install on disk).
@@ -56,7 +56,7 @@ struct WharfReport {
 
 #[derive(Default, serde::Serialize)]
 struct PatchTimes {
-    wharf_style: f64,
+    block_delta: f64,
     cavs: f64,
 }
 
@@ -99,7 +99,7 @@ fn load_pair(old: &Path, new: &Path) -> Result<VersionPair> {
 
 pub fn bench(old: &Path, new: &Path, out: Option<&Path>) -> Result<()> {
     let pair = load_pair(old, new)?;
-    let mut report = WharfReport {
+    let mut report = DeltaReport {
         mode: pair.mode.to_string(),
         old_path: old.display().to_string(),
         new_path: new.display().to_string(),
@@ -108,8 +108,8 @@ pub fn bench(old: &Path, new: &Path, out: Option<&Path>) -> Result<()> {
         ..Default::default()
     };
     report.notes.push(
-        "wharf-style model (fixed 64 KiB blocks, weak+BLAKE3, zstd-1 patch transport), \
-         not the official butler implementation"
+        "block-delta model: fixed 64 KiB blocks, weak rolling hash prefilter, \
+         BLAKE3-256 confirmation, COPY/DATA planning with coalescing, zstd-1 patch transport"
             .into(),
     );
 
@@ -121,14 +121,14 @@ pub fn bench(old: &Path, new: &Path, out: Option<&Path>) -> Result<()> {
             .len() as u64;
     }
 
-    // ---- Wharf-style model ------------------------------------------------
+    // ---- Block-delta model ------------------------------------------------
     let t0 = Instant::now();
     let sig = if pair.mode == "artifact" {
-        CavsSignature::sign_file(old, WHARF_BLOCK, &pair.files[0].0)?
+        CavsSignature::sign_file(old, DELTA_BLOCK, &pair.files[0].0)?
     } else {
-        CavsSignature::sign_dir(old, WHARF_BLOCK, "old")?
+        CavsSignature::sign_dir(old, DELTA_BLOCK, "old")?
     };
-    report.wharf_style_signature_bytes = sig.encode().len() as u64;
+    report.block_delta_signature_bytes = sig.encode().len() as u64;
     let idx = WeakHashIndex::build(&sig);
     let mut plans = Vec::new();
     let mut inline_data = Vec::new();
@@ -141,15 +141,15 @@ pub fn bench(old: &Path, new: &Path, out: Option<&Path>) -> Result<()> {
                 );
             }
         }
-        report.wharf_style_reused_bytes += plan.reused_bytes;
-        report.wharf_style_ops += plan.ops.len() as u64;
-        report.wharf_style_ops_before_coalescing += plan.ops_before_coalescing;
+        report.block_delta_reused_bytes += plan.reused_bytes;
+        report.block_delta_ops += plan.ops.len() as u64;
+        report.block_delta_ops_before_coalescing += plan.ops_before_coalescing;
         plans.push(plan);
     }
     let inline_compressed = zstd::bulk::compress(&inline_data, 1).context("zstd-1")?;
-    report.wharf_style_patch_bytes =
-        inline_compressed.len() as u64 + report.wharf_style_ops * OP_OVERHEAD;
-    report.patch_gen_ms.wharf_style = t0.elapsed().as_secs_f64() * 1000.0;
+    report.block_delta_patch_bytes =
+        inline_compressed.len() as u64 + report.block_delta_ops * OP_OVERHEAD;
+    report.patch_gen_ms.block_delta = t0.elapsed().as_secs_f64() * 1000.0;
 
     // Apply: rebuild every new file from old bytes + inline data, verify.
     let entry_bytes: std::collections::HashMap<u32, &[u8]> = sig
@@ -185,10 +185,10 @@ pub fn bench(old: &Path, new: &Path, out: Option<&Path>) -> Result<()> {
             }
         }
         if cavs_hash::hash_chunk(&rebuilt) != cavs_hash::hash_chunk(new_bytes) {
-            bail!("wharf-style apply produced non-identical output");
+            bail!("block-delta apply produced non-identical output");
         }
     }
-    report.apply_ms.wharf_style = t0.elapsed().as_secs_f64() * 1000.0;
+    report.apply_ms.block_delta = t0.elapsed().as_secs_f64() * 1000.0;
 
     // ---- CAVS chunk route -------------------------------------------------
     let t0 = Instant::now();
@@ -264,11 +264,11 @@ pub fn bench(old: &Path, new: &Path, out: Option<&Path>) -> Result<()> {
     if let Some(dir) = out {
         std::fs::create_dir_all(dir)?;
         std::fs::write(
-            dir.join("wharf-comparison.json"),
+            dir.join("delta-comparison.json"),
             serde_json::to_vec_pretty(&report)?,
         )?;
-        std::fs::write(dir.join("wharf-comparison.md"), markdown(&report))?;
-        println!("report  : {}", dir.join("wharf-comparison.md").display());
+        std::fs::write(dir.join("delta-comparison.md"), markdown(&report))?;
+        println!("report  : {}", dir.join("delta-comparison.md").display());
     }
     Ok(())
 }
@@ -288,8 +288,8 @@ fn external_patch_size(bin: &str, args: impl Fn(&Path) -> Vec<String>) -> Option
     std::fs::metadata(&patch).ok().map(|m| m.len())
 }
 
-fn print_report(r: &WharfReport) {
-    println!("bench wharf ({} mode)", r.mode);
+fn print_report(r: &DeltaReport) {
+    println!("bench delta ({} mode)", r.mode);
     println!(
         "  old / new        : {} / {}",
         human(r.old_size_bytes),
@@ -297,11 +297,11 @@ fn print_report(r: &WharfReport) {
     );
     println!("  full zstd-19     : {}", human(r.full_zstd_bytes));
     println!(
-        "  wharf-style patch: {} ({} sig, {:.1}% reused, {} ops)",
-        human(r.wharf_style_patch_bytes),
-        human(r.wharf_style_signature_bytes),
-        r.wharf_style_reused_bytes as f64 * 100.0 / r.new_size_bytes.max(1) as f64,
-        r.wharf_style_ops,
+        "  block-delta patch: {} ({} sig, {:.1}% reused, {} ops)",
+        human(r.block_delta_patch_bytes),
+        human(r.block_delta_signature_bytes),
+        r.block_delta_reused_bytes as f64 * 100.0 / r.new_size_bytes.max(1) as f64,
+        r.block_delta_ops,
     );
     println!(
         "  cavs update      : {} ({} of {} chunks new)",
@@ -316,21 +316,21 @@ fn print_report(r: &WharfReport) {
         println!("  bsdiff           : {}", human(b));
     }
     println!(
-        "  gen ms           : wharf-style {:.0} / cavs {:.0}",
-        r.patch_gen_ms.wharf_style, r.patch_gen_ms.cavs
+        "  gen ms           : block-delta {:.0} / cavs {:.0}",
+        r.patch_gen_ms.block_delta, r.patch_gen_ms.cavs
     );
     println!(
-        "  apply ms         : wharf-style {:.0} / cavs {:.0}",
-        r.apply_ms.wharf_style, r.apply_ms.cavs
+        "  apply ms         : block-delta {:.0} / cavs {:.0}",
+        r.apply_ms.block_delta, r.apply_ms.cavs
     );
     for n in &r.notes {
         println!("  note             : {n}");
     }
 }
 
-fn markdown(r: &WharfReport) -> String {
+fn markdown(r: &DeltaReport) -> String {
     let mut md = String::new();
-    md.push_str("# CAVS vs Wharf-style patching\n\n");
+    md.push_str("# CAVS vs block-based delta patching\n\n");
     md.push_str(&format!(
         "Pair: `{}` → `{}` ({} mode)\n\n",
         r.old_path, r.new_path, r.mode
@@ -341,9 +341,9 @@ fn markdown(r: &WharfReport) -> String {
         human(r.full_zstd_bytes)
     ));
     md.push_str(&format!(
-        "| Wharf-style patch | {} | pairwise; +{} signature exchanged beforehand |\n",
-        human(r.wharf_style_patch_bytes),
-        human(r.wharf_style_signature_bytes)
+        "| Block-delta patch | {} | pairwise; +{} signature exchanged beforehand |\n",
+        human(r.block_delta_patch_bytes),
+        human(r.block_delta_signature_bytes)
     ));
     md.push_str(&format!(
         "| CAVS update (v0.5 warm cache / v0.6 hybrid) | {} | {} of {} chunks new; content-addressed, CDN-cacheable |\n",
@@ -358,10 +358,10 @@ fn markdown(r: &WharfReport) -> String {
         md.push_str(&format!("| bsdiff | {} | pairwise |\n", human(b)));
     }
     md.push_str(&format!(
-        "\nGeneration: wharf-style {:.0} ms, CAVS {:.0} ms. Apply: wharf-style {:.0} ms, CAVS {:.0} ms.\n",
-        r.patch_gen_ms.wharf_style, r.patch_gen_ms.cavs, r.apply_ms.wharf_style, r.apply_ms.cavs
+        "\nGeneration: block-delta {:.0} ms, CAVS {:.0} ms. Apply: block-delta {:.0} ms, CAVS {:.0} ms.\n",
+        r.patch_gen_ms.block_delta, r.patch_gen_ms.cavs, r.apply_ms.block_delta, r.apply_ms.cavs
     ));
-    md.push_str("\nOperational shape: a Wharf/xdelta3/bsdiff patch serves exactly one version\njump and must be generated per pair; CAVS packages once per release and any\nversion jump reuses the same immutable chunk store (resume, repair and\ndedup included).\n\n");
+    md.push_str("\nOperational shape: a pairwise delta patch (block-delta, xdelta3 or\nbsdiff) serves exactly one version jump and must be generated per pair;\nCAVS packages once per release and any version jump reuses the same\nimmutable chunk store (resume, repair and dedup included).\n\n");
     for n in &r.notes {
         md.push_str(&format!("> {n}\n"));
     }

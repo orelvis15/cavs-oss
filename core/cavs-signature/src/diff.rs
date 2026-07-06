@@ -9,14 +9,15 @@
 //!
 //! The result is source-agnostic: `CopyOldRange` says "these new-file bytes
 //! equal old entry X at offset Y", which a client maps to a previous
-//! installed artifact and a benchmark maps to a Wharf-style `BLOCK_RANGE`.
+//! installed artifact and the delta benchmark maps to a copy operation.
 
 use crate::weak::RollingWeak;
 use crate::{CavsSignature, EntryKind, SignatureBlockHash};
 use cavs_hash::hash_chunk;
 use std::collections::HashMap;
 
-/// Wharf caps DATA messages at 4 MB; we keep the same bound for inline ops.
+/// Inline (fresh) data is capped at 4 MB per op, so a run of unmatched
+/// bytes is split into streaming-friendly messages rather than one huge one.
 pub const MAX_INLINE_DATA: u64 = 4 * 1024 * 1024;
 
 /// One reconstruction instruction for the new payload, in output order.
@@ -85,8 +86,8 @@ impl<'a> WeakHashIndex<'a> {
         self.by_weak.get(&weak).map(Vec::as_slice).unwrap_or(&[])
     }
 
-    /// Wharf-style preferred source selection among candidates whose strong
-    /// hash matches: continue the previous copy if possible, then prefer the
+    /// Preferred source selection among candidates whose strong hash
+    /// matches: continue the previous copy if possible, then prefer the
     /// old entry whose path equals the target path, then the lowest offset
     /// (deterministic).
     fn pick(
@@ -187,7 +188,7 @@ fn emit_inline(ops: &mut Vec<DiffOp>, plan: &mut DiffPlan, from: u64, to: u64) {
 }
 
 /// Merge copy ops that are adjacent in both the old entry and the new
-/// output (Wharf's `BLOCK_RANGE` coalescing, generalised).
+/// output (adjacent copy-range coalescing).
 fn coalesce(ops: Vec<DiffOp>) -> Vec<DiffOp> {
     let mut out: Vec<DiffOp> = Vec::with_capacity(ops.len());
     for op in ops {

@@ -2,10 +2,10 @@
 
 A `.cavssig` is a compact description of an old artifact or directory tree —
 layout, sizes and per-block hashes — so a new version can be compared
-against it **without the old content**. It is the CAVS analogue of Wharf's
-signature files, with two deliberate differences: BLAKE3-256 is the only
-identity/verification hash (never MD5), and the weak 32-bit rolling hash is
-a prefilter that is never trusted on its own.
+against it **without the old content** (the same role a signature plays in
+rsync-style delta patching). CAVS-native details: BLAKE3-256 is the only
+identity/verification hash, and the weak 32-bit rolling hash is a prefilter
+that is never trusted on its own.
 
 For a 128 MiB build the signature is ~88 KiB (0.07 % of the source).
 Encoding is deterministic: the same logical signature always produces the
@@ -90,8 +90,9 @@ A weak match is always confirmed with BLAKE3 before any byte is reused.
 
 ## Why explicit entry_id/offset per block?
 
-Wharf infers block positions from container layout and a fixed block size.
-CAVS stores them explicitly because signatures may later mix fixed and
-content-defined profiles, explicit offsets make source-range reuse trivial,
-and it removes ambiguity as the format evolves. The cost is a few varint
-bytes per block — irrelevant at 0.07 % of source size.
+A fixed-block scheme could infer block positions from a container layout and
+a constant block size. CAVS stores them explicitly because signatures may
+later mix fixed and content-defined profiles, explicit offsets make
+source-range reuse trivial, and it removes ambiguity as the format evolves.
+The cost is a few varint bytes per block — irrelevant at 0.07 % of source
+size.

@@ -2,9 +2,8 @@
 //! artifact or directory tree — layout, sizes and per-block hashes — so a
 //! new version can be compared against it without the old content.
 //!
-//! Inspired by Wharf's signature idea, but CAVS-native: BLAKE3-256 is the
-//! only identity/verification hash; the weak 32-bit rolling hash is a
-//! prefilter and never trusted on its own.
+//! CAVS-native design: BLAKE3-256 is the only identity/verification hash;
+//! the weak 32-bit rolling hash is a prefilter and never trusted on its own.
 //!
 //! Wire layout (all multi-byte integers are LEB128 varints unless noted):
 //!
@@ -42,7 +41,9 @@ use std::path::Path;
 
 pub const SIGNATURE_MAGIC: [u8; 8] = *b"CAVSSIG1";
 pub const SIGNATURE_VERSION: u16 = 1;
-/// Default block size, matching Wharf's empirically chosen 64 KiB.
+/// Default block size: 64 KiB (the empirically chosen sweet spot for
+/// block-based delta scanning — larger blocks shrink the signature but
+/// grow the patch, since small edits incur a full-block penalty).
 pub const DEFAULT_BLOCK_SIZE: u32 = 64 * 1024;
 /// Sanity caps: reject hostile counts before allocating.
 pub const MAX_ENTRIES: u64 = 1 << 24;

@@ -16,13 +16,14 @@ CAVS v0.5 reconstructed from:        CAVS v0.6 reconstructs from:
                                        - previous installed directory files
 ```
 
-The idea is ported from itch.io's [Wharf](https://itch.io/docs/wharf/)
-protocol (`BLOCK_RANGE` reuse, signatures, coalescing, preferred sources,
-no-op detection, staged applies) without replacing the CAVS architecture:
+This borrows the core idea of delta patchers — copy the ranges you already
+have, ship only the difference — and folds it into the CAVS model
+(old-version signatures, copy-range reuse, coalescing, preferred sources,
+no-op detection, staged applies) without replacing the architecture:
 content stays content-addressed, cache-first, byte-identical and
-CDN-friendly. See [WHARF_COMPARISON.md](WHARF_COMPARISON.md) for measured
-comparisons and [SIGNATURE_FORMAT.md](SIGNATURE_FORMAT.md) for the
-`.cavssig` format.
+CDN-friendly. See [DELTA_COMPARISON.md](DELTA_COMPARISON.md) for measured
+comparisons against delta tools and
+[SIGNATURE_FORMAT.md](SIGNATURE_FORMAT.md) for the `.cavssig` format.
 
 ## Usage
 
@@ -85,7 +86,7 @@ Enabled by default (`--force-reconstruct` disables):
 
 ## Directory / container mode (preview)
 
-itch.io-style builds distributed as a directory tree:
+Builds distributed as a directory tree rather than a single archive:
 
 ```bash
 cavs pack-dir ./Build_v1 -o build_v1.cavs
@@ -159,4 +160,4 @@ v0.6.0 capability: only the old install on disk.
 | `CAVS-E-HYBRID-SOURCE-FAILED` | a source failed and no fallback succeeded | no |
 | `CAVS-E-CONTAINER-APPLY-FAILED` | directory apply failed (old install intact) | rerun fetch |
 | `CAVS-E-CONTAINER-ROLLBACK-FAILED` | rollback could not restore state | manual |
-| `CAVS-E-WHARF-BENCH-UNAVAILABLE` | external tool missing for `bench wharf` | n/a |
+| `CAVS-E-DELTA-BENCH-UNAVAILABLE` | external tool missing for `bench delta` | n/a |

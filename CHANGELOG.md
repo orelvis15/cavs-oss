@@ -11,9 +11,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The hybrid reconstruction release: CAVS can now use a previously installed
 artifact or directory tree as a first-class source of reusable bytes, while
 keeping the content-addressed cache, packfile store and verified,
-byte-identical reconstruction model intact. Inspired by itch.io's Wharf
-protocol (signatures, `BLOCK_RANGE` reuse, coalescing, preferred sources,
-no-op detection, staged applies) — ported as ideas, not as a rewrite.
+byte-identical reconstruction model intact. It folds the core idea of delta
+patching (old-version signatures, copy-range reuse, coalescing, preferred
+sources, no-op detection, staged applies) into the CAVS model — as design
+ideas, not a rewrite.
 
 Measured highlights (128 MiB synthetic suite, seed 5): a client with an
 **empty cache but the old version on disk** updates for 6.24 MiB instead of
@@ -68,13 +69,13 @@ already-current install is a no-op: 0 payload bytes.
   every file hash, commits with per-file renames under a journal, and
   optionally `--prune`s files dropped by the new version (unknown files —
   mods, saves — are preserved by default).
-- **Wharf benchmark baseline.** `cavs bench wharf --old A --new B [--out d]`
-  measures a clearly-labeled Wharf-style model (64 KiB blocks, weak+BLAKE3,
-  DATA/BLOCK_RANGE, zstd-1 transport) against full re-download, the CAVS
-  chunk route, and xdelta3/bsdiff when installed — patch size, generation
-  and apply times, plus JSON/markdown reports. See docs/WHARF_COMPARISON.md
-  for results and honest framing (pairwise patches win per-pair bytes;
-  CAVS wins the operational model).
+- **Delta benchmark baseline.** `cavs bench delta --old A --new B [--out d]`
+  measures a block-based delta model (64 KiB blocks, weak rolling hash +
+  BLAKE3 confirmation, COPY/DATA planning, zstd-1 transport) against full
+  re-download, the CAVS chunk route, and xdelta3/bsdiff when installed —
+  patch size, generation and apply times, plus JSON/markdown reports. See
+  docs/DELTA_COMPARISON.md for results and honest framing (pairwise patches
+  win per-pair bytes; CAVS wins the operational model).
 - **Compression benchmark.** `cavs bench compression --input f --algos
   zstd-3,brotli-9` (Brotli feature-gated behind `brotli-bench`). Measured:
   zstd and Brotli within 0.1 % on size, zstd ~40× faster to decode — zstd-3
@@ -90,7 +91,7 @@ already-current install is a no-op: 0 payload bytes.
   `CAVS-E-SIGNATURE-MISMATCH`, `CAVS-E-PREVIOUS-ARTIFACT-MISSING`,
   `CAVS-E-PREVIOUS-ARTIFACT-MISMATCH`, `CAVS-E-HYBRID-PLAN-INVALID`,
   `CAVS-E-HYBRID-SOURCE-FAILED`, `CAVS-E-CONTAINER-APPLY-FAILED`,
-  `CAVS-E-CONTAINER-ROLLBACK-FAILED`, `CAVS-E-WHARF-BENCH-UNAVAILABLE`.
+  `CAVS-E-CONTAINER-ROLLBACK-FAILED`, `CAVS-E-DELTA-BENCH-UNAVAILABLE`.
 
 ### Changed
 
@@ -108,7 +109,7 @@ This release does not replace FastCDC or convert CAVS into a pairwise
 patcher. It adds a hybrid source model: cache chunks, previous-artifact
 ranges, packfile ranges and network chunks all participate in the same
 verified rebuild. New docs: docs/HYBRID_RECONSTRUCTION.md,
-docs/SIGNATURE_FORMAT.md, docs/WHARF_COMPARISON.md.
+docs/SIGNATURE_FORMAT.md, docs/DELTA_COMPARISON.md.
 
 ## [0.5.0]
 

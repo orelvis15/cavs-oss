@@ -1,7 +1,7 @@
 //! `cavs bench compression` (v0.6.0) — measure zstd vs Brotli on a real
-//! payload without changing any default. Wharf recommends Brotli (q1
-//! transport, q9 storage); CAVS ships zstd-3 — this harness exists so that
-//! choice stays backed by numbers, per payload class.
+//! payload without changing any default. CAVS ships zstd-3; this harness
+//! exists so that choice stays backed by numbers, per payload class,
+//! against Brotli (a common alternative for patch/asset transport).
 //!
 //! Brotli support is feature-gated (`--features brotli-bench`); without it
 //! the brotli algos are reported as skipped.

@@ -35,7 +35,7 @@ serde_json = { workspace = true }
 brotli = { version = "7", optional = true }
 
 [features]
-# Brotli is benchmark-only (Wharf parity check); zstd stays the default.
+# Brotli is benchmark-only (compression cross-check); zstd stays the default.
 brotli-bench = ["dep:brotli"]
 
 [dev-dependencies]

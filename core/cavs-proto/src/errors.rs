@@ -58,8 +58,8 @@ pub enum ErrorCode {
     ContainerApplyFailed,
     /// A directory/container rollback could not restore the previous state.
     ContainerRollbackFailed,
-    /// `cavs bench wharf` needs an external tool that is not available.
-    WharfBenchUnavailable,
+    /// `cavs bench delta` needs an external tool that is not available.
+    DeltaBenchUnavailable,
 }
 
 impl ErrorCode {
@@ -87,7 +87,7 @@ impl ErrorCode {
             ErrorCode::HybridSourceFailed => "CAVS-E-HYBRID-SOURCE-FAILED",
             ErrorCode::ContainerApplyFailed => "CAVS-E-CONTAINER-APPLY-FAILED",
             ErrorCode::ContainerRollbackFailed => "CAVS-E-CONTAINER-ROLLBACK-FAILED",
-            ErrorCode::WharfBenchUnavailable => "CAVS-E-WHARF-BENCH-UNAVAILABLE",
+            ErrorCode::DeltaBenchUnavailable => "CAVS-E-DELTA-BENCH-UNAVAILABLE",
         }
     }
 
@@ -145,7 +145,7 @@ pub const ALL_ERROR_CODES: [ErrorCode; 22] = [
     ErrorCode::HybridSourceFailed,
     ErrorCode::ContainerApplyFailed,
     ErrorCode::ContainerRollbackFailed,
-    ErrorCode::WharfBenchUnavailable,
+    ErrorCode::DeltaBenchUnavailable,
 ];
 
 /// Recover the first `CAVS-E-*` code embedded in a rendered error message

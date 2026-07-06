@@ -4,7 +4,7 @@
 //! reconstructs them back to playable MP4/HLS, inspects, verifies and plays.
 
 mod bench_compression;
-mod bench_wharf;
+mod bench_delta;
 mod classify;
 mod corrupt;
 mod doctor;
@@ -273,7 +273,7 @@ enum SignatureAction {
         /// Treat the input as a raw artifact/directory instead of a .cavs.
         #[arg(long)]
         raw: bool,
-        /// Block size in KiB (64 matches Wharf's empirically chosen size).
+        /// Block size in KiB (64 is the empirical sweet spot for delta scanning).
         #[arg(long, default_value_t = 64)]
         block_kib: u32,
         /// Output .cavssig path.
@@ -331,16 +331,16 @@ enum BenchAction {
         #[arg(long)]
         out: PathBuf,
     },
-    /// Compare CAVS against a Wharf-style patching model (itch.io) on a
-    /// real old/new pair (v0.6.0). Uses xdelta3/bsdiff too when on PATH.
-    Wharf {
+    /// Compare CAVS against a block-based delta patching model on a real
+    /// old/new pair (v0.6.0). Uses xdelta3/bsdiff too when on PATH.
+    Delta {
         /// Old version (file or directory).
         #[arg(long)]
         old: PathBuf,
         /// New version (file or directory — same kind as --old).
         #[arg(long)]
         new: PathBuf,
-        /// Directory for wharf-comparison.{json,md}.
+        /// Directory for delta-comparison.{json,md}.
         #[arg(long)]
         out: Option<PathBuf>,
     },
@@ -544,7 +544,7 @@ fn main() -> Result<()> {
         Command::Bench { action } => match action {
             BenchAction::Gen { out, size, seed } => synth::generate(&out, &size, seed),
             BenchAction::Suite { dataset, out } => synth::suite(&dataset, &out),
-            BenchAction::Wharf { old, new, out } => bench_wharf::bench(&old, &new, out.as_deref()),
+            BenchAction::Delta { old, new, out } => bench_delta::bench(&old, &new, out.as_deref()),
             BenchAction::Compression { input, algos, out } => {
                 bench_compression::bench(&input, &algos, out.as_deref())
             }
