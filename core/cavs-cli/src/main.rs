@@ -3,22 +3,35 @@
 //! Converts videos into `.cavs` (via ffmpeg CMAF/fMP4 segmentation),
 //! reconstructs them back to playable MP4/HLS, inspects, verifies and plays.
 
+mod apply_cmd;
+mod bench_butler;
 mod bench_compression;
 mod bench_delta;
+mod bench_pairwise;
+mod bench_routes;
+mod bench_versions;
 mod classify;
+mod compare;
 mod corrupt;
+mod diff_plan;
 mod doctor;
 mod ffmpeg;
+mod ignore;
+mod inspect_cmd;
 mod manifest_cmd;
+mod optimize_patch;
 mod pack;
 mod pack_dir;
+mod preview;
 mod profile;
 mod report;
 mod signature_cmd;
 mod store;
 mod sweep;
 mod synth;
+mod tool_metrics;
 mod unpack;
+mod verify_install;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -160,13 +173,158 @@ enum Command {
         /// Sign the packed content with this Ed25519 secret key file.
         #[arg(long)]
         sign_key: Option<PathBuf>,
+        /// Exclude entries matching this glob (repeatable; merged with the
+        /// tree root's `.cavsignore`). `*`/`?` stay in one segment, `**`
+        /// crosses, a trailing `/` ignores a whole directory.
+        #[arg(long)]
+        ignore: Vec<String>,
     },
-    /// Export, inspect and verify compact `.cavssig` signatures (v0.6.0):
+    /// Export, inspect, list and verify compact `.cavssig` signatures:
     /// the old version's layout and block hashes, so new versions can be
     /// planned against it without the old bytes.
     Signature {
         #[command(subcommand)]
         action: SignatureAction,
+    },
+    /// Compare a new build against a previous version's `.cavssig`:
+    /// NEW/MODIFIED/DELETED/SAME per entry, estimated update sizes per
+    /// route, and warnings for patch-hostile (compressed) files.
+    Preview {
+        /// The new build (directory or single artifact).
+        new_build: PathBuf,
+        /// The previous version's `.cavssig`.
+        #[arg(long)]
+        against: PathBuf,
+        /// Only print entries that changed.
+        #[arg(long)]
+        changes_only: bool,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Produce a deterministic offline reconstruction plan (`.cavsplan`)
+    /// describing how to rebuild the new build from the old one.
+    DiffPlan {
+        /// The old build (file or directory). Optional with --old-signature.
+        old: Option<PathBuf>,
+        /// The new build (file or directory).
+        new: PathBuf,
+        /// Output `.cavsplan` path.
+        #[arg(short, long)]
+        out: PathBuf,
+        /// Diff against a `.cavssig` instead of the old bytes.
+        #[arg(long)]
+        old_signature: Option<PathBuf>,
+        /// Emit an analysis-only plan (ops and estimates, no payload).
+        #[arg(long)]
+        analysis: bool,
+        /// Signature block size in KiB when signing the old build here.
+        #[arg(long, default_value_t = 64)]
+        block_kib: u32,
+        /// zstd level for the plan's inline payload.
+        #[arg(long, default_value_t = 19)]
+        zstd_level: i32,
+        /// Also write a human-readable Markdown report.
+        #[arg(long)]
+        report: Option<PathBuf>,
+    },
+    /// Apply a `.cavsplan` locally: artifact plans write `<out>.part` then
+    /// rename; directory plans stage, verify, journal and commit per file.
+    /// A failed apply never leaves corrupt output.
+    Apply {
+        /// The old build (file or directory).
+        #[arg(long)]
+        old: Option<PathBuf>,
+        /// The `.cavsplan` to execute.
+        #[arg(long)]
+        plan: Option<PathBuf>,
+        /// Output path (omit with --inplace).
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+        /// Update the old install in place (directory plans).
+        #[arg(long)]
+        inplace: bool,
+        /// Re-verify every output hash after the apply commits.
+        #[arg(long)]
+        verify: bool,
+        /// Delete files the plan marks as removed (managed deletions).
+        #[arg(long)]
+        delete_removed_files: bool,
+        /// Verify the old source against the plan's recorded hash first.
+        #[arg(long)]
+        check_old: bool,
+        /// Resume an interrupted directory apply from its journal.
+        #[arg(long)]
+        resume: Option<PathBuf>,
+        /// Machine-readable JSON stats on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Verify an installed artifact or directory against a `.cavssig` or a
+    /// manifest; reports MODIFIED/MISSING/EXTRA and exits non-zero on
+    /// mismatch.
+    VerifyInstall {
+        /// The installed build (file or directory).
+        target: PathBuf,
+        /// Verify against this `.cavssig`.
+        #[arg(long)]
+        signature: Option<PathBuf>,
+        /// Verify against this manifest's recorded SHA-256 digests.
+        #[arg(long)]
+        manifest: Option<PathBuf>,
+        /// Tolerate files not covered by the signature (mods, saves).
+        #[arg(long)]
+        allow_extra_files: bool,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Identify any CAVS file (.cavs, .cavssig, .cavsplan, .cavspatch,
+    /// manifest, bootstrap) and print its headline facts.
+    File {
+        input: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// List the entries inside a CAVS file (signatures, plans, containers,
+    /// manifests).
+    Ls {
+        input: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Generate an optimized pairwise sidecar (`.cavspatch`, experimental):
+    /// an external byte-level delta (bsdiff/xdelta3) wrapped with CAVS
+    /// verification metadata. Serves exactly one old→new pair — generate
+    /// only for hot pairs; the pair count grows O(N²).
+    OptimizePatch {
+        /// Old artifact.
+        #[arg(long)]
+        old: PathBuf,
+        /// New artifact.
+        #[arg(long)]
+        new: PathBuf,
+        /// bsdiff or xdelta3 (external tool required).
+        #[arg(long, default_value = "bsdiff")]
+        algo: String,
+        /// zstd-N, brotli-N or none.
+        #[arg(long, default_value = "zstd-19")]
+        compression: String,
+        /// Output `.cavspatch` path.
+        #[arg(short, long)]
+        out: PathBuf,
+    },
+    /// Apply a `.cavspatch` sidecar (verifies both ends, atomic rename).
+    ApplyPatch {
+        /// Old artifact (must match the patch's recorded hash).
+        #[arg(long)]
+        old: PathBuf,
+        /// The `.cavspatch` file.
+        #[arg(long)]
+        patch: PathBuf,
+        /// Output path.
+        #[arg(short, long)]
+        out: PathBuf,
     },
     /// Measure candidate chunk profiles on a payload (optionally against its
     /// previous version) and report the cheapest per cost model.
@@ -281,7 +439,19 @@ enum SignatureAction {
         output: PathBuf,
     },
     /// Print a signature's layout, chunk profile and hash counts.
-    Inspect { input: PathBuf },
+    Inspect {
+        input: PathBuf,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// List every entry recorded in a signature.
+    Ls {
+        input: PathBuf,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
     /// Recompute every block hash of a source and compare.
     Verify {
         input: PathBuf,
@@ -356,6 +526,94 @@ enum BenchAction {
         /// Write the report as markdown to this path.
         #[arg(long)]
         out: Option<PathBuf>,
+    },
+    /// Benchmark the external `butler` binary's offline diff/apply/verify
+    /// pipeline on a real old/new pair (v0.7.0). Results are labeled as
+    /// butler's offline/default patch, not itch.io's backend-optimized one.
+    ButlerOffline {
+        /// Old build (file or directory).
+        #[arg(long)]
+        old: PathBuf,
+        /// New build (same kind as --old).
+        #[arg(long)]
+        new: PathBuf,
+        /// Path to the butler binary (default: `butler` on PATH).
+        #[arg(long, default_value = "butler")]
+        butler_bin: String,
+        /// Results directory.
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Approximate the optimized pairwise patch class (bsdiff/xdelta3 +
+    /// recompression) with transparent local tools (v0.7.0). Results are
+    /// labeled as a proxy, never as official itch.io backend numbers.
+    PairwiseProxy {
+        /// Old build (file or directory).
+        #[arg(long)]
+        old: PathBuf,
+        /// New build (same kind as --old).
+        #[arg(long)]
+        new: PathBuf,
+        /// Comma-separated delta tools.
+        #[arg(long, default_value = "bsdiff,xdelta3")]
+        algos: String,
+        /// Comma-separated recompressions (zstd-N, brotli-N, none).
+        #[arg(long, default_value = "zstd-19,brotli-9")]
+        compression: String,
+        /// Results directory.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// Compare every delivery route for one old→new transition (v0.7.0):
+    /// full downloads, CAVS chunk/hybrid, CAVS offline plan, butler
+    /// offline, pairwise proxies. Missing tools are skipped, not fatal.
+    Routes {
+        /// Old build (file or directory).
+        #[arg(long)]
+        old: PathBuf,
+        /// New build (same kind as --old).
+        #[arg(long)]
+        new: PathBuf,
+        /// Also run the external butler harness with this binary.
+        #[arg(long)]
+        butler_bin: Option<String>,
+        /// Include bsdiff/xdelta3 optimized pairwise proxies.
+        #[arg(long)]
+        include_pairwise_proxy: bool,
+        /// Results directory.
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Generate a deterministic synthetic *directory* build pair
+    /// (Build_v1/, Build_v2/) with modified, new, deleted and renamed
+    /// files — the shapes that matter for per-file update delivery.
+    GenDir {
+        /// Output dataset directory.
+        #[arg(long)]
+        out: PathBuf,
+        /// Approximate build size, e.g. 128MiB.
+        #[arg(long, default_value = "128MiB")]
+        size: String,
+        /// PRNG seed (same seed + size => identical trees).
+        #[arg(long, default_value_t = 5)]
+        seed: u64,
+    },
+    /// Many-version stream (v0.7.0): v1→vN with ~3% drift per release;
+    /// compares CAVS store-once delivery against pairwise patch storage
+    /// for adjacent updates, long jumps and reinstalls.
+    VersionStream {
+        /// Results directory.
+        #[arg(long)]
+        out: PathBuf,
+        /// Size of each version.
+        #[arg(long, default_value = "32MiB")]
+        size: String,
+        /// Number of releases in the stream.
+        #[arg(long, default_value_t = 10)]
+        versions: usize,
+        /// PRNG seed.
+        #[arg(long, default_value_t = 5)]
+        seed: u64,
     },
 }
 
@@ -471,6 +729,7 @@ fn main() -> Result<()> {
             no_compress,
             zstd_level,
             sign_key,
+            ignore,
         } => pack_dir::pack_dir(
             &input,
             &output,
@@ -479,6 +738,7 @@ fn main() -> Result<()> {
                 compress: !no_compress,
                 zstd_level,
                 sign_key,
+                ignore,
             },
         ),
         Command::Signature { action } => match action {
@@ -488,9 +748,79 @@ fn main() -> Result<()> {
                 block_kib,
                 output,
             } => signature_cmd::export(&input, raw, block_kib.max(1) * 1024, &output),
-            SignatureAction::Inspect { input } => signature_cmd::inspect(&input),
+            SignatureAction::Inspect { input, json } => signature_cmd::inspect(&input, json),
+            SignatureAction::Ls { input, json } => signature_cmd::ls(&input, json),
             SignatureAction::Verify { input, against } => signature_cmd::verify(&input, &against),
         },
+        Command::Preview {
+            new_build,
+            against,
+            changes_only,
+            json,
+        } => preview::preview(&new_build, &against, changes_only, json),
+        Command::DiffPlan {
+            old,
+            new,
+            out,
+            old_signature,
+            analysis,
+            block_kib,
+            zstd_level,
+            report,
+        } => diff_plan::diff_plan(&diff_plan::DiffPlanArgs {
+            old: old.as_deref(),
+            old_signature: old_signature.as_deref(),
+            new: &new,
+            out: &out,
+            analysis,
+            block_kib,
+            zstd_level,
+            report: report.as_deref(),
+        }),
+        Command::Apply {
+            old,
+            plan,
+            out,
+            inplace,
+            verify,
+            delete_removed_files,
+            check_old,
+            resume,
+            json,
+        } => apply_cmd::apply(&apply_cmd::ApplyArgs {
+            old: old.as_deref(),
+            plan: plan.as_deref(),
+            out: out.as_deref(),
+            inplace,
+            verify,
+            delete_removed: delete_removed_files,
+            check_old,
+            resume: resume.as_deref(),
+            json,
+        }),
+        Command::VerifyInstall {
+            target,
+            signature,
+            manifest,
+            allow_extra_files,
+            json,
+        } => verify_install::verify_install(
+            &target,
+            signature.as_deref(),
+            manifest.as_deref(),
+            allow_extra_files,
+            json,
+        ),
+        Command::File { input, json } => inspect_cmd::file_info(&input, json),
+        Command::Ls { input, json } => inspect_cmd::ls(&input, json),
+        Command::OptimizePatch {
+            old,
+            new,
+            algo,
+            compression,
+            out,
+        } => optimize_patch::generate(&old, &new, &algo, &compression, &out),
+        Command::ApplyPatch { old, patch, out } => optimize_patch::apply(&old, &patch, &out),
         Command::Sweep {
             input,
             prev,
@@ -543,11 +873,44 @@ fn main() -> Result<()> {
         },
         Command::Bench { action } => match action {
             BenchAction::Gen { out, size, seed } => synth::generate(&out, &size, seed),
+            BenchAction::GenDir { out, size, seed } => synth::generate_dir(&out, &size, seed),
             BenchAction::Suite { dataset, out } => synth::suite(&dataset, &out),
             BenchAction::Delta { old, new, out } => bench_delta::bench(&old, &new, out.as_deref()),
             BenchAction::Compression { input, algos, out } => {
                 bench_compression::bench(&input, &algos, out.as_deref())
             }
+            BenchAction::ButlerOffline {
+                old,
+                new,
+                butler_bin,
+                out,
+            } => bench_butler::bench(&old, &new, &butler_bin, &out),
+            BenchAction::PairwiseProxy {
+                old,
+                new,
+                algos,
+                compression,
+                out,
+            } => bench_pairwise::bench(&old, &new, &algos, &compression, out.as_deref()),
+            BenchAction::Routes {
+                old,
+                new,
+                butler_bin,
+                include_pairwise_proxy,
+                out,
+            } => bench_routes::bench(&bench_routes::RoutesArgs {
+                old: &old,
+                new: &new,
+                butler_bin: butler_bin.as_deref(),
+                include_pairwise_proxy,
+                out: &out,
+            }),
+            BenchAction::VersionStream {
+                out,
+                size,
+                versions,
+                seed,
+            } => bench_versions::bench(&out, &size, versions, seed),
         },
     }
 }

@@ -44,6 +44,12 @@ a pixel codec.
   every decoder is fuzzed and survives full byte-flip/truncation sweeps;
   failures carry stable `CAVS-E-*` error codes; and `cavs doctor` diagnoses
   a deployment in one command.
+- **Offline toolkit (v0.7.0)**: sign, preview, diff, apply, verify and
+  benchmark builds locally with no server — `cavs preview` /`diff-plan` /
+  `apply` / `verify-install` / `file` / `ls`, portable `.cavsplan` patches
+  with journaled staged applies, stable directory mode with `.cavsignore`,
+  and a fair external **butler offline** benchmark plus a multi-route
+  comparison suite.
 - **Complementary, not competitive**: use the best codec/compressor for the
   bytes; CAVS deduplicates and transports above them.
 
@@ -242,6 +248,59 @@ Already-current outputs are detected and skipped (no-op: 0 bytes), every
 copied range is BLAKE3-verified before it is written, and a corrupt old
 install demotes to cache/network instead of failing.
 
+### Offline toolkit (v0.7.0)
+
+Sign, preview, diff, apply and verify updates locally — no CAVS server. The
+offline apply uses the same verified reconstruction model as the online
+client, so a `.cavsplan` update is byte-identical or it fails:
+
+```sh
+# 1. Describe the released version once (compact, ~0.07% of the source)
+./target/release/cavs signature export ./Build_v1 --raw -o build_v1.cavssig
+
+# 2. See what the next build changes before publishing anything
+./target/release/cavs preview ./Build_v2 --against build_v1.cavssig --changes-only
+
+# 3. Produce a deterministic offline update plan (a portable patch)
+./target/release/cavs diff-plan ./Build_v1 ./Build_v2 -o update.cavsplan --report plan.md
+
+# 4. Apply it in place — staged, journaled, verified, mod-friendly
+./target/release/cavs apply --old ./InstalledGame --plan update.cavsplan --inplace --verify
+
+# 5. Check any install against a known-good signature (mods tolerated)
+./target/release/cavs verify-install ./InstalledGame --signature build_v2.cavssig --allow-extra-files
+
+# Identify/inspect any CAVS file
+./target/release/cavs file update.cavsplan
+./target/release/cavs ls build_v1.cavssig
+```
+
+Directory builds are first-class: `cavs pack-dir ./Build -o b.cavs --ignore
+'*.pdb' --ignore 'logs/'` (also reads a root `.cavsignore`). Measured on a
+128 MiB build, the offline `.cavsplan` update is **2.51 MiB** (directory) and
+**1.94 MiB** (single artifact) — matching butler's offline patch while
+applying with a streaming ~8 MiB memory budget. Benchmark it yourself:
+
+```sh
+# Every delivery route for one transition (butler + pairwise proxies optional)
+./target/release/cavs bench routes --old ./Build_v1 --new ./Build_v2 \
+  --butler-bin ./butler --include-pairwise-proxy --out results/routes
+
+# Fair external butler offline diff/apply/verify harness
+./target/release/cavs bench butler-offline --old ./Build_v1 --new ./Build_v2 \
+  --butler-bin ./butler --out results/butler
+
+# Many-version storage: store-once vs per-pair patches
+./target/release/cavs bench version-stream --out results/stream --versions 10
+```
+
+The butler harness measures butler's **offline/default** patch, not itch.io's
+backend-optimized patch; bsdiff/xdelta3 results are labeled as an optimized
+pairwise **proxy**. Full tables and framing:
+[docs/ROUTE_BENCHMARKS.md](docs/ROUTE_BENCHMARKS.md),
+[docs/BUTLER_COMPARISON.md](docs/BUTLER_COMPARISON.md),
+[docs/OFFLINE_TOOLKIT.md](docs/OFFLINE_TOOLKIT.md).
+
 ### Analyze a Steam build
 
 ```sh
@@ -262,7 +321,11 @@ See [`godot-plugin/README.md`](godot-plugin/README.md) for game integration and
   packfile layout), inspect manifest formats
   (`manifest export` / `manifest bench`), diagnose deployments
   (`doctor`), run the corruption matrix (`test corrupt`) and generate/run
-  reproducible large-build benchmarks (`bench gen` / `bench suite`).
+  reproducible large-build benchmarks (`bench gen` / `bench suite`). v0.7.0
+  adds the offline toolkit (`signature` / `preview` / `diff-plan` / `apply` /
+  `verify-install` / `file` / `ls`, `pack-dir` with `.cavsignore`,
+  `optimize-patch`) and the external benchmark harnesses
+  (`bench butler-offline` / `pairwise-proxy` / `routes` / `version-stream`).
 - **`cavs-server`**: stateful HTTP/HTTPS origin. Per-session have-set,
   inline/reference planning, dual-route decision (bootstrap vs chunks) per
   client, manifest format negotiation (compact binary v2 / JSON v1), CVSP

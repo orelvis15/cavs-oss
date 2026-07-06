@@ -22,6 +22,7 @@ cavs-manifest = { workspace = true }
 cavs-proto = { workspace = true }
 cavs-store = { workspace = true }
 cavs-signature = { workspace = true }
+cavs-plan = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
 uuid = { workspace = true }

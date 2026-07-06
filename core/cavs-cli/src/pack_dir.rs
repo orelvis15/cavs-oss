@@ -1,16 +1,21 @@
-//! `cavs pack-dir` (v0.6.0 preview) — package a directory tree as a
+//! `cavs pack-dir` (stable since v0.7.0) — package a directory tree as a
 //! deduplicated container: one data track per file (relative path as the
 //! logical name), plus meta records for empty directories, symlinks and
 //! executable bits. Clients apply directory assets with per-file no-op
 //! detection and staged, journaled installs.
 //!
-//! Platform notes (preview limitations):
+//! Path rules: entries travel as UTF-8 forward-slash relative paths;
+//! absolute paths and `..` traversal are rejected. Ignore rules come from
+//! `--ignore` globs and a `.cavsignore` file at the tree root.
+//!
+//! Platform notes:
 //! - Unix permissions are reduced to one executable bit, best-effort on
 //!   Windows.
 //! - Symlinks are recorded and recreated on Unix; skipped elsewhere.
 //! - Hardlinks are not detected (each file packs independently; dedup
 //!   makes the cost negligible).
 
+use crate::ignore::IgnoreRules;
 use crate::profile::ChunkProfile;
 use crate::report;
 use anyhow::{bail, Context, Result};
@@ -25,6 +30,8 @@ pub struct PackDirOptions {
     pub compress: bool,
     pub zstd_level: i32,
     pub sign_key: Option<PathBuf>,
+    /// `--ignore` glob patterns (merged with the root's `.cavsignore`).
+    pub ignore: Vec<String>,
 }
 
 pub fn pack_dir(input: &Path, output: &Path, opts: &PackDirOptions) -> Result<()> {
@@ -49,18 +56,28 @@ pub fn pack_dir(input: &Path, output: &Path, opts: &PackDirOptions) -> Result<()
     w.set_meta("packer", concat!("cavs-cli ", env!("CARGO_PKG_VERSION")));
     w.set_meta("payload", "directory");
 
+    let rules = IgnoreRules::load(input, &opts.ignore)?;
     let entries = walk_sorted(input)?;
     let mut track_id = 0u32;
     let mut segment_id = 0u64;
     let mut files = 0u64;
+    let mut ignored = 0u64;
     let mut total_bytes = 0u64;
     for rel in entries {
         let full = input.join(&rel);
         let rel_str = rel.to_string_lossy().replace('\\', "/");
-        if rel_str.contains("..") {
-            bail!("unsafe path in tree: {rel_str}");
+        if !cavs_plan::path_is_safe(&rel_str) {
+            bail!(
+                "{}",
+                cavs_proto::errors::ErrorCode::PathTraversal
+                    .msg(format!("unsafe path in tree: {rel_str}"))
+            );
         }
         let meta = std::fs::symlink_metadata(&full)?;
+        if rules.matches(&rel_str, meta.is_dir() && !meta.file_type().is_symlink()) {
+            ignored += 1;
+            continue;
+        }
         if meta.file_type().is_symlink() {
             let target = std::fs::read_link(&full)?;
             w.set_meta(&format!("symlink:{rel_str}"), &target.to_string_lossy());
@@ -112,8 +129,12 @@ pub fn pack_dir(input: &Path, output: &Path, opts: &PackDirOptions) -> Result<()
         bail!("{} contains no files", input.display());
     }
     eprintln!(
-        "[pack-dir] {} files, {} bytes, profile {label} (directory mode preview)",
-        files, total_bytes
+        "[pack-dir] {files} files, {total_bytes} bytes, profile {label}{}",
+        if ignored > 0 {
+            format!(" ({ignored} entries ignored)")
+        } else {
+            String::new()
+        }
     );
     let stats = w.finish()?;
     report::print_pack_stats(output, &stats);

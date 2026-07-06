@@ -285,14 +285,14 @@ checksum = "8ae3f5d315924270530207e2a68396c3cc547f6dca3fbdca317cfb1a51edb593"
 
 [[package]]
 name = "cavs-chunker"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "fastcdc",
 ]
 
 [[package]]
 name = "cavs-cli"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "brotli",
@@ -300,6 +300,7 @@ dependencies = [
  "cavs-format",
  "cavs-hash",
  "cavs-manifest",
+ "cavs-plan",
  "cavs-proto",
  "cavs-signature",
  "cavs-store",
@@ -316,7 +317,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-client"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "cavs-chunker",
@@ -339,7 +340,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-format"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "cavs-hash",
  "cavs-store",
@@ -351,14 +352,14 @@ dependencies = [
 
 [[package]]
 name = "cavs-hash"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "blake3",
 ]
 
 [[package]]
 name = "cavs-manifest"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "cavs-format",
  "cavs-hash",
@@ -369,8 +370,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cavs-plan"
+version = "0.7.0"
+dependencies = [
+ "cavs-hash",
+ "cavs-proto",
+ "cavs-signature",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "zstd",
+]
+
+[[package]]
 name = "cavs-proto"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "cavs-hash",
  "serde",
@@ -380,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-rebuild-plan"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -388,7 +403,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-server"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -411,7 +426,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-signature"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "cavs-hash",
  "tempfile",
@@ -420,7 +435,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-steam"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "cavs-chunker",
@@ -435,7 +450,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-store"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "cavs-hash",
  "serde",

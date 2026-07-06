@@ -244,6 +244,71 @@ self-repairs. Full tables, timings and framing:
 (`bench compression`): zstd and Brotli within 0.1 % on size here, zstd
 ~40× faster decode — zstd-3 stays the default.
 
+## Offline toolkit & multi-route comparison (v0.7.0)
+
+v0.7.0 adds a local toolkit (`preview`/`diff-plan`/`apply`/`verify-install`)
+and benchmark harnesses that put every delivery route in one table for the
+same transition. Numbers below are from `cavs bench routes` on the 128 MiB
+synthetic builds (seed 5), Apple Silicon, **butler v15.27.0**, xdelta3 3.2.0,
+system bsdiff. Every route ended byte-identical (`cmp`/BLAKE3).
+
+### Directory build, typical release (125.8 → 126.9 MiB)
+
+| Route | Network bytes | Diff | Apply | Peak RSS |
+|---|---:|---:|---:|---:|
+| full download (raw) | 126.89 MiB | — | 0 ms | — |
+| full zstd-19 (bootstrap) | 62.12 MiB | 3.9 s | 14 ms | — |
+| CAVS chunk / hybrid (wire) | 5.42 MiB | 301 ms | — | — |
+| **CAVS offline plan (`.cavsplan`)** | **2.51 MiB** | **488 ms** | **262 ms** | streaming |
+| butler offline/default patch | 2.52 MiB (+62 KiB sig) | 983 ms | 348 ms | 35 MiB |
+| pairwise proxy: bsdiff+zstd-19 | 3.02 MiB | 25.0 s | 3.4 s | 2.3 GiB |
+| pairwise proxy: xdelta3+zstd-19 | 3.01 MiB | 4.3 s | 3.7 s | 397 MiB |
+
+The offline plan is **half** the v0.6 chunk-route wire (one zstd-19 payload
+stream instead of per-chunk compression), ties butler on bytes, diffs 2×
+faster, and applies with a streaming ~8 MiB budget rather than butler's 35 MiB
+or bsdiff's 2.3 GiB.
+
+### Single 128 MiB artifact
+
+| Pair | full zstd-19 | CAVS chunk/hybrid | **CAVS plan** | butler offline | bsdiff proxy | xdelta3 proxy |
+|---|---:|---:|---:|---:|---:|---:|
+| small change (~3%) | 64.05 MiB | 6.06 MiB | **1.94 MiB** | 1.94 MiB | 1.96 MiB | 1.94 MiB |
+| shifted (every byte moves) | 64.06 MiB | 10.90 KiB | **4.21 KiB** | 68.13 KiB | 4.59 KiB | 4.34 KiB |
+
+Four tools land within 1 % on the small change — the changed bytes are the
+floor; the difference is time, memory and delivery model. On the shifted
+artifact CAVS's content-defined blocks survive the unaligned insert and match
+the byte-level tools, beating butler's fixed-block scan **16×**.
+
+### Directory vs one compressed blob (same content change, 62 MiB)
+
+| Shape | CAVS offline plan | butler offline | xdelta3 proxy |
+|---|---:|---:|---:|
+| directory build | **2.51 MiB** | 2.52 MiB | 3.01 MiB |
+| same build as one zstd blob | 21.92 MiB | 21.92 MiB | 2.53 MiB |
+
+Block-level delivery of a compressed archive costs **~9×** more than the same
+change in directory mode — the compression cascades one edit across the whole
+output. `cavs preview` warns about this shape; publish folders, not archives.
+
+### Many-version stream (10 versions × 32 MiB, ~3 % drift/release)
+
+| Method | Storage | Adjacent updates | v1→v10 jump | Any-pair coverage |
+|---|---:|---:|---:|---|
+| CAVS packfile store | **30.60 MiB** (10 packs) | 13.70 MiB total | 8.95 MiB | every pair, same objects |
+| bsdiff patches | 4.23 MiB (9 adjacent) + full artifacts | 4.23 MiB total | 3.60 MiB (dedicated) | needs 45 patches (O(N²)) or chain-apply |
+
+Per-pair, bsdiff is smaller — expected and fine. The store-once model wins on
+the operational axis: ten versions fit in less space than one raw build, and
+*any* jump (v1→v10, v3→v10, reinstall) is served from the same immutable
+objects with zero per-pair generation.
+
+butler numbers are its **offline/default** patch, not itch.io's
+backend-optimized patch; bsdiff/xdelta3 are labeled optimized pairwise
+**proxies**. Full framing: [BUTLER_COMPARISON.md](BUTLER_COMPARISON.md),
+[ROUTE_BENCHMARKS.md](ROUTE_BENCHMARKS.md).
+
 ## Honest negatives (video suite)
 
 CAVS is not a codec and doesn't pretend to be:

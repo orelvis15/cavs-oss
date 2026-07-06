@@ -469,11 +469,12 @@
   <div class="nav-inner">
     <a href="#top" class="brand">
       <img src="assets/logo.png" alt="CAVS logo" />
-      CAVS <span class="tag">v0.6.0</span>
+      CAVS <span class="tag">v0.7.0</span>
     </a>
     <nav class="nav-links" id="navLinks">
       <a href="#benchmarks">Benchmarks</a>
       <a href="#hybrid">Hybrid</a>
+      <a href="#offline">Offline</a>
       <a href="#how">How it works</a>
       <a href="#compare">Vs. deltas</a>
       <a href="#quickstart">Quickstart</a>
@@ -509,7 +510,7 @@
         <div class="trust">
           <span><i class="dot"></i>Byte-identical reconstruction</span>
           <span><i class="dot"></i>Warm re-fetch: 0 bytes</span>
-          <span><i class="dot"></i>v0.6.0: reuse the installed version</span>
+          <span><i class="dot"></i>v0.7.0: offline sign · diff · apply · verify</span>
         </div>
       </div>
 
@@ -718,6 +719,58 @@
     </div>
     <div class="callout">
       No regression: with a warm cache the wire cost is byte-for-byte identical to v0.5, and a corrupt old install demotes to the network per range instead of failing — the output is always <span class="big">byte-identical</span>.
+    </div>
+  </div>
+</section>
+
+<!-- ============ OFFLINE TOOLKIT (v0.7.0) ============ -->
+<section id="offline">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Offline toolkit — v0.7.0</span>
+      <h2 class="section-title">Sign, preview, diff, apply<br>and verify — no server.</h2>
+      <p class="section-sub">v0.7.0 turns CAVS into a complete local toolkit. Describe a release with a compact <span class="mono">.cavssig</span>, see exactly what the next build changes, produce a deterministic <span class="mono">.cavsplan</span> patch, and apply it with the same verified reconstruction the online client uses — staged, journaled, byte-identical or it fails.</p>
+    </div>
+    <div class="cards g4" style="margin-bottom:26px;">
+      <div class="card reveal">
+        <span class="idx">// preview</span>
+        <h3>See the change first</h3>
+        <p><span class="mono">cavs preview</span> classifies every entry NEW / MODIFIED / DELETED / SAME, estimates the update per route, and warns when a compressed file will patch badly.</p>
+      </div>
+      <div class="card reveal" style="transition-delay:.05s">
+        <span class="idx">// diff-plan</span>
+        <h3>Portable .cavsplan</h3>
+        <p>A deterministic, BLAKE3-sealed patch: copy-ranges from the old build plus zstd-19 fresh data. Diff against just the old signature — no old bytes needed.</p>
+      </div>
+      <div class="card reveal" style="transition-delay:.1s">
+        <span class="idx">// apply</span>
+        <h3>Safe staged apply</h3>
+        <p><span class="mono">cavs apply --inplace</span> stages, verifies every file, journals, then commits. Interrupt it and re-run; mods and unchanged files are left untouched.</p>
+      </div>
+      <div class="card reveal" style="transition-delay:.15s">
+        <span class="idx">// verify-install</span>
+        <h3>Verify any install</h3>
+        <p><span class="mono">cavs verify-install</span> checks a folder against a signature, reporting MODIFIED / MISSING / EXTRA — with <span class="mono">--allow-extra-files</span> for saves and mods.</p>
+      </div>
+    </div>
+    <p class="section-sub" style="margin-bottom:14px;">Every route for the same update, measured — 128&nbsp;MiB directory build, butler v15.27.0, xdelta3, bsdiff. Every output byte-identical.</p>
+    <div class="table-wrap reveal">
+      <table>
+        <thead>
+          <tr><th>Route</th><th class="num">Network bytes</th><th class="num">Apply</th><th class="num">Peak RAM</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Full download (zstd-19)</td><td class="num strike">62.12 MiB</td><td class="num">14 ms</td><td class="num">—</td></tr>
+          <tr><td>CAVS chunk / hybrid (wire)</td><td class="num">5.42 MiB</td><td class="num">—</td><td class="num">streaming</td></tr>
+          <tr style="background:rgba(56,189,248,0.04)"><td><strong class="blue">CAVS offline plan (.cavsplan)</strong></td><td class="num blue">2.51 MiB</td><td class="num">262 ms</td><td class="num">~8 MiB</td></tr>
+          <tr><td>butler offline/default patch</td><td class="num">2.52 MiB</td><td class="num">348 ms</td><td class="num">35 MiB</td></tr>
+          <tr><td>Pairwise proxy (xdelta3+zstd-19)</td><td class="num">3.01 MiB</td><td class="num">3.7 s</td><td class="num">397 MiB</td></tr>
+          <tr><td>Pairwise proxy (bsdiff+zstd-19)</td><td class="num">3.02 MiB</td><td class="num">3.4 s</td><td class="num blue">2.3 GiB</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      On a shifted artifact (every byte moved) the offline plan ships <span class="big">4.21 KiB</span> vs butler's 68 KiB — 16× less — and ties the byte-level tools. The butler harness measures butler's offline/default patch, not itch.io's backend-optimized patch; bsdiff/xdelta3 are labeled as an optimized pairwise proxy.
     </div>
   </div>
 </section>
@@ -932,6 +985,17 @@
 <span class="comment">#                "network_bytes": 6544479 },   ← −90% vs a cold v0.5 fetch</span>
 <span class="comment">#   "reconstructed_sha256_ok": true }</span></pre>
       </div>
+      <div style="grid-column:1 / -1;">
+        <p class="mono" style="color:var(--green); font-size:13px; margin-bottom:10px;">6 — v0.7.0: offline patch — no server (sign · preview · diff · apply · verify)</p>
+        <pre class="code"><span class="prompt">$</span> cavs signature export ./Build_v1 <span class="flag">--raw</span> <span class="flag">-o</span> build_v1.cavssig
+<span class="prompt">$</span> cavs preview ./Build_v2 <span class="flag">--against</span> build_v1.cavssig <span class="flag">--changes-only</span>
+<span class="prompt">$</span> cavs diff-plan ./Build_v1 ./Build_v2 <span class="flag">-o</span> update.cavsplan
+<span class="prompt">$</span> cavs apply <span class="flag">--old</span> ./InstalledGame <span class="flag">--plan</span> update.cavsplan <span class="flag">--inplace</span> <span class="flag">--verify</span>
+
+<span class="comment"># apply : OK — InstalledGame (verified)</span>
+<span class="comment">#   files : 6 written, 38 unchanged (no-op), 2 deleted</span>
+<span class="comment">#   bytes : 20.58 MiB — 19.00 MiB from the old install, 1.58 MiB from the plan</span></pre>
+      </div>
     </div>
   </div>
 </section>
@@ -967,6 +1031,7 @@
       <div class="rel-row"><span class="ver">v0.4.0</span><span class="focus">Packfile storage</span><span class="res">5,775 chunk objects → 6 packfiles on tps-demo</span></div>
       <div class="rel-row"><span class="ver">v0.5.0</span><span class="focus">Production hardening</span><span class="res">Resume, repair, fuzzing, corruption matrix, large-build suite</span></div>
       <div class="rel-row"><span class="ver">v0.6.0</span><span class="focus">Hybrid reconstruction</span><span class="res">Reuse the installed version: −90% updates on a cold cache, signatures, directory mode</span></div>
+      <div class="rel-row"><span class="ver">v0.7.0</span><span class="focus">Offline toolkit</span><span class="res">Sign, preview, diff, apply, verify locally; portable .cavsplan patches; fair butler + multi-route benchmarks</span></div>
     </div>
   </div>
 </section>
@@ -1031,6 +1096,8 @@
       <div class="faq-item"><button class="faq-q">Is CAVS a codec?</button><div class="faq-a"><p>No. CAVS does not compress pixels like AV1, H.264 or HEVC. It deduplicates and delivers already-built content-addressed chunks. For single videos or ABR ladders, savings are expected to be near zero.</p></div></div>
       <div class="faq-item"><button class="faq-q">Why not just use xdelta3 or bsdiff?</button><div class="faq-a"><p>Pairwise delta tools can produce smaller patches for one exact version pair. CAVS is designed for version streams: package once per release, serve many version jumps, reuse cache across versions, resume safely, and expose immutable CDN-cacheable storage.</p></div></div>
       <div class="faq-item"><button class="faq-q">Can CAVS reuse the version already installed?</button><div class="faq-a"><p>Yes, since v0.6.0. Pass <span class="mono">--previous-artifact</span> and the client copies verified ranges straight from the old file, downloading only what changed — even with an empty chunk cache. On a 128&nbsp;MiB build a small update drops from 64.55&nbsp;MiB to 6.24&nbsp;MiB (−90%). Every copied range is BLAKE3-checked before it is written, and a corrupt old install safely falls back to the network.</p></div></div>
+      <div class="faq-item"><button class="faq-q">Can I diff and apply updates without a CAVS server?</button><div class="faq-a"><p>Yes, since v0.7.0. <span class="mono">cavs diff-plan</span> produces a deterministic, BLAKE3-sealed <span class="mono">.cavsplan</span> — copy-ranges from the old build plus zstd-19 fresh data — and <span class="mono">cavs apply</span> reconstructs it locally with the same verified staged model as the online client (byte-identical or it fails). <span class="mono">cavs preview</span>, <span class="mono">verify-install</span>, <span class="mono">file</span> and <span class="mono">ls</span> complete the offline workflow.</p></div></div>
+      <div class="faq-item"><button class="faq-q">How does CAVS compare to butler?</button><div class="faq-a"><p><span class="mono">cavs bench butler-offline</span> and <span class="mono">bench routes</span> drive a real butler binary and put every route in one table. On a 128&nbsp;MiB directory build the CAVS offline plan ties butler on bytes (2.51 vs 2.52&nbsp;MiB) while applying with a streaming ~8&nbsp;MiB budget vs 35&nbsp;MiB, and beats it 16× on a shifted artifact. The harness measures butler's offline/default patch, not itch.io's backend-optimized patch; bsdiff/xdelta3 results are labeled an optimized pairwise proxy. CAVS optimizes a different model: package once per release, serve any version jump from one content-addressed store.</p></div></div>
       <div class="faq-item"><button class="faq-q">Does CAVS preserve the original file?</button><div class="faq-a"><p>Yes. CAVS reconstructs the final artifact byte-for-byte and verifies it with SHA-256 before promotion. Reconstruction is byte-identical or it fails — never halfway.</p></div></div>
       <div class="faq-item"><button class="faq-q">What happens if a download is interrupted?</button><div class="faq-a"><p>v0.5.0 keeps a crash-safe journal and resumes bootstrap downloads with HTTP Range when possible. Chunk fetches resume from the persistent cache have-set.</p></div></div>
       <div class="faq-item"><button class="faq-q">What if the client cache is corrupt?</button><div class="faq-a"><p>The client can verify cached chunks, quarantine corrupt entries, and repair only the missing or corrupt chunks from the server — returning to zero-payload re-fetches afterward.</p></div></div>

@@ -1,0 +1,23 @@
+[package]
+name = "cavs-plan"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Offline reconstruction plans (.cavsplan): deterministic diff, portable patches and journaled applies for CAVS."
+repository.workspace = true
+homepage.workspace = true
+keywords = ["cavs", "diff", "patch", "delta", "offline"]
+categories = ["compression", "game-development"]
+
+[dependencies]
+cavs-hash = { workspace = true }
+cavs-signature = { workspace = true }
+cavs-proto = { workspace = true }
+thiserror = { workspace = true }
+zstd = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

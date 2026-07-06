@@ -31,13 +31,13 @@ const BLOCK: usize = 64 * 1024;
 const REORDER_GROUP: u64 = 128;
 
 /// xorshift64*: tiny, fast, deterministic across platforms.
-struct Rng(u64);
+pub(crate) struct Rng(u64);
 
 impl Rng {
-    fn new(seed: u64) -> Self {
+    pub(crate) fn new(seed: u64) -> Self {
         Rng(seed.max(1))
     }
-    fn next(&mut self) -> u64 {
+    pub(crate) fn next(&mut self) -> u64 {
         let mut x = self.0;
         x ^= x >> 12;
         x ^= x << 25;
@@ -50,7 +50,7 @@ impl Rng {
 /// The content of block `index` for a given generation `salt`. Even
 /// blocks are compressible (repeating 32-byte pattern), odd blocks are
 /// PRNG noise — a 50/50 mix. Changing the salt changes the bytes.
-fn block_bytes(seed: u64, salt: u64, index: u64) -> Vec<u8> {
+pub(crate) fn block_bytes(seed: u64, salt: u64, index: u64) -> Vec<u8> {
     let mut rng = Rng::new(seed ^ salt.wrapping_mul(0x9E3779B97F4A7C15) ^ index.rotate_left(17));
     let mut out = vec![0u8; BLOCK];
     if index.is_multiple_of(2) {
@@ -351,6 +351,119 @@ fn write_summaries(
     std::fs::write(out.join("summary.md"), md)?;
     std::fs::write(out.join("summary.json"), json)?;
     Ok(())
+}
+
+/// Deterministic synthetic *directory* builds (v0.7.0): `Build_v1/` plus a
+/// `Build_v2/` with the update shapes that matter for per-file delivery —
+/// one big artifact with a 3% block change, an edited catalog, added,
+/// deleted and renamed assets, and untouched files that must no-op.
+pub fn generate_dir(out: &Path, size: &str, seed: u64) -> Result<()> {
+    let total = parse_size(size)?;
+    let v1 = out.join("Build_v1");
+    let v2 = out.join("Build_v2");
+    for d in [&v1, &v2] {
+        if d.exists() {
+            std::fs::remove_dir_all(d)?;
+        }
+        std::fs::create_dir_all(d.join("assets"))?;
+        std::fs::create_dir_all(d.join("bin"))?;
+        std::fs::create_dir_all(d.join("data"))?;
+    }
+
+    // Layout: 60% one PCK-like artifact, 5% engine binary, ~2% textual
+    // catalog, the rest split across 40 small assets.
+    let pck_blocks = (total * 60 / 100).div_ceil(BLOCK as u64).max(2);
+    let bin_blocks = (total * 5 / 100).div_ceil(BLOCK as u64).max(1);
+    let asset_blocks = ((total * 33 / 100) / 40).div_ceil(BLOCK as u64).max(1);
+
+    let write_blocks =
+        |path: &Path, blocks: u64, salt_of: &dyn Fn(u64) -> u64, tag: u64| -> Result<()> {
+            let mut file = std::io::BufWriter::new(std::fs::File::create(path)?);
+            for i in 0..blocks {
+                file.write_all(&block_bytes(seed ^ tag, salt_of(i), i))?;
+            }
+            file.flush()?;
+            Ok(())
+        };
+
+    // game.pck: v2 changes ~3% of blocks.
+    let changed: HashSet<u64> = {
+        let mut rng = Rng::new(seed.wrapping_mul(97).wrapping_add(3));
+        let target = (pck_blocks * 3 / 100).max(1);
+        let mut set = HashSet::new();
+        while (set.len() as u64) < target {
+            set.insert(rng.next() % pck_blocks);
+        }
+        set
+    };
+    write_blocks(&v1.join("game.pck"), pck_blocks, &|_| 0, 1)?;
+    write_blocks(
+        &v2.join("game.pck"),
+        pck_blocks,
+        &|i| if changed.contains(&i) { 1 } else { 0 },
+        1,
+    )?;
+
+    // Engine binary: identical in both versions (must no-op), executable.
+    write_blocks(&v1.join("bin/game"), bin_blocks, &|_| 0, 2)?;
+    write_blocks(&v2.join("bin/game"), bin_blocks, &|_| 0, 2)?;
+    #[cfg(unix)]
+    for d in [&v1, &v2] {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(d.join("bin/game"), std::fs::Permissions::from_mode(0o755))?;
+    }
+
+    // Textual catalog: small edit in v2.
+    let catalog_v1: String = (0..2000)
+        .map(|i| format!("asset_{i:04} = {{ id = {i}, price = {} }}\n", i * 7 % 991))
+        .collect();
+    std::fs::write(v1.join("data/catalog.json"), &catalog_v1)?;
+    let catalog_v2 = catalog_v1.replace("price = 700", "price = 350")
+        + "asset_2000 = { id = 2000, price = 42 }\n";
+    std::fs::write(v2.join("data/catalog.json"), catalog_v2)?;
+
+    // 40 small assets: v2 adds 2, deletes 1, renames 1, edits 1.
+    for n in 0..40u64 {
+        let name = format!("assets/asset_{n:02}.dat");
+        write_blocks(&v1.join(&name), asset_blocks, &|_| 0, 100 + n)?;
+        match n {
+            // deleted in v2
+            7 => {}
+            // renamed in v2 (same bytes, new name)
+            13 => write_blocks(
+                &v2.join("assets/asset_13_renamed.dat"),
+                asset_blocks,
+                &|_| 0,
+                100 + n,
+            )?,
+            // edited in v2
+            21 => write_blocks(&v2.join(&name), asset_blocks, &|_| 1, 100 + n)?,
+            _ => write_blocks(&v2.join(&name), asset_blocks, &|_| 0, 100 + n)?,
+        }
+    }
+    for n in 40..42u64 {
+        let name = format!("assets/asset_{n:02}.dat");
+        write_blocks(&v2.join(&name), asset_blocks, &|_| 0, 100 + n)?;
+    }
+
+    println!(
+        "dataset : {} — Build_v1 ({}) and Build_v2 with modified/new/deleted/renamed files",
+        out.display(),
+        human_bytes(dir_size(&v1)?),
+    );
+    Ok(())
+}
+
+fn dir_size(root: &Path) -> Result<u64> {
+    Ok(walk_files(root)?
+        .iter()
+        .map(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+        .sum())
+}
+
+/// Public alias used by other bench modules.
+pub(crate) fn parse_size_pub(s: &str) -> Result<u64> {
+    parse_size(s)
 }
 
 /// Parse a human size: plain bytes or 1024-based KiB/MiB/GiB/TiB suffixes.

@@ -6,6 +6,97 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0]
+
+The offline toolkit release. CAVS can now sign, preview, diff, apply, verify
+and benchmark game-build updates **locally, with no CAVS server** — the same
+verified copy-range + fresh-data reconstruction model the online client uses,
+driven from the command line. This release also adds a fair external **butler
+offline** benchmark harness and a multi-route benchmark suite so CAVS can be
+compared honestly against full downloads, butler and pairwise delta tools.
+
+Measured highlights (128 MiB synthetic builds, seed 5; butler v15.27.0,
+xdelta3 3.2.0, bsdiff). On a typical directory-build release the offline
+`.cavsplan` update is **2.51 MiB** — half the v0.6 chunk-route wire (5.42 MiB),
+matching butler's 2.52 MiB while diffing 2× faster and applying with a
+streaming 8 MiB memory budget instead of butler's 35 MiB (and bsdiff's
+2.3 GiB). On a shifted artifact (every byte moved) CAVS ships **4.21 KiB** vs
+butler's 68 KiB — 16× less — and ties the byte-level tools. The many-version
+stream shows the store-once model: 10 versions of a 32 MiB build live in a
+**30.6 MiB** content-addressed store that serves *any* jump directly, where
+covering every pair with dedicated patches would need 45 of them. Every route
+was verified byte-identical.
+
+### Added
+
+- **`cavs preview`** — classify a new build against the previous version's
+  `.cavssig` as `NEW` / `MODIFIED` / `DELETED` / `SAME`, estimate the update
+  cost per route, and warn when a large modified file looks
+  compressed/high-entropy (small source changes cascade across compressed
+  output — publish the folder instead). `--changes-only`, `--json`.
+- **`cavs diff-plan`** — produce a deterministic, BLAKE3-sealed offline
+  reconstruction plan (`.cavsplan`, `cavs-plan` crate): COPY ranges that
+  reuse old bytes + INLINE data (zstd-19) for what changed, plus directory
+  metadata and managed deletions. `portable` (self-contained patch) or
+  `--analysis` (ops + estimates only); diffs against `--old-signature`
+  without the old bytes present. Deterministic: same inputs ⇒ same bytes.
+- **`cavs apply`** — execute a `.cavsplan` locally. Artifact plans write
+  `<out>.part` and rename after a full-hash check; directory plans stage into
+  `.cavs-staging/`, verify every file, journal intent, then commit per file.
+  An interrupted apply finishes by re-running (or `--resume <journal>`);
+  unchanged files are never touched (mtime survives), mods/saves are
+  preserved, deletions happen only with `--delete-removed-files`. A failed
+  apply never leaves corrupt output.
+- **`cavs verify-install`** — verify an installed artifact/directory against a
+  `.cavssig` or a manifest's `sha256:` digests, reporting exact
+  `MODIFIED`/`MISSING`/`EXTRA` per entry and exiting non-zero on mismatch.
+  `--allow-extra-files` tolerates mods and saves.
+- **`cavs file` / `cavs ls`** — identify and list any CAVS file (`.cavs`,
+  `.cavssig`, `.cavsplan`, `.cavspatch`, manifest, zstd bootstrap); unknown or
+  corrupt files fail cleanly. `cavs signature ls` and `--json` on the
+  signature commands.
+- **`cavs bench butler-offline`** — drive an external `butler` binary through
+  its `diff`/`apply`/`verify` pipeline (`-j` JSON lines captured), measure
+  wall time and peak RSS, and verify the output byte-for-byte. Labeled as
+  butler's **offline/default patch**, explicitly *not* itch.io's
+  backend-optimized patch. Fails gracefully when butler is absent.
+- **`cavs bench pairwise-proxy`** — approximate the optimized pairwise-patch
+  class with bsdiff/xdelta3 × zstd/brotli, always labeled a **proxy**, never
+  official backend numbers; records tool versions, verifies every apply.
+- **`cavs bench routes`** — every delivery route for one transition in one
+  table (full downloads, CAVS chunk/hybrid, CAVS offline plan, butler
+  offline, pairwise proxies). Missing tools are skipped, not fatal.
+- **`cavs bench version-stream`** — many-version storage/served-bytes
+  comparison (CAVS store-once vs pairwise patches for adjacent updates, long
+  jumps and reinstalls), and **`cavs bench gen-dir`** for synthetic directory
+  build pairs (modified/new/deleted/renamed files).
+- **Experimental pairwise sidecars** — `cavs optimize-patch` /
+  `cavs apply-patch` wrap an external byte-level delta in a verified
+  `.cavspatch` for one hot old→new pair (both ends BLAKE3-checked, atomic
+  rename). Optional route with an explicit O(N²) warning.
+
+### Changed
+
+- **Directory/container mode is stable** (was a v0.6.0 preview):
+  `--ignore <glob>` (repeatable) plus a root `.cavsignore`, path
+  normalization and traversal rejection, deterministic sorted packing.
+- 13 new stable `CAVS-E-*` codes: `PLAN-CORRUPT`, `PLAN-INVALID`,
+  `APPLY-HASH-MISMATCH`, `JOURNAL-CORRUPT`, `JOURNAL-RESUME-FAILED`,
+  `PATH-TRAVERSAL`, `UNSUPPORTED-SYMLINK`, `PAIRWISE-TOOL-MISSING`, and the
+  `BUTLER-NOT-FOUND` / `-DIFF-FAILED` / `-APPLY-FAILED` / `-VERIFY-FAILED`
+  harness codes.
+- New crate `cavs-plan`; new docs: `OFFLINE_TOOLKIT.md`,
+  `CAVSPLAN_FORMAT.md`, `DIRECTORY_MODE.md`, `ROUTE_BENCHMARKS.md`,
+  `BUTLER_COMPARISON.md`, `PAIRWISE_SIDECARS.md`.
+
+### Notes
+
+The butler benchmark measures butler's offline/default patch, not itch.io's
+backend-optimized player patch (bsdiff + high-quality Brotli). The
+bsdiff/Brotli results are reported separately and labeled as an optimized
+pairwise **proxy**, not official backend numbers. No wire format or routing
+changed for existing paths; the v0.5/v0.6 online numbers are unaffected.
+
 ## [0.6.0]
 
 The hybrid reconstruction release: CAVS can now use a previously installed

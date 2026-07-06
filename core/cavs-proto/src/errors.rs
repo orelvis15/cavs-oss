@@ -60,6 +60,33 @@ pub enum ErrorCode {
     ContainerRollbackFailed,
     /// `cavs bench delta` needs an external tool that is not available.
     DeltaBenchUnavailable,
+    /// `cavs bench butler-offline` could not find the butler binary.
+    ButlerNotFound,
+    /// The external `butler diff` step exited with an error.
+    ButlerDiffFailed,
+    /// The external `butler apply` step exited with an error.
+    ButlerApplyFailed,
+    /// The external `butler verify` step exited with an error.
+    ButlerVerifyFailed,
+    /// A `.cavsplan` file is unparseable or fails integrity checks.
+    PlanCorrupt,
+    /// A `.cavsplan` parsed but is internally inconsistent (coverage gaps,
+    /// unknown entries, wrong sources).
+    PlanInvalid,
+    /// An offline apply produced output that does not match the plan's
+    /// expected hash; nothing was committed.
+    ApplyHashMismatch,
+    /// An apply journal is unparseable or fails integrity checks.
+    JournalCorrupt,
+    /// A journaled apply could not be resumed from its recorded state.
+    JournalResumeFailed,
+    /// A container path escapes its root (absolute or `..` traversal).
+    PathTraversal,
+    /// A symlink entry cannot be represented on this platform.
+    UnsupportedSymlink,
+    /// `cavs optimize-patch` / pairwise benchmarks need an external tool
+    /// (bsdiff, xdelta3, brotli) that is not available.
+    PairwiseToolMissing,
 }
 
 impl ErrorCode {
@@ -88,6 +115,18 @@ impl ErrorCode {
             ErrorCode::ContainerApplyFailed => "CAVS-E-CONTAINER-APPLY-FAILED",
             ErrorCode::ContainerRollbackFailed => "CAVS-E-CONTAINER-ROLLBACK-FAILED",
             ErrorCode::DeltaBenchUnavailable => "CAVS-E-DELTA-BENCH-UNAVAILABLE",
+            ErrorCode::ButlerNotFound => "CAVS-E-BUTLER-NOT-FOUND",
+            ErrorCode::ButlerDiffFailed => "CAVS-E-BUTLER-DIFF-FAILED",
+            ErrorCode::ButlerApplyFailed => "CAVS-E-BUTLER-APPLY-FAILED",
+            ErrorCode::ButlerVerifyFailed => "CAVS-E-BUTLER-VERIFY-FAILED",
+            ErrorCode::PlanCorrupt => "CAVS-E-PLAN-CORRUPT",
+            ErrorCode::PlanInvalid => "CAVS-E-PLAN-INVALID",
+            ErrorCode::ApplyHashMismatch => "CAVS-E-APPLY-HASH-MISMATCH",
+            ErrorCode::JournalCorrupt => "CAVS-E-JOURNAL-CORRUPT",
+            ErrorCode::JournalResumeFailed => "CAVS-E-JOURNAL-RESUME-FAILED",
+            ErrorCode::PathTraversal => "CAVS-E-PATH-TRAVERSAL",
+            ErrorCode::UnsupportedSymlink => "CAVS-E-UNSUPPORTED-SYMLINK",
+            ErrorCode::PairwiseToolMissing => "CAVS-E-PAIRWISE-TOOL-MISSING",
         }
     }
 
@@ -123,7 +162,7 @@ impl std::fmt::Display for ErrorCode {
 }
 
 /// All codes, for docs/tests.
-pub const ALL_ERROR_CODES: [ErrorCode; 22] = [
+pub const ALL_ERROR_CODES: [ErrorCode; 34] = [
     ErrorCode::ManifestCorrupt,
     ErrorCode::UnsupportedManifestVersion,
     ErrorCode::ContainerCorrupt,
@@ -146,6 +185,18 @@ pub const ALL_ERROR_CODES: [ErrorCode; 22] = [
     ErrorCode::ContainerApplyFailed,
     ErrorCode::ContainerRollbackFailed,
     ErrorCode::DeltaBenchUnavailable,
+    ErrorCode::ButlerNotFound,
+    ErrorCode::ButlerDiffFailed,
+    ErrorCode::ButlerApplyFailed,
+    ErrorCode::ButlerVerifyFailed,
+    ErrorCode::PlanCorrupt,
+    ErrorCode::PlanInvalid,
+    ErrorCode::ApplyHashMismatch,
+    ErrorCode::JournalCorrupt,
+    ErrorCode::JournalResumeFailed,
+    ErrorCode::PathTraversal,
+    ErrorCode::UnsupportedSymlink,
+    ErrorCode::PairwiseToolMissing,
 ];
 
 /// Recover the first `CAVS-E-*` code embedded in a rendered error message

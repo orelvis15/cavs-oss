@@ -76,8 +76,78 @@ fn sign_cavs(input: &Path, block_size: u32) -> Result<CavsSignature> {
     Ok(b.finish(&label))
 }
 
-pub fn inspect(input: &Path) -> Result<()> {
+/// `cavs signature ls` — every entry, butler-style.
+pub fn ls(input: &Path, json: bool) -> Result<()> {
     let sig = load(input)?;
+    if json {
+        let rows: Vec<serde_json::Value> = sig
+            .entries
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "kind": match e.kind {
+                        EntryKind::File => "file",
+                        EntryKind::Directory => "dir",
+                        EntryKind::Symlink => "symlink",
+                    },
+                    "size": e.size,
+                    "path": e.path,
+                    "executable": e.executable,
+                    "symlink_target": e.symlink_target,
+                })
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&rows)?);
+        return Ok(());
+    }
+    for e in &sig.entries {
+        let kind = match e.kind {
+            EntryKind::File => "file",
+            EntryKind::Directory => "dir",
+            EntryKind::Symlink => "link",
+        };
+        println!(
+            "{kind:<4} {:>12}  {}{}{}",
+            human_bytes(e.size),
+            e.path,
+            if e.executable { " (exec)" } else { "" },
+            e.symlink_target
+                .as_deref()
+                .map(|t| format!(" -> {t}"))
+                .unwrap_or_default()
+        );
+    }
+    println!("{} entries", sig.entries.len());
+    Ok(())
+}
+
+pub fn inspect(input: &Path, json: bool) -> Result<()> {
+    let sig = load(input)?;
+    if json {
+        let sig_size = std::fs::metadata(input)?.len();
+        let (files, dirs, links) = entry_counts(&sig);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "file": input.display().to_string(),
+                "kind": sig.kind.label(),
+                "label": sig.source_label,
+                "source_size": sig.source_size,
+                "source_blake3": sig.source_blake3.map(|h| cavs_hash::to_hex(&h)),
+                "block_size": sig.block_size,
+                "blocks": sig.blocks.len(),
+                "entries": sig.entries.len(),
+                "files": files,
+                "dirs": dirs,
+                "symlinks": links,
+                "signature_bytes": sig_size,
+                "signature_pct_of_source":
+                    sig_size as f64 * 100.0 / sig.source_size.max(1) as f64,
+                "merkle_root": cavs_hash::to_hex(&sig.merkle_root),
+            }))?
+        );
+        return Ok(());
+    }
     println!("file    : {}", input.display());
     println!("kind    : {}", sig.kind.label());
     println!("label   : {}", sig.source_label);
@@ -116,7 +186,27 @@ pub fn inspect(input: &Path) -> Result<()> {
         println!("  ... and {} more", sig.entries.len() - 50);
     }
     println!("merkle  : {}", cavs_hash::to_hex(&sig.merkle_root));
+    let sig_size = std::fs::metadata(input)?.len();
+    println!(
+        "size    : {} ({:.3}% of the source)",
+        human_bytes(sig_size),
+        sig_size as f64 * 100.0 / sig.source_size.max(1) as f64
+    );
     Ok(())
+}
+
+fn entry_counts(sig: &CavsSignature) -> (usize, usize, usize) {
+    let files = sig
+        .entries
+        .iter()
+        .filter(|e| e.kind == EntryKind::File)
+        .count();
+    let dirs = sig
+        .entries
+        .iter()
+        .filter(|e| e.kind == EntryKind::Directory)
+        .count();
+    (files, dirs, sig.entries.len() - files - dirs)
 }
 
 pub fn verify(input: &Path, against: &Path) -> Result<()> {
