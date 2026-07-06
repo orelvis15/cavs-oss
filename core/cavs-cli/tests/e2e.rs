@@ -284,3 +284,89 @@ fn manifest_export_and_bench() {
         "binary v2 ({v2}) must be at least 50% smaller than JSON v1 ({v1})"
     );
 }
+
+#[test]
+fn packfile_store_add_stat_verify_export() {
+    let dir = tempfile::tempdir().unwrap();
+    let payload = pseudo_random(2_500_000, 33);
+    let pck = dir.path().join("game.pck");
+    std::fs::write(&pck, &payload).unwrap();
+    let cavs = dir.path().join("game.cavs");
+    let (ok, out) = run(&[
+        "pack",
+        "--raw",
+        pck.to_str().unwrap(),
+        "-o",
+        cavs.to_str().unwrap(),
+    ]);
+    assert!(ok, "pack failed:\n{out}");
+
+    let store = dir.path().join("store");
+    let (ok, out) = run(&[
+        "store",
+        store.to_str().unwrap(),
+        "add",
+        "game",
+        cavs.to_str().unwrap(),
+        "--storage",
+        "packfiles",
+    ]);
+    assert!(ok, "store add failed:\n{out}");
+
+    // stat reports the packfile occupancy line.
+    let (ok, out) = run(&["store", store.to_str().unwrap(), "stat"]);
+    assert!(ok, "stat failed:\n{out}");
+    assert!(out.contains("packfiles"), "missing pack stats:\n{out}");
+
+    // verify passes on a healthy store.
+    let (ok, out) = run(&["store", store.to_str().unwrap(), "verify"]);
+    assert!(ok, "verify failed:\n{out}");
+    assert!(out.contains("OK"), "unexpected verify output:\n{out}");
+
+    // export produces the deterministic immutable object tree.
+    let dist = dir.path().join("dist");
+    let (ok, out) = run(&[
+        "store",
+        store.to_str().unwrap(),
+        "export",
+        "--out",
+        dist.to_str().unwrap(),
+    ]);
+    assert!(ok, "export failed:\n{out}");
+    assert!(dist.join("chunks/packs").is_dir());
+    assert!(dist.join("assets/game/record.json").is_file());
+
+    // Corrupt one byte of a pack: verify must fail.
+    fn find_pack(dir: &Path) -> Option<PathBuf> {
+        for entry in std::fs::read_dir(dir).ok()?.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(found) = find_pack(&path) {
+                    return Some(found);
+                }
+            } else if path.extension().is_some_and(|e| e == "cavspack") {
+                return Some(path);
+            }
+        }
+        None
+    }
+    let pack = find_pack(&store.join("packs")).expect("no pack written");
+    let mut bytes = std::fs::read(&pack).unwrap();
+    let mid = bytes.len() / 2;
+    bytes[mid] ^= 0xff;
+    std::fs::write(&pack, &bytes).unwrap();
+    let (ok, out) = run(&["store", store.to_str().unwrap(), "verify"]);
+    assert!(!ok, "verify must fail on a corrupted pack:\n{out}");
+
+    // Adding to the same store with the other layout is rejected.
+    let (ok, out) = run(&[
+        "store",
+        store.to_str().unwrap(),
+        "add",
+        "game2",
+        cavs.to_str().unwrap(),
+        "--storage",
+        "loose",
+    ]);
+    assert!(!ok, "layout mismatch must be rejected:\n{out}");
+}

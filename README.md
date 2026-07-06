@@ -33,6 +33,11 @@ a pixel codec.
   binary format (`CAVSMF2`) — ~75–77% smaller than the JSON equivalent on real
   games — negotiated transparently, with JSON kept as the default response,
   debug export and compatibility path for older clients.
+- **Packfile storage (v0.4.0)**: the global store can keep its chunks in a
+  few immutable, content-addressed `.cavspack` files instead of one file per
+  chunk — on a 570 MB game, 5,775 objects become 6 files and an update
+  session's reads coalesce 170× with zero read amplification. Exportable as
+  a deterministic object tree for S3/R2/CDN.
 - **Complementary, not competitive**: use the best codec/compressor for the
   bytes; CAVS deduplicates and transports above them.
 
@@ -150,13 +155,16 @@ Signing (optional, recommended for distribution):
 ### Global content-addressable store (dedup at rest across all versions)
 
 Store each unique chunk once across every version/title, with reference
-counting and garbage collection:
+counting and garbage collection. With `--storage packfiles` (v0.4.0) the
+chunks live in a few immutable packfiles served by coalesced range reads:
 
 ```sh
-./target/release/cavs store ./store add game_v1 game_v1.cavs
+./target/release/cavs store ./store add game_v1 game_v1.cavs --storage packfiles
 ./target/release/cavs store ./store add game_v2 game_v2.cavs   # shared chunks stored once
-./target/release/cavs store ./store stat                        # storage savings
-./target/release/cavs store ./store gc --grace 0                # reclaim unreferenced chunks
+./target/release/cavs store ./store stat                        # storage savings + pack occupancy
+./target/release/cavs store ./store verify                      # re-hash chunks, check packs
+./target/release/cavs store ./store gc --grace 0                # reclaim unreferenced chunks/packs
+./target/release/cavs store ./store export --out ./dist         # immutable tree for S3/R2/CDN
 ./target/release/cavs-server --store ./store --listen 127.0.0.1:8990
 ```
 
@@ -176,13 +184,15 @@ See [`godot-plugin/README.md`](godot-plugin/README.md) for game integration and
   optional Ed25519 signature) with payload classification, `--profile auto`
   chunk-profile selection, `--bootstrap` cold-install artifacts and a
   `sweep` cost report; inspect, verify, reconstruct, manage a global
-  store (`add` / `rm` / `gc` / `stat`), and inspect manifest formats
+  store (`add` / `rm` / `gc` / `stat` / `verify` / `export`, loose or
+  packfile layout), and inspect manifest formats
   (`manifest export` / `manifest bench`).
 - **`cavs-server`**: stateful HTTP/HTTPS origin. Per-session have-set,
   inline/reference planning, dual-route decision (bootstrap vs chunks) per
   client, manifest format negotiation (compact binary v2 / JSON v1), CVSP
-  binary batches, immutable CDN-cacheable chunk endpoint, Prometheus metrics,
-  and a `--store` mode.
+  binary batches, coalesced packfile range reads with read-efficiency
+  metrics, immutable CDN-cacheable chunk endpoint (ETag + immutable
+  Cache-Control), and a `--store` mode.
 - **`cavs-client`**: native streaming client with a persistent cache and
   atomic, verified reconstruction; negotiates the compact binary manifest,
   takes the bootstrap route when offered (seeding its cache); resumable and

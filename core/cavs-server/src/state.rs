@@ -30,6 +30,10 @@ enum ChunkSource {
     },
 }
 
+/// One batch of stored chunks — (stored bytes, storage flags, raw length)
+/// per chunk, in request order — plus the read's coalescing counters.
+type StoredBatch = (Vec<(Vec<u8>, u32, u32)>, cavs_store::CoalesceStats);
+
 impl ChunkSource {
     /// Chunk as stored (possibly zstd), for wire passthrough.
     fn read_stored(&self, idx: u32) -> std::result::Result<(Vec<u8>, u32, u32), String> {
@@ -46,6 +50,34 @@ impl ChunkSource {
                     .unwrap()
                     .read_chunk_stored(hash)
                     .map_err(|e| format!("chunk {idx}: {e}"))
+            }
+        }
+    }
+
+    /// Many chunks as stored, in input order. Store-served assets read
+    /// through the coalescing batch path (one physical read may serve many
+    /// nearby pack chunks); file-served assets fall back to per-chunk reads
+    /// (the `.cavs` DATA section is already one file). Returns the batch's
+    /// coalescing counters (zeroed outside packfile stores).
+    fn read_stored_batch(&self, indices: &[u32]) -> std::result::Result<StoredBatch, String> {
+        match self {
+            ChunkSource::File(_) => {
+                let mut out = Vec::with_capacity(indices.len());
+                for &idx in indices {
+                    out.push(self.read_stored(idx)?);
+                }
+                Ok((out, cavs_store::CoalesceStats::default()))
+            }
+            ChunkSource::Store { store, hashes } => {
+                let mut batch = Vec::with_capacity(indices.len());
+                for &idx in indices {
+                    batch.push(*hashes.get(idx as usize).ok_or("chunk index out of range")?);
+                }
+                store
+                    .lock()
+                    .unwrap()
+                    .read_chunks_stored_batch(&batch)
+                    .map_err(|e| format!("batch read: {e}"))
             }
         }
     }
@@ -94,6 +126,9 @@ pub struct Asset {
     signature: Option<(String, String)>,
     meta: Vec<(String, String)>,
     bootstrap: Option<Bootstrap>,
+    /// Physical chunk locations (packfile hints) for binary manifests;
+    /// populated for packfile-store assets, `None` otherwise.
+    locations: Option<cavs_manifest::ChunkLocations>,
 }
 
 /// Bootstrap routing (v2 dual route): a client is "cold" below this share of
@@ -128,6 +163,26 @@ pub struct Metrics {
     pub manifest_json_bytes_total: AtomicU64,
     pub manifest_binary_requests_total: AtomicU64,
     pub manifest_binary_bytes_total: AtomicU64,
+    pub pack_chunks_requested_total: AtomicU64,
+    pub pack_ranges_read_total: AtomicU64,
+    pub pack_bytes_read_total: AtomicU64,
+    pub pack_bytes_served_total: AtomicU64,
+}
+
+impl Metrics {
+    fn note_coalesce(&self, s: &cavs_store::CoalesceStats) {
+        if s.pack_chunks_requested == 0 {
+            return;
+        }
+        self.pack_chunks_requested_total
+            .fetch_add(s.pack_chunks_requested, Ordering::Relaxed);
+        self.pack_ranges_read_total
+            .fetch_add(s.pack_ranges_read, Ordering::Relaxed);
+        self.pack_bytes_read_total
+            .fetch_add(s.pack_bytes_read, Ordering::Relaxed);
+        self.pack_bytes_served_total
+            .fetch_add(s.pack_bytes_served, Ordering::Relaxed);
+    }
 }
 
 pub struct AppState {
@@ -193,6 +248,7 @@ impl AppState {
                     signature,
                     meta,
                     bootstrap,
+                    locations: None,
                 },
             );
         }
@@ -288,6 +344,26 @@ impl AppState {
                 _ => None,
             };
 
+            // Packfile hints for the binary manifest: where each chunk of
+            // this asset physically lives (loose stores yield nothing).
+            let locations: cavs_manifest::ChunkLocations = {
+                let guard = shared.lock().unwrap();
+                chunk_meta
+                    .iter()
+                    .filter_map(|(hash, ..)| {
+                        let loc = guard.chunk_location(hash)?;
+                        Some((
+                            to_hex(hash),
+                            cavs_manifest::ChunkLocation {
+                                pack_id: from_hex(&loc.pack_hex)?,
+                                offset: loc.offset,
+                                stored_len: loc.stored_len,
+                            },
+                        ))
+                    })
+                    .collect()
+            };
+
             assets.insert(
                 name.clone(),
                 Asset {
@@ -307,6 +383,7 @@ impl AppState {
                     // Bootstrap sidecars are not ingested into the global
                     // store yet; store-served assets use the chunk path.
                     bootstrap: None,
+                    locations: (!locations.is_empty()).then_some(locations),
                 },
             );
         }
@@ -552,36 +629,70 @@ impl AppState {
         chunk_indices: &[u32],
         force_inline: bool,
     ) -> Result<Vec<DeliveryInstr>, String> {
-        let mut instrs = Vec::with_capacity(chunk_indices.len());
+        // Pass 1: decide ref vs inline (mutating the known-set exactly as
+        // the serial path did, so a repeated cold chunk inlines once).
+        enum Slot {
+            Ref(u32),
+            /// Index into the cold batch below.
+            Inline(usize),
+        }
+        let mut slots = Vec::with_capacity(chunk_indices.len());
+        let mut cold: Vec<u32> = Vec::new();
         for &idx in chunk_indices {
-            let hash = asset.chunk_meta[idx as usize].0;
             if !force_inline && known.contains(&idx) {
-                self.metrics.refs_sent_total.fetch_add(1, Ordering::Relaxed);
-                instrs.push(DeliveryInstr::Ref { hash });
+                slots.push(Slot::Ref(idx));
             } else {
-                // Wire passthrough: send the payload exactly as stored, so
-                // zstd-compressed chunks travel compressed at zero extra CPU.
-                let (payload, flags, len_raw) = asset.source.read_stored(idx)?;
-                self.metrics
-                    .chunks_inline_total
-                    .fetch_add(1, Ordering::Relaxed);
-                self.metrics
-                    .bytes_inline_total
-                    .fetch_add(payload.len() as u64, Ordering::Relaxed);
                 known.insert(idx);
-                instrs.push(DeliveryInstr::Inline {
-                    hash,
-                    len_raw,
-                    compression: if flags & CHUNK_FLAG_ZSTD != 0 {
-                        WIRE_COMPRESSION_ZSTD
-                    } else {
-                        WIRE_COMPRESSION_NONE
-                    },
-                    payload,
-                });
+                slots.push(Slot::Inline(cold.len()));
+                cold.push(idx);
+            }
+        }
+
+        // Pass 2: one batched read for every cold chunk. On a packfile
+        // store, nearby chunks coalesce into single physical reads.
+        let (payloads, coalesce) = asset.source.read_stored_batch(&cold)?;
+        self.metrics.note_coalesce(&coalesce);
+
+        let mut payloads = payloads.into_iter();
+        let mut instrs = Vec::with_capacity(chunk_indices.len());
+        for slot in slots {
+            match slot {
+                Slot::Ref(idx) => {
+                    self.metrics.refs_sent_total.fetch_add(1, Ordering::Relaxed);
+                    instrs.push(DeliveryInstr::Ref {
+                        hash: asset.chunk_meta[idx as usize].0,
+                    });
+                }
+                Slot::Inline(cold_pos) => {
+                    // Wire passthrough: the payload travels exactly as
+                    // stored, so zstd chunks cost zero extra CPU.
+                    let (payload, flags, len_raw) = payloads.next().expect("cold batch aligned");
+                    let idx = cold[cold_pos];
+                    self.metrics
+                        .chunks_inline_total
+                        .fetch_add(1, Ordering::Relaxed);
+                    self.metrics
+                        .bytes_inline_total
+                        .fetch_add(payload.len() as u64, Ordering::Relaxed);
+                    instrs.push(DeliveryInstr::Inline {
+                        hash: asset.chunk_meta[idx as usize].0,
+                        len_raw,
+                        compression: if flags & CHUNK_FLAG_ZSTD != 0 {
+                            WIRE_COMPRESSION_ZSTD
+                        } else {
+                            WIRE_COMPRESSION_NONE
+                        },
+                        payload,
+                    });
+                }
             }
         }
         Ok(instrs)
+    }
+
+    /// Packfile location hints for an asset's binary manifest, if any.
+    pub fn manifest_locations(&self, asset_name: &str) -> Option<&cavs_manifest::ChunkLocations> {
+        self.assets.get(asset_name)?.locations.as_ref()
     }
 
     /// Count one manifest response in the per-format metrics.
@@ -601,9 +712,9 @@ impl AppState {
         total_bytes.fetch_add(bytes, Ordering::Relaxed);
     }
 
-    /// Path and size of the asset's verified bootstrap sidecar, if any.
-    /// Counts the request in the bootstrap metrics.
-    pub fn bootstrap_file(&self, asset_name: &str) -> Option<(PathBuf, u64)> {
+    /// Path, size and BLAKE3 (hex) of the asset's verified bootstrap
+    /// sidecar, if any. Counts the request in the bootstrap metrics.
+    pub fn bootstrap_file(&self, asset_name: &str) -> Option<(PathBuf, u64, String)> {
         let b = self.assets.get(asset_name)?.bootstrap.as_ref()?;
         self.metrics
             .bootstraps_served_total
@@ -611,7 +722,7 @@ impl AppState {
         self.metrics
             .bootstrap_bytes_total
             .fetch_add(b.size, Ordering::Relaxed);
-        Some((b.path.clone(), b.size))
+        Some((b.path.clone(), b.size, b.blake3_hex.clone()))
     }
 
     pub fn chunk_by_hash(&self, asset_name: &str, hash_hex: &str) -> Option<Vec<u8>> {
@@ -705,6 +816,13 @@ impl AppState {
                 "cavs_manifest_binary_bytes_total",
                 &m.manifest_binary_bytes_total,
             ),
+            (
+                "cavs_pack_chunks_requested_total",
+                &m.pack_chunks_requested_total,
+            ),
+            ("cavs_pack_ranges_read_total", &m.pack_ranges_read_total),
+            ("cavs_pack_bytes_read_total", &m.pack_bytes_read_total),
+            ("cavs_pack_bytes_served_total", &m.pack_bytes_served_total),
         ];
         let mut out = String::new();
         for (name, counter) in counters {

@@ -26,7 +26,8 @@ route; the chunk path always remains valid.
 # Serve one or more .cavs files (asset name = file stem)
 cavs-server game_v1.cavs game_v2.cavs --listen 127.0.0.1:8990
 
-# Serve from a global store (chunks deduplicated across all versions on disk)
+# Serve from a global store (chunks deduplicated across all versions on
+# disk; packfile-layout stores are served with coalesced range reads)
 cavs-server --store ./store --listen 0.0.0.0:8990
 
 # HTTPS
@@ -44,7 +45,7 @@ cavs-server *.cavs --tls-self-signed ./tls    # dev: generates a self-signed cer
 | `GET /api/assets/{asset}/bootstrap` | Full bootstrap artifact (whole asset, zstd) — immutable, CDN-cacheable, streamed from disk |
 | `GET /api/assets/{asset}/chunks/{hash}` | Direct chunk fetch — immutable, CDN-cacheable |
 | `GET /hls/{asset}/{track}/…` | HLS/CMAF reconstructed on the fly (video assets) |
-| `GET /metrics` | Prometheus counters (inline/ref bytes, sessions, …) |
+| `GET /metrics` | Prometheus counters (inline/ref bytes, sessions, manifest formats, pack read efficiency, …) |
 
 ## Options
 

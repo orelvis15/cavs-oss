@@ -49,12 +49,15 @@ cavs play movie.cavs                     # reconstruct to temp and play (ffplay)
 # Signing keys (Ed25519)
 cavs keygen -o publisher.key             # → publisher.key (+ .pub)
 
-# Global store (dedup at rest across versions/titles)
-cavs store ./store add game_v1 game_v1.cavs
+# Global store (dedup at rest across versions/titles). --storage packfiles
+# (v0.4.0) keeps chunks in immutable .cavspack files read by range.
+cavs store ./store add game_v1 game_v1.cavs --storage packfiles
 cavs store ./store add game_v2 game_v2.cavs   # shared chunks stored once
-cavs store ./store stat                        # storage savings
+cavs store ./store stat                        # storage savings + pack occupancy
+cavs store ./store verify                      # re-hash chunks, check packs
 cavs store ./store rm  game_v1                 # unpublish
-cavs store ./store gc  --grace 0               # reclaim unreferenced chunks
+cavs store ./store gc  --grace 0               # reclaim unreferenced chunks/packs
+cavs store ./store export --out ./dist         # immutable object tree for S3/CDN
 
 # Manifest formats (v0.3.0)
 cavs manifest export v42.cavs --out manifest.debug.json  # readable JSON v1

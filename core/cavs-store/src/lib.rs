@@ -5,8 +5,10 @@
 //! server/client can reuse it for session `have-set` reconciliation and GC.
 
 mod global;
+pub mod packfile;
 pub use global::{
-    AssetRecord, ChunkInfo, GlobalStore, StoreError, StoreSegment, StoreStats, StoreTrack,
+    AssetRecord, ChunkInfo, ChunkLocation, CoalesceStats, GlobalStore, Result, StoreError,
+    StoreLayout, StoreSegment, StoreStats, StoreTrack,
 };
 
 use cavs_hash::ChunkHash;

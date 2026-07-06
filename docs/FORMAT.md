@@ -195,12 +195,83 @@ enforce a trusted key.
 
 A `.cavs` file is portable and self-contained. To serve many versions/titles
 without duplicating bytes, `cavs store <dir> add` ingests `.cavs` files into a
-global CAS: each unique chunk (by BLAKE3) is stored **once** in
-`chunks/<ab>/<hex>`, with an `index.json` ledger holding a per-chunk reference
-count, and a per-asset record in `assets/<name>.json`. `rm` decrements
-reference counts; `gc` reclaims zero-ref chunks after a grace period.
-`cavs-server --store <dir>` serves directly from the store, so deduplication
-savings apply to **origin storage**, not just client egress.
+global CAS: each unique chunk (by BLAKE3) is stored **once**, with an
+`index.json` ledger holding a per-chunk reference count, and a per-asset
+record in `assets/<name>.json`. `rm` decrements reference counts; `gc`
+reclaims zero-ref chunks after a grace period. `cavs-server --store <dir>`
+serves directly from the store, so deduplication savings apply to **origin
+storage**, not just client egress.
+
+Two physical layouts, fixed when the store is created:
+
+- **`loose`** (default): one file per chunk under `chunks/<ab>/<hex>` — the
+  pre-0.4.0 behavior, still fully supported.
+- **`packfiles`** (`add --storage packfiles`, since 0.4.0): chunks appended
+  into immutable `.cavspack` files, read by range. The ledger records each
+  chunk's pack and offset; GC deletes a pack once no live chunk references
+  it (partial compaction is deliberately out of scope for 0.4.0).
+
+## Packfiles — `.cavspack` and `.cavsindex` (since 0.4.0)
+
+Object-per-chunk storage is operationally expensive at scale (a 570 MB game
+is ~6,000 small files). Packfiles keep the same content-addressed identity
+model with a production-friendly physical shape. Chunks are written in
+reconstruction order, so update fetches touch mostly-contiguous ranges; the
+server coalesces chunk reads within a 64 KiB gap into single physical reads
+(capped at 8 MiB), measured at 65–170× fewer reads on real games with 1.000
+read amplification.
+
+### `.cavspack` layout
+
+```
+Header (16 bytes):
+  magic          8 bytes  "CAVSPK1\0"
+  version_major  u16 LE   1
+  version_minor  u16 LE   0
+  flags          u32 LE   reserved (0)
+Chunk data region:
+  concatenated stored chunk bytes (no per-chunk framing; boundaries live
+  in the index)
+Footer (40 bytes):
+  magic          8 bytes  "CAVSPEND"
+  pack_hash      [32]     BLAKE3 of every byte before the footer
+```
+
+The **pack id** is the BLAKE3 of the entire file; the filename is derived
+from it (`packs/<ab>/<id>.cavspack`), so packs are immutable and directly
+CDN-cacheable. A pack is closed once its data region reaches the preferred
+size (128 MiB; small assets produce a single pack).
+
+### `.cavsindex` sidecar
+
+One per pack, written at close — the chunk table needed to read the pack
+without the store ledger (recovery, `store export`):
+
+```
+  magic          8 bytes  "CAVSIDX1"
+  pack_id        [32]
+  entry_count    u32 LE
+  entry_count × {
+    hash        [32]
+    offset      u64 LE   // into the pack's data region
+    stored_len  u32 LE
+    raw_len     u32 LE
+    flags       u32 LE
+  }
+  body_hash      [32]     BLAKE3 of every byte before this field
+```
+
+### Object-store export
+
+`cavs store <dir> export --out <dist>` writes a deterministic immutable tree
+ready to upload to S3/R2/a static host behind a CDN:
+
+```
+dist/
+  chunks/packs/<ab>/<id>.cavspack     Cache-Control: public, max-age=31536000, immutable
+  chunks/indexes/<ab>/<id>.cavsindex  ETag: "blake3-<id>"
+  assets/<name>/record.json           Cache-Control: no-cache (mutable per release)
+```
 
 ## Reconstruction to playable media
 
@@ -257,10 +328,11 @@ Section table (section_count entries):
 Data region: the sections' stored bytes, in table order.
 ```
 
-Section kinds: `1` AssetInfo, `2` ChunkPlan, `3` ChunkDictionary. Unknown
-kinds are skipped (forward compatibility); the three above are mandatory and
-may not repeat. Sections whose raw encoding is ≥ 32 KiB are zstd-compressed
-(level 3) when that actually shrinks them.
+Section kinds: `1` AssetInfo, `2` ChunkPlan, `3` ChunkDictionary,
+`4` ChunkLocations (optional, since 0.4.0). Unknown kinds are skipped
+(forward compatibility); kinds 1–3 are mandatory and no kind may repeat.
+Sections whose raw encoding is ≥ 32 KiB are zstd-compressed (level 3) when
+that actually shrinks them.
 
 ### Sections
 
@@ -301,6 +373,24 @@ The encoding win over JSON v1: each unique chunk hash is stored **once**, as
 32 raw bytes in the dictionary, and every chunk reference in the plan is a
 1–2 byte varint index — versus a repeated 64-char hex string plus field names
 per reference in JSON.
+
+```
+ChunkLocations (4, optional — packfile hints, since 0.4.0):
+  pack_count varuint
+  pack_count × [32]              // content-addressed pack ids
+  entry_count varuint
+  entry_count × {
+    dict_index varuint           // into ChunkDictionary
+    pack_ord   varuint           // into the pack table above
+    offset     varuint           // into the pack's data region
+    stored_len varuint
+  }
+```
+
+Emitted by servers whose asset lives in a packfile store. **Advisory only**:
+a consumer must verify chunk bytes by BLAKE3 regardless of where a hint
+pointed, and fall back to an index lookup when a hint is missing or stale.
+0.3.0 readers skip the section as an unknown kind.
 
 ### Decoder hardening
 

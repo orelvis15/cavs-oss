@@ -218,6 +218,14 @@ enum ManifestAction {
     },
 }
 
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum StorageArg {
+    /// One file per chunk (pre-0.4.0 layout).
+    Loose,
+    /// Chunks appended into immutable .cavspack files, read by range.
+    Packfiles,
+}
+
 #[derive(Subcommand)]
 enum StoreAction {
     /// Ingest a .cavs into the store, deduplicating its chunks.
@@ -226,16 +234,30 @@ enum StoreAction {
         name: String,
         /// The .cavs file to ingest.
         cavs: PathBuf,
+        /// Physical chunk layout; applies when the store is created (an
+        /// existing store keeps its layout).
+        #[arg(long, value_enum)]
+        storage: Option<StorageArg>,
     },
     /// Unpublish an asset (chunks it uniquely held become reclaimable by gc).
     Rm { name: String },
-    /// Remove zero-ref chunks that have been unreferenced for --grace seconds.
+    /// Remove zero-ref chunks that have been unreferenced for --grace
+    /// seconds; a packfile is deleted once no live chunk references it.
     Gc {
         #[arg(long, default_value_t = 0)]
         grace: u64,
     },
-    /// Show assets and storage savings.
+    /// Show assets, storage savings and packfile occupancy.
     Stat,
+    /// Re-hash every chunk (loose or packed) and check pack integrity.
+    Verify,
+    /// Export a packfile store as a deterministic immutable object tree,
+    /// ready to upload to S3/R2/a static host behind a CDN.
+    Export {
+        /// Output directory (created if missing).
+        #[arg(long)]
+        out: PathBuf,
+    },
 }
 
 fn main() -> Result<()> {
@@ -301,10 +323,16 @@ fn main() -> Result<()> {
         Command::Keygen { output } => keygen(&output),
         Command::Play { input } => unpack::play(&input),
         Command::Store { dir, action } => match action {
-            StoreAction::Add { name, cavs } => store::add(&dir, &name, &cavs),
+            StoreAction::Add {
+                name,
+                cavs,
+                storage,
+            } => store::add(&dir, &name, &cavs, storage),
             StoreAction::Rm { name } => store::remove(&dir, &name),
             StoreAction::Gc { grace } => store::gc(&dir, grace),
             StoreAction::Stat => store::stat(&dir),
+            StoreAction::Verify => store::verify(&dir),
+            StoreAction::Export { out } => store::export(&dir, &out),
         },
         Command::Manifest { action } => match action {
             ManifestAction::Export { input, out } => manifest_cmd::export(&input, out.as_deref()),

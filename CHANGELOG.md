@@ -6,6 +6,47 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0]
+
+The packfile release: the global store can now keep its chunks in a few
+large immutable `.cavspack` files instead of one file per chunk, served by
+coalesced range reads. Loose stores keep working unchanged; `.cavs`
+file-serving is untouched.
+
+Measured on real Godot games (two versions ingested, full
+cold + update + warm HTTP session): chunk objects on disk drop from 130/807/
+5,775 (Marble/GDQuest/tps-demo) to **4/4/6 files**, and physical reads
+coalesce **65×/115×/170×** with **1.000 read amplification** (zero extra
+bytes read — chunks are packed in reconstruction order, so merged ranges are
+exactly contiguous). Wire bytes, routing and byte-identical reconstruction
+are identical to 0.3.0 in every layout and in `.cavs` file-serving mode.
+
+### Added
+
+- **Packfile storage** (`cavs store add --storage packfiles`). Chunks are
+  appended in reconstruction order into content-addressed packs
+  (`packs/<ab>/<id>.cavspack`, id = BLAKE3 of the file) with a verifiable
+  `.cavsindex` sidecar each. The layout is fixed at store creation; the
+  ledger records each chunk's pack and offset. GC deletes a pack once no
+  live chunk references it (the roadmap's zero-live-pack policy).
+- **Coalesced range serving.** The server plans each batch's cold chunks
+  as one read set: chunks from the same pack within a 64 KiB gap are
+  fetched with a single physical read (capped at 8 MiB). New metrics:
+  `cavs_pack_chunks_requested_total`, `cavs_pack_ranges_read_total`,
+  `cavs_pack_bytes_read_total`, `cavs_pack_bytes_served_total`.
+- **Manifest chunk-location hints.** Binary v2 manifests of packfile-store
+  assets carry an optional ChunkLocations section (section kind 4 —
+  skipped by 0.3.0 readers) mapping each chunk to `pack_id + offset +
+  stored_len`. Advisory: consumers verify by BLAKE3 regardless.
+- **`cavs store export --out`** — deterministic immutable object tree
+  (`chunks/packs/…`, `chunks/indexes/…`, `assets/<name>/record.json`)
+  ready to upload to S3/R2/a static host behind a CDN, with the cache
+  headers to use.
+- **`cavs store verify`** — re-hashes every chunk (loose or packed,
+  including zstd-stored) and checks pack header/footer integrity.
+- **ETag headers** (`"blake3-…"`) on the immutable chunk and bootstrap
+  endpoints, complementing the existing immutable Cache-Control.
+
 ## [0.3.0]
 
 The compact-manifest release: the runtime manifest now travels as a compact
