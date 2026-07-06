@@ -62,6 +62,14 @@ cavs store ./store export --out ./dist         # immutable object tree for S3/CD
 # Manifest formats (v0.3.0)
 cavs manifest export v42.cavs --out manifest.debug.json  # readable JSON v1
 cavs manifest bench  v42.cavs --json bench.json          # json-v1 vs binary-v2
+
+# Production hardening (v0.5.0)
+cavs doctor v42.cavs --store ./store --cache ./cache  # read-only diagnosis
+cavs test corrupt v42.cavs --out report.json          # corruption matrix:
+                                                      # ~20 targeted mutations,
+                                                      # every decoder must reject
+cavs bench gen --out ./ds --size 1GiB                 # deterministic dataset
+cavs bench suite --dataset ./ds --out ./results       # summary.md + summary.json
 ```
 
 Run `cavs --help` or `cavs <command> --help` for all options.

@@ -22,11 +22,11 @@ store each unique chunk once, and transmit only the chunks a client lacks.
 | `cavs-chunker` | Chunking: fixed-size (CDN-aligned segments) and FastCDC (shift-resistant, default 64 KiB for game assets) |
 | `cavs-store` | In-memory dedup index used while packing, and the **global content-addressable store** (on-disk CAS with reference counting and GC) — loose object-per-chunk, or immutable `.cavspack` packfiles read by coalesced ranges (0.4.0) |
 | `cavs-format` | The `.cavs` binary format: types, streaming writer, hardened reader/verifier, Ed25519 signing |
-| `cavs-proto` | CVSP wire protocol: the runtime `Manifest` model, sessions, compact binary batches; the Bloom-filter have-set |
+| `cavs-proto` | CVSP wire protocol: the runtime `Manifest` model, sessions, compact binary batches (hardened decoders); the Bloom-filter have-set; the `CAVS-E-*` error taxonomy |
 | `cavs-manifest` | Manifest wire formats: the compact binary v2 codec (`CAVSMF2`: chunk dictionary + varint plan, ~76% smaller than JSON) and `read_manifest`, which detects JSON v1 vs binary v2 from the bytes and normalizes both |
-| `cavs-cli` | The `cavs` binary: pack / unpack / info / verify / keygen / store / play / sweep, plus the payload classifier and chunk-profile cost model |
-| `cavs-server` | Stateful HTTP/HTTPS origin: sessions, inline/ref planning, `--store` mode, HLS passthrough, metrics |
-| `cavs-client` | Native streaming client: persistent cache, `.part`→verify→rename reconstruction |
+| `cavs-cli` | The `cavs` binary: pack / unpack / info / verify / keygen / store / play / sweep / doctor / test corrupt / bench, plus the payload classifier and chunk-profile cost model |
+| `cavs-server` | Stateful HTTP/HTTPS origin: sessions, inline/ref planning, `--store` mode, HLS passthrough, HTTP Range on the bootstrap endpoint, metrics |
+| `cavs-client` | Native streaming client: persistent cache with verify/repair/gc, `.part`→verify→rename reconstruction, resume journal, retry with backoff |
 
 The Godot plugin (`godot-plugin/`) is a pure-GDScript client — no native
 binary — and the SteamPipe analyzer (`steam-analyzer/`) is a standalone tool
@@ -98,6 +98,39 @@ objects into a handful of files and cuts physical reads 65–170× with zero
 read amplification — and `cavs store export` emits the store as a
 deterministic immutable tree for object storage/CDN. Loose stores keep
 working unchanged; wire behavior is identical either way.
+
+## Failure and recovery (v0.5.0)
+
+Everything above assumes bytes arrive and disks behave. v0.5.0 defines what
+happens when they don't:
+
+- **Every write is atomic.** Temp file → verify → rename, for cache chunks,
+  reconstructed outputs, manifests and pack indexes alike. An interrupted
+  run can leave a `.part` and a journal behind — never a wrong file: the
+  final artifact is only promoted after its full digest matches.
+- **Downloads resume.** A small crash-safe journal per asset
+  (`<cache>/journal/`, written tmp+rename) records the in-flight fetch;
+  byte-level truth stays in the artifacts (the `.part` length, the chunk
+  cache). Bootstrap downloads continue with an HTTP `Range` request against
+  the immutable artifact; chunk fetches re-announce the have-set and pay
+  only for what is still missing. A journal is honoured only when server,
+  asset and manifest hash all match.
+- **Transient ≠ permanent.** Transport errors and 429/5xx retry with
+  exponential backoff (250 ms → 8 s, ±25% jitter, 5 attempts); a hash
+  mismatch or a 4xx never retries unchanged. Exhausted retries and every
+  other failure carry a stable code (`CAVS-E-NETWORK`,
+  `CAVS-E-CHUNK-HASH-MISMATCH`, `CAVS-E-CACHE-CORRUPT-RECOVERABLE`, …) so
+  launchers can decide programmatically.
+- **The cache heals.** Reads always verify (a corrupt entry reads as
+  absent); `cache verify` audits the whole cache and quarantines rot,
+  `cache repair` re-fetches exactly what an asset is missing, `cache gc`
+  evicts LRU to a size budget. Nothing in the cache is trusted twice.
+- **Decoders are fuzzed.** Five libFuzzer targets (manifest, varint, pack
+  index, container, CVSP batch) under `fuzz/`, plus deterministic
+  byte-flip/truncation/garbage sweeps that run in normal CI. The `cavs
+  test corrupt` matrix replays ~20 targeted mutations against real
+  containers, and `cavs doctor` runs the read-only health checks in
+  production.
 
 ## Design stance
 

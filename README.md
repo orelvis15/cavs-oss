@@ -38,6 +38,12 @@ a pixel codec.
   chunk — on a 570 MB game, 5,775 objects become 6 files and an update
   session's reads coalesce 170× with zero read amplification. Exportable as
   a deterministic object tree for S3/R2/CDN.
+- **Production-hardened (v0.5.0)**: interrupted downloads resume with HTTP
+  Range instead of restarting; transient network failures retry with
+  backoff; a corrupt cache is detected, quarantined and repaired in place;
+  every decoder is fuzzed and survives full byte-flip/truncation sweeps;
+  failures carry stable `CAVS-E-*` error codes; and `cavs doctor` diagnoses
+  a deployment in one command.
 - **Complementary, not competitive**: use the best codec/compressor for the
   bytes; CAVS deduplicates and transports above them.
 
@@ -63,10 +69,17 @@ downloading the full compressed release, thanks to the dual delivery route:
 | MechanicalFlower/**Marble** | 6.55 MiB | **5.68 MiB** | **−13.2%** |
 
 - **Re-downloads cost ~0 bytes** of payload (persistent content-addressable cache).
+- **Interrupted installs don't start over** (v0.5.0): a 232 MiB install
+  killed at 57 MiB resumed with an HTTP Range request and downloaded only
+  the missing ~166 MiB — verified end to end, never promoting an
+  unverified file.
+- **Content shifts don't break updates**: inserting bytes at the head of a
+  1 GiB build (every downstream byte moves) costs **10.9 KiB** of update
+  egress — FastCDC re-synchronizes (`cavs bench suite`, reproducible).
 - **Server storage dedup**: ingesting two versions of a real game into the
   global store stored the shared chunks once — **~49% less disk** than keeping
   each `.cavs` separately.
-- **Client RAM is constant at ~7 MiB**, whether the game is 9 MB or 569 MB.
+- **Client RAM is constant at ~7–14 MiB**, whether the game is 9 MB or 569 MB.
 - **Honest negatives**: on a single video, ABR ladders, or already-compressed
   files, savings are ~0 and the packaging overhead is +0.03–2% (the payload
   classifier keeps it at the low end by using large chunks there).
@@ -168,6 +181,37 @@ chunks live in a few immutable packfiles served by coalesced range reads:
 ./target/release/cavs-server --store ./store --listen 127.0.0.1:8990
 ```
 
+### Operate it in production (v0.5.0)
+
+Interrupted downloads resume by default; the cache heals itself; one command
+diagnoses a deployment:
+
+```sh
+# Resume whatever fetches were interrupted (bootstrap downloads continue
+# via HTTP Range; chunk fetches continue from the cache have-set)
+./target/release/cavs-client resume --cache ./cache
+
+# Cache maintenance: re-hash everything (corrupt entries -> quarantine),
+# re-fetch an asset's missing/corrupt chunks, evict LRU to a size budget
+./target/release/cavs-client cache verify --cache ./cache
+./target/release/cavs-client cache repair http://127.0.0.1:8990 game_v2 --cache ./cache
+./target/release/cavs-client cache gc --cache ./cache --max-size 10GiB
+
+# Diagnose: container integrity, manifest, bootstrap sidecar, store, cache
+./target/release/cavs doctor game_v2.cavs --store ./store --cache ./cache
+
+# Prove every decoder rejects corruption cleanly (20-row mutation matrix)
+./target/release/cavs test corrupt game_v2.cavs --out corrupt-report.json
+
+# Reproducible large-build benchmarks (deterministic synthetic datasets)
+./target/release/cavs bench gen --out ./ds --size 1GiB
+./target/release/cavs bench suite --dataset ./ds --out ./results
+```
+
+Failures carry stable error codes (`CAVS-E-BOOTSTRAP-HASH-MISMATCH`,
+`CAVS-E-CACHE-CORRUPT-RECOVERABLE`, `CAVS-E-NETWORK`, …) so launchers and
+scripts can decide retry/repair/give-up without parsing prose.
+
 ### Analyze a Steam build
 
 ```sh
@@ -185,18 +229,22 @@ See [`godot-plugin/README.md`](godot-plugin/README.md) for game integration and
   chunk-profile selection, `--bootstrap` cold-install artifacts and a
   `sweep` cost report; inspect, verify, reconstruct, manage a global
   store (`add` / `rm` / `gc` / `stat` / `verify` / `export`, loose or
-  packfile layout), and inspect manifest formats
-  (`manifest export` / `manifest bench`).
+  packfile layout), inspect manifest formats
+  (`manifest export` / `manifest bench`), diagnose deployments
+  (`doctor`), run the corruption matrix (`test corrupt`) and generate/run
+  reproducible large-build benchmarks (`bench gen` / `bench suite`).
 - **`cavs-server`**: stateful HTTP/HTTPS origin. Per-session have-set,
   inline/reference planning, dual-route decision (bootstrap vs chunks) per
   client, manifest format negotiation (compact binary v2 / JSON v1), CVSP
   binary batches, coalesced packfile range reads with read-efficiency
-  metrics, immutable CDN-cacheable chunk endpoint (ETag + immutable
-  Cache-Control), and a `--store` mode.
+  metrics, immutable CDN-cacheable chunk and bootstrap endpoints (ETag,
+  immutable Cache-Control, HTTP Range for resume), and a `--store` mode.
 - **`cavs-client`**: native streaming client with a persistent cache and
   atomic, verified reconstruction; negotiates the compact binary manifest,
-  takes the bootstrap route when offered (seeding its cache); resumable and
-  retry-safe.
+  takes the bootstrap route when offered (seeding its cache); resumes
+  interrupted downloads from a crash-safe journal, retries transient
+  failures with backoff, and maintains its own cache
+  (`cache verify` / `repair` / `gc`).
 - **Godot plugin**: `CavsClient` in pure GDScript (no native binaries) —
   install as an addon, mount packs at runtime. See
   [`godot-plugin/README.md`](godot-plugin/README.md).

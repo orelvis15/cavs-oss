@@ -20,11 +20,11 @@ full picture and [`../docs/FORMAT.md`](../docs/FORMAT.md) for the byte layout.
 | [`cavs-chunker`](cavs-chunker) | lib | Fixed-size and FastCDC chunking |
 | [`cavs-store`](cavs-store) | lib | Dedup index + on-disk global content-addressable store (refcount + GC; loose or `.cavspack` packfile layout with coalesced range reads) |
 | [`cavs-format`](cavs-format) | lib | The `.cavs` binary format: writer, hardened reader, Ed25519 signing |
-| [`cavs-proto`](cavs-proto) | lib | CVSP wire protocol: manifests, sessions, binary batches, Bloom have-set |
+| [`cavs-proto`](cavs-proto) | lib | CVSP wire protocol: manifests, sessions, binary batches, Bloom have-set, `CAVS-E-*` error taxonomy |
 | [`cavs-manifest`](cavs-manifest) | lib | Manifest wire formats: compact binary v2 (`CAVSMF2`) codec + JSON v1 compatibility reader |
-| [`cavs-cli`](cavs-cli) | **tool** `cavs` | Package / inspect / verify / reconstruct / manage the store |
-| [`cavs-server`](cavs-server) | **tool** `cavs-server` | Stateful HTTP/HTTPS origin |
-| [`cavs-client`](cavs-client) | **tool** `cavs-client` | Native streaming client with a persistent cache |
+| [`cavs-cli`](cavs-cli) | **tool** `cavs` | Package / inspect / verify / reconstruct / manage the store / doctor / corruption matrix / bench suite |
+| [`cavs-server`](cavs-server) | **tool** `cavs-server` | Stateful HTTP/HTTPS origin (Range-resumable bootstrap endpoint) |
+| [`cavs-client`](cavs-client) | **tool** `cavs-client` | Native streaming client: persistent cache with verify/repair/gc, resume journal, retry with backoff |
 
 ## Build and test
 

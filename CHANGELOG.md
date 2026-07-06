@@ -6,6 +6,91 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0]
+
+The production-hardening release: correctness under malformed input, recovery
+from interrupted downloads and corrupt caches, structured errors, fuzzing,
+and large-build confidence. Not about reducing bytes — about trust. Wire
+numbers are byte-for-byte identical to 0.4.0 on the real-game suite (tps-demo
+update still 1.64 MiB, warm re-fetch still 0 bytes, everything
+byte-identical), so all 0.3.0/0.4.0 wins carry over unchanged.
+
+Measured highlights: an interrupted 232 MiB bootstrap download (client
+killed with `kill -9` at 57 MiB) resumed with an HTTP Range request and paid
+only the missing ~166 MiB; `cache verify` + `cache repair` on a real
+5,747-chunk cache detected, quarantined and re-fetched exactly the corrupted
+entries; client peak RSS stays ~14 MiB installing a 569 MB game; the 1 GiB
+synthetic suite packs in ~7 s per version, and a head-insertion that shifts
+every byte of a 1 GiB build costs 10.9 KiB of update egress (FastCDC
+resynchronization working as designed).
+
+### Added
+
+- **Structured error taxonomy.** Stable `CAVS-E-*` codes
+  (`cavs_proto::errors`): `MANIFEST-CORRUPT`, `BOOTSTRAP-HASH-MISMATCH`,
+  `CHUNK-HASH-MISMATCH`, `CACHE-CORRUPT-RECOVERABLE`, `NETWORK`,
+  `OUTPUT-HASH-MISMATCH`, `SIGNATURE-INVALID` and friends — attached at
+  every client/CLI failure point, recoverable from any rendered error
+  chain, so tooling can decide retry/repair/give-up without parsing prose.
+- **Fuzzing.** Five libFuzzer targets under `fuzz/` (manifest v2, varint,
+  pack index, container, CVSP batch; `cargo +nightly fuzz run <target>`),
+  plus deterministic mini-fuzz replay tests that run in normal CI:
+  full byte-flip sweeps, truncation sweeps and seeded random garbage
+  against every decoder.
+- **Corruption matrix.** `cavs test corrupt <file.cavs> [--out report.json]`
+  mutates a scratch copy across ~20 targeted rows — container magic,
+  section directory, section bytes, chunk data, truncation, manifest v2
+  header/body/truncations, overlong/truncated varints, bootstrap sidecar,
+  packfile header/data/footer, pack index, out-of-range reads — and
+  asserts every decoder rejects the corruption cleanly.
+- **Resume downloads.** A crash-safe journal (`<cache>/journal/…`, written
+  tmp+rename) records in-flight fetches. Interrupted bootstrap downloads
+  keep their `.zst.part` and continue with an HTTP `Range` request
+  (`cavs-server` now answers 206 on `/bootstrap`; older servers get a
+  clean restart); interrupted chunk fetches resume naturally from the
+  cache have-set. Journals are honoured only when server, asset and
+  manifest hash all match — anything stale is discarded with its partial
+  files. New `cavs-client resume` command; `--no-resume` opts out. The
+  final artifact is still only promoted after full verification.
+- **Retry with backoff.** Transient failures (transport errors, 429/5xx)
+  retry up to 5 times with exponential backoff (250 ms → 8 s, ±25%
+  jitter); verification failures and 4xx never retry. Exhausted retries
+  surface as `CAVS-E-NETWORK`.
+- **Cache maintenance.** `cavs-client cache verify` re-hashes every cached
+  chunk, quarantines corrupt entries (or `--delete`s them) and removes
+  torn temp files; `cache repair <server> <asset>` re-fetches exactly the
+  missing/corrupt chunks of an asset; `cache gc --max-size 10GiB` evicts
+  least-recently-used chunks to a size budget.
+- **`cavs doctor`.** Read-only diagnosis: a `.cavs` (structure, every
+  chunk hash, Merkle root, manifest encodability in both formats,
+  bootstrap sidecar size+BLAKE3, signature, duplicate chunk entries), a
+  global store (`--store`: layout, ledger consistency, every chunk, pack
+  integrity) and a client cache (`--cache`: corrupt entries). `CAVS-E-*`
+  findings, non-zero exit on problems.
+- **Large-build benchmark suite.** `cavs bench gen` produces deterministic
+  synthetic datasets (same seed ⇒ identical bytes anywhere): a base build
+  plus small/medium/large-change, head-shifted and reordered update
+  variants, streamed so datasets larger than RAM generate fine.
+  `cavs bench suite` packs every version and reports pack time, container
+  and manifest sizes, dedup, update egress and packfile shape as
+  `summary.md` + `summary.json`.
+
+### Fixed
+
+- **Unbounded pre-allocation in the CVSP decoders** (found by the new
+  fuzz targets): a crafted batch header declaring billions of items or a
+  multi-GiB inline payload could force huge allocations before the read
+  failed. Counts are now capped by what the buffer could actually encode,
+  and inline lengths are validated against a 256 MiB wire ceiling before
+  allocating.
+- **Container reader accepts less.** The superblock's declared hash
+  algorithm, compression algorithm and file size are now validated
+  (values a correct writer never produces are rejected). The remaining
+  superblock fields (uuid, timescale, flags) are intentionally
+  unauthenticated metadata — content integrity is carried by the section
+  hashes, chunk hashes and Merkle root, as verified by the new full
+  byte-flip sweep.
+
 ## [0.4.0]
 
 The packfile release: the global store can now keep its chunks in a few
@@ -166,7 +251,10 @@ Initial public release.
 - `cavs-steam`: SteamPipe update-size analyzer for game builds.
 - Documentation: format specification, architecture, benchmarks, and paper.
 
-[Unreleased]: https://github.com/orelvis15/cavs-oss/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/orelvis15/cavs-oss/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/orelvis15/cavs-oss/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/orelvis15/cavs-oss/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/orelvis15/cavs-oss/compare/v0.1.2...v0.3.0
 [0.1.2]: https://github.com/orelvis15/cavs-oss/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/orelvis15/cavs-oss/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/orelvis15/cavs-oss/releases/tag/v0.1.0

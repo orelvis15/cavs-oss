@@ -144,6 +144,57 @@ store/upload/list, fewer syscalls to serve, CDN-ready immutable packs
 drops slightly (tps-demo: −3.9%, filesystem block overhead of thousands of
 small files).
 
+## Hardening (v0.5.0) — recovery, measured
+
+v0.5.0 changes no wire format and no routing: the cold/update/warm numbers
+above were re-measured after it and are byte-for-byte identical (tps-demo
+update still 1.64 MiB inline, warm still 0 bytes, all reconstructions
+byte-identical). What it adds is resilience, and that was measured too:
+
+- **Interrupted install resume** (tps-demo, 232 MiB bootstrap artifact):
+  the client was killed with `kill -9` at 57 MiB downloaded. The next
+  fetch found the journal, hashed the partial file, continued with an HTTP
+  `Range` request and downloaded only the remaining **166.5 MiB** — final
+  file byte-identical, journal and partials cleaned up. A stale journal
+  (asset republished) is discarded and the fetch starts clean.
+- **Cache self-repair** (real cache, 5,747 chunks / 510 MiB): 3 entries
+  were corrupted on disk. `cache verify` detected and quarantined exactly
+  those 3 (`CAVS-E-CACHE-CORRUPT-RECOVERABLE`), `cache repair` re-fetched
+  exactly those 3, and the following re-fetch was back to **0 payload
+  bytes** and byte-identical.
+- **Corruption matrix**: `cavs test corrupt` runs ~20 targeted mutations
+  (container magic/sections/data/truncation, manifest header/body/
+  truncation, overlong varints, bootstrap sidecar, packfile header/data/
+  footer/index, out-of-range reads) against real game containers — every
+  corrupted artifact is rejected cleanly on all three games. The same
+  invariants are fuzzed (5 libFuzzer targets) and replayed
+  deterministically in CI: full byte-flip sweeps over the pack index and
+  container leave **zero** unauthenticated-content survivors.
+- **Client memory** (release build, 569 MB game): peak RSS **14.3 MiB**
+  for the cold bootstrap install and **6.3 MiB** for the update — still
+  ~constant with asset size.
+
+## Synthetic large builds (v0.5.0) — reproducible suite
+
+`cavs bench gen` emits a deterministic dataset (same seed ⇒ identical bytes
+on any machine): a base build plus the update shapes that matter for chunked
+delivery. `cavs bench suite` packs and measures every version. 1 GiB base,
+FastCDC 64 KiB + zstd 3, Apple Silicon laptop:
+
+| Update shape | Changed | Pack | Update egress |
+|---|---|---:|---:|
+| v2-small | ~3% of blocks | 6.4 s | 51.3 MiB (5.0%) |
+| v2-medium | ~15% | 6.8 s | 216.6 MiB (21.2%) |
+| v2-large | ~50% | 6.8 s | 449.1 MiB (43.9%) |
+| v2-shifted | 4 KiB inserted at head — **every byte shifts** | 7.3 s | **10.9 KiB (0.0%)** |
+| v2-reordered | same blocks, 8 MiB groups swapped | 9.1 s | 20.8 MiB (2.0%) |
+
+The `v2-shifted` row is the reason content-defined chunking exists: a
+byte-offset shift that would invalidate every fixed block costs effectively
+nothing. Update egress tracks the changed fraction linearly, and manifests
+stay compact (1.28 MiB JSON → 311 KiB binary v2 for ~8,600 chunks).
+Ingesting v1 + v2-small into a packfile store yields 6 immutable packs.
+
 ## Honest negatives (video suite)
 
 CAVS is not a codec and doesn't pretend to be:
@@ -160,6 +211,10 @@ CAVS is not a codec and doesn't pretend to be:
 
 ## Reproducing
 
-The benchmark harnesses (`cavs-bench`, the real-games scripts) and the raw
-result data live in the full development repository, not in this open-source
-tree. The measured summaries above are what those harnesses produced.
+The synthetic large-build suite is fully reproducible from this tree:
+`cavs bench gen --out ds --size 1GiB && cavs bench suite --dataset ds --out
+results` regenerates the exact same dataset (deterministic PRNG) and writes
+`summary.md`/`summary.json`. The real-game harnesses (`cavs-bench`, the
+real-games scripts) and their raw result data live in the full development
+repository, not in this open-source tree; the measured summaries above are
+what those harnesses produced.

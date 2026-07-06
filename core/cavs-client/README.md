@@ -29,6 +29,18 @@ servers — the format is detected from the bytes. `--stats-json` includes a
 `manifest` block: `format`, `wire_bytes`, `parse_ms`, `chunk_count_logical`,
 `chunk_count_unique`.
 
+**Hardening (v0.5.0)**: a crash-safe journal under `<cache>/journal/`
+records every in-flight fetch. An interrupted bootstrap download keeps its
+`.zst.part` and continues with an HTTP `Range` request on the next fetch
+(or `cavs-client resume`); interrupted chunk fetches resume from the cache
+have-set. Transient network failures (transport errors, 429/5xx) retry
+with exponential backoff (250 ms → 8 s, jittered, 5 attempts); hash
+mismatches never retry. The cache maintains itself: `cache verify`
+quarantines corrupt entries, `cache repair` re-fetches exactly what an
+asset is missing, `cache gc` evicts LRU to a size budget. Failures carry
+stable `CAVS-E-*` codes (`CAVS-E-BOOTSTRAP-HASH-MISMATCH`,
+`CAVS-E-CACHE-CORRUPT-RECOVERABLE`, `CAVS-E-NETWORK`, …).
+
 ## Use
 
 ```sh
@@ -45,6 +57,14 @@ cavs-client fetch <url> game_v2 -o out --cache ./cache \
 
 # Play a fetched video asset (needs ffplay)
 cavs-client play <url> movie --cache ./cache
+
+# Resume interrupted fetches (v0.5.0; fetch also resumes by default)
+cavs-client resume --cache ./cache
+
+# Cache maintenance (v0.5.0)
+cavs-client cache verify --cache ./cache                  # quarantine rot
+cavs-client cache repair <url> game_v2 --cache ./cache    # re-fetch missing
+cavs-client cache gc --cache ./cache --max-size 10GiB     # LRU eviction
 ```
 
 ## Options
@@ -54,5 +74,6 @@ cavs-client play <url> movie --cache ./cache
 - `--pubkey <hex|file>` — require the asset to be signed by this Ed25519 key.
 - `--ca <pem>` — trust a specific certificate (e.g. a self-signed dev cert).
 - `--stats-json <path>` — write exact fetch statistics (inline bytes, refs, …).
+- `--no-resume` — start clean instead of resuming an interrupted fetch.
 
 Run `cavs-client --help` for all options.

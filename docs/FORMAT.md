@@ -48,6 +48,16 @@ the file unless stated otherwise.
 | 48 | 8 | `file_size` | total file size |
 | 56 | 8 | reserved | 0 |
 
+Since 0.5.0 the reader validates `hash_algo`, `compression_algo` and
+`file_size` (values a correct writer never produces are rejected). The
+remaining superblock fields — `asset_uuid`, `timescale`, `feature_flags`,
+`version_minor`, reserved bytes — are deliberately **unauthenticated
+metadata**: content integrity is carried entirely by the section hashes,
+the per-chunk hashes and the Merkle root (and pinned by the content
+signature when present), never by the superblock. A full single-byte-flip
+sweep in the `cavs-format` tests verifies that no flip outside those
+metadata fields survives verification.
+
 ## Section directory
 
 `section_count` consecutive entries of **52 bytes**:
@@ -401,7 +411,12 @@ counts bounded by the bytes that could actually encode them, dictionary
 indexes bounded by the dictionary, and every section must be consumed
 exactly. Section hashes make any payload corruption a clean
 `SectionHashMismatch` error. This is exercised by truncation sweeps and a
-full single-byte-flip corruption sweep in the `cavs-manifest` tests.
+full byte-flip corruption sweep in the `cavs-manifest` tests, by the
+`cavs test corrupt` mutation matrix, and by the libFuzzer targets under
+`fuzz/` (since 0.5.0). The same discipline applies to the CVSP batch
+decoders: item counts are never pre-allocated beyond what the buffer could
+encode, and inline chunk lengths are validated against a 256 MiB wire
+ceiling (`MAX_WIRE_CHUNK`) before any allocation.
 
 ## Planned extensions (v1.x, via `feature_flags` + new sections)
 

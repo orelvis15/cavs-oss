@@ -16,6 +16,15 @@ The CVSP wire protocol types shared by server and clients.
 - **`BloomFilter`** — a compact summary of a client's have-set so session-open
   stays small even with tens of thousands of cached chunks; false positives are
   repaired by fetching the chunk directly by hash.
+- **`errors`** (v0.5.0) — the stable `CAVS-E-*` error taxonomy shared by the
+  CLI, server and client (`CAVS-E-MANIFEST-CORRUPT`,
+  `CAVS-E-CHUNK-HASH-MISMATCH`, `CAVS-E-NETWORK`, …), recoverable from any
+  rendered error chain with `error_code_of`.
+
+The batch decoders are hardened (v0.5.0): item counts are never
+pre-allocated beyond what the buffer could encode, and inline chunk lengths
+are validated against a 256 MiB ceiling (`MAX_WIRE_CHUNK`) before any
+allocation — fuzzed under `fuzz/` and replayed deterministically in CI.
 
 ## Use
 
