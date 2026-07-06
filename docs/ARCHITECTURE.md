@@ -24,9 +24,11 @@ store each unique chunk once, and transmit only the chunks a client lacks.
 | `cavs-format` | The `.cavs` binary format: types, streaming writer, hardened reader/verifier, Ed25519 signing |
 | `cavs-proto` | CVSP wire protocol: the runtime `Manifest` model, sessions, compact binary batches (hardened decoders); the Bloom-filter have-set; the `CAVS-E-*` error taxonomy |
 | `cavs-manifest` | Manifest wire formats: the compact binary v2 codec (`CAVSMF2`: chunk dictionary + varint plan, ~76% smaller than JSON) and `read_manifest`, which detects JSON v1 vs binary v2 from the bytes and normalizes both |
-| `cavs-cli` | The `cavs` binary: pack / unpack / info / verify / keygen / store / play / sweep / doctor / test corrupt / bench, plus the payload classifier and chunk-profile cost model |
+| `cavs-signature` | v0.6.0: the compact `.cavssig` old-version signature (fixed-block layout + weak rolling hash + BLAKE3 strong hashes) and the rsync-style hybrid diff scanner that finds reusable ranges against a signature alone |
+| `cavs-rebuild-plan` | v0.6.0: the unified reconstruction plan (`CopyPreviousRange` / `CopyCacheChunk` / `FetchNetworkChunk`), cost-based source scoring, and adjacent-range coalescing; the v0.5 cache+network flow is a special case |
+| `cavs-cli` | The `cavs` binary: pack / pack-dir / unpack / info / verify / keygen / store / play / sweep / signature / doctor / test corrupt / bench (suite / delta / compression), plus the payload classifier and chunk-profile cost model |
 | `cavs-server` | Stateful HTTP/HTTPS origin: sessions, inline/ref planning, `--store` mode, HLS passthrough, HTTP Range on the bootstrap endpoint, metrics |
-| `cavs-client` | Native streaming client: persistent cache with verify/repair/gc, `.part`→verify→rename reconstruction, resume journal, retry with backoff |
+| `cavs-client` | Native streaming client: persistent cache with verify/repair/gc, `.part`→verify→rename reconstruction, resume journal, retry with backoff, and (v0.6.0) hybrid reconstruction from a `--previous-artifact` with no-op detection and directory-mode staged applies |
 
 The Godot plugin (`godot-plugin/`) is a pure-GDScript client — no native
 binary — and the SteamPipe analyzer (`steam-analyzer/`) is a standalone tool
@@ -96,8 +98,36 @@ by range reads that the server coalesces per batch (nearby chunks of one
 pack = one physical read). On real games this turns thousands of chunk
 objects into a handful of files and cuts physical reads 65–170× with zero
 read amplification — and `cavs store export` emits the store as a
-deterministic immutable tree for object storage/CDN. Loose stores keep
-working unchanged; wire behavior is identical either way.
+deterministic immutable tree for object storage/CDN (with `--static-plans`
+it also writes per-asset `chunk-map.json`, so a client can plan against a
+dumb static host). Loose stores keep working unchanged; wire behavior is
+identical either way.
+
+## Hybrid reconstruction (v0.6.0)
+
+The previous installed version is a third byte source alongside the cache
+and the network. When the client is given `--previous-artifact`, it
+memory-maps the old file, chunks it with the packer's recorded profile, and
+indexes only the hashes the new manifest needs. Reconstruction then goes
+through a single **plan** per output file (`cavs-rebuild-plan`): for each
+required chunk a cost model (network bytes ≫ seeks ≫ local reads) picks the
+cheapest source, prefers a previous-artifact range that continues the last
+one, and coalesces adjacent previous ranges into reads of up to 8 MiB. The
+v0.5 cache+network path is exactly a plan with no previous-range ops, so the
+executor is a superset, not a parallel path — and the planner is proven
+never to increase network bytes over v0.5 for the same cache state.
+
+Trust is unchanged: every copied range re-hashes to its BLAKE3 identity
+*before* it is written, the final output still passes the manifest SHA-256
+before the atomic promotion, and a range that fails verification demotes to
+cache/network per chunk (`CAVS-E-PREVIOUS-ARTIFACT-MISMATCH`, recoverable).
+A compact `.cavssig` signature (`cavs-signature`) lets a new version be
+diffed against an old one without the old bytes at all, and no-op detection
+skips work entirely when an output — or a whole file, in directory mode —
+already matches. Directory/container assets (`cavs pack-dir`, preview) are
+rebuilt into a staging tree, verified per file, then committed with per-file
+renames under a journal. See
+[HYBRID_RECONSTRUCTION.md](HYBRID_RECONSTRUCTION.md).
 
 ## Failure and recovery (v0.5.0)
 

@@ -9,6 +9,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "alloc-no-stdlib"
+version = "2.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc7bb162ec39d46ab1ca8c77bf72e890535becd1751bb45f64c597edb4c8c6b3"
+
+[[package]]
+name = "alloc-stdlib"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e76a019e91224d279006ff972f1e984179a6e9feb050adba6ce8274aef23195"
+dependencies = [
+ "alloc-no-stdlib",
+]
+
+[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -236,6 +251,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "brotli"
+version = "7.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc97b8f16f944bba54f0433f07e30be199b6dc2bd25937444bbad560bcea29bd"
+dependencies = [
+ "alloc-no-stdlib",
+ "alloc-stdlib",
+ "brotli-decompressor",
+]
+
+[[package]]
+name = "brotli-decompressor"
+version = "4.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a334ef7c9e23abf0ce748e8cd309037da93e606ad52eb372e4ce327a0dcfbdfd"
+dependencies = [
+ "alloc-no-stdlib",
+ "alloc-stdlib",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -249,25 +285,28 @@ checksum = "8ae3f5d315924270530207e2a68396c3cc547f6dca3fbdca317cfb1a51edb593"
 
 [[package]]
 name = "cavs-chunker"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "fastcdc",
 ]
 
 [[package]]
 name = "cavs-cli"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
+ "brotli",
  "cavs-chunker",
  "cavs-format",
  "cavs-hash",
  "cavs-manifest",
  "cavs-proto",
+ "cavs-signature",
  "cavs-store",
  "clap",
  "ed25519-dalek",
  "rand_core",
+ "serde",
  "serde_json",
  "sha2",
  "tempfile",
@@ -277,14 +316,17 @@ dependencies = [
 
 [[package]]
 name = "cavs-client"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
+ "cavs-chunker",
  "cavs-hash",
  "cavs-manifest",
  "cavs-proto",
+ "cavs-rebuild-plan",
  "clap",
  "ed25519-dalek",
+ "memmap2",
  "rustls",
  "rustls-pemfile",
  "serde",
@@ -297,7 +339,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-format"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "cavs-hash",
  "cavs-store",
@@ -309,14 +351,14 @@ dependencies = [
 
 [[package]]
 name = "cavs-hash"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "blake3",
 ]
 
 [[package]]
 name = "cavs-manifest"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "cavs-format",
  "cavs-hash",
@@ -328,7 +370,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-proto"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "cavs-hash",
  "serde",
@@ -337,8 +379,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cavs-rebuild-plan"
+version = "0.6.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cavs-server"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -360,8 +410,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cavs-signature"
+version = "0.6.0"
+dependencies = [
+ "cavs-hash",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "cavs-steam"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "cavs-chunker",
@@ -376,7 +435,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-store"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "cavs-hash",
  "serde",

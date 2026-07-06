@@ -469,13 +469,13 @@
   <div class="nav-inner">
     <a href="#top" class="brand">
       <img src="assets/logo.png" alt="CAVS logo" />
-      CAVS <span class="tag">v0.5.0</span>
+      CAVS <span class="tag">v0.6.0</span>
     </a>
     <nav class="nav-links" id="navLinks">
       <a href="#benchmarks">Benchmarks</a>
+      <a href="#hybrid">Hybrid</a>
       <a href="#how">How it works</a>
       <a href="#compare">Vs. deltas</a>
-      <a href="#hardening">Hardening</a>
       <a href="#quickstart">Quickstart</a>
       <a href="#faq">FAQ</a>
       <a class="btn btn-primary btn-sm" href="https://github.com/orelvis15/cavs-oss" target="_blank" rel="noopener">
@@ -507,9 +507,9 @@
           <a class="btn btn-ghost" href="#benchmarks">Read benchmarks</a>
         </div>
         <div class="trust">
-          <span><i class="dot"></i>Measured on real Godot PCKs</span>
           <span><i class="dot"></i>Byte-identical reconstruction</span>
           <span><i class="dot"></i>Warm re-fetch: 0 bytes</span>
+          <span><i class="dot"></i>v0.6.0: reuse the installed version</span>
         </div>
       </div>
 
@@ -674,6 +674,54 @@
   </div>
 </section>
 
+<!-- ============ HYBRID RECONSTRUCTION (v0.6.0) ============ -->
+<section id="hybrid">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Hybrid reconstruction — v0.6.0</span>
+      <h2 class="section-title">The version already on disk<br>is now a source of bytes.</h2>
+      <p class="section-sub">A player with the old build installed but an empty cache used to pay the full download. In v0.6.0 CAVS copies verified ranges straight from the old file and fetches only what changed — every range BLAKE3-checked before it is written, the final output still gated by SHA-256.</p>
+    </div>
+    <div class="table-wrap reveal">
+      <table>
+        <thead>
+          <tr><th>Update variant (128 MiB build)</th><th class="num">v0.5 — cold cache</th><th class="num">v0.6 — cold cache + old install</th><th class="num">Reduction</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Small change</td><td class="num strike">64.55 MiB</td><td class="num">6.24 MiB</td><td class="num save">−90.3%</td></tr>
+          <tr><td>Medium change</td><td class="num strike">64.56 MiB</td><td class="num">26.53 MiB</td><td class="num save">−58.9%</td></tr>
+          <tr><td>Shifted (every byte moves)</td><td class="num strike">64.56 MiB</td><td class="num blue">10.9 KiB</td><td class="num save">−99.98%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="cards g4" style="margin-top:26px;">
+      <div class="card reveal">
+        <span class="idx">// previous artifact</span>
+        <h3>Reuse the old install</h3>
+        <p>Point the client at <span class="mono">--previous-artifact</span>. Shared ranges are copied from disk, not the network — no chunk cache required.</p>
+      </div>
+      <div class="card reveal" style="transition-delay:.05s">
+        <span class="idx">// signatures</span>
+        <h3>Compact .cavssig</h3>
+        <p>A deterministic old-version signature, <strong>~0.07%</strong> of the source (88 KiB for a 128 MiB build), lets a new version be diffed without the old bytes.</p>
+      </div>
+      <div class="card reveal" style="transition-delay:.1s">
+        <span class="idx">// no-op</span>
+        <h3>Skip unchanged work</h3>
+        <p>An output that already matches costs <strong>0 payload bytes</strong>. In directory mode, unchanged files — including player mods — are never rewritten.</p>
+      </div>
+      <div class="card reveal" style="transition-delay:.15s">
+        <span class="idx">// coalescing</span>
+        <h3>Fewer, larger reads</h3>
+        <p>Adjacent copy ranges merge: on the shifted build, <strong>1,082 chunk ops → 18</strong> contiguous reads, read amplification 1.0.</p>
+      </div>
+    </div>
+    <div class="callout">
+      No regression: with a warm cache the wire cost is byte-for-byte identical to v0.5, and a corrupt old install demotes to the network per range instead of failing — the output is always <span class="big">byte-identical</span>.
+    </div>
+  </div>
+</section>
+
 <!-- ============ HOW IT WORKS ============ -->
 <section id="how">
   <div class="wrap">
@@ -686,7 +734,7 @@
       <div class="step reveal" style="transition-delay:.05s"><div class="n">02</div><h3>Plan</h3><p>At session open, the server compares the client's cache state with the manifest. Cold clients may get the bootstrap route; warm clients get only missing chunks.</p></div>
       <div class="step reveal" style="transition-delay:.1s"><div class="n">03</div><h3>Transfer</h3><p>Missing chunks are served in binary CVSP batches. Packfile-backed stores coalesce nearby chunk reads into a few range reads.</p></div>
       <div class="step reveal" style="transition-delay:.15s"><div class="n">04</div><h3>Verify</h3><p>The client verifies chunk hashes, streams reconstruction to disk, checks the final SHA-256, then atomically promotes the result.</p></div>
-      <div class="step reveal" style="transition-delay:.2s"><div class="n">05</div><h3>Reuse</h3><p>The reconstructed file seeds the persistent cache. Future updates and re-fetches reuse existing chunks instead of downloading again.</p></div>
+      <div class="step reveal" style="transition-delay:.2s"><div class="n">05</div><h3>Reuse</h3><p>The reconstructed file seeds the persistent cache — and, in v0.6.0, the version already installed on disk is itself a source of verified ranges, so an update reuses local bytes before it fetches any.</p></div>
     </div>
   </div>
 </section>
@@ -874,6 +922,16 @@
 <span class="comment">#   "payload_bytes": 1719664,</span>
 <span class="comment">#   "reconstructed_sha256_ok": true }</span></pre>
       </div>
+      <div style="grid-column:1 / -1;">
+        <p class="mono" style="color:var(--green); font-size:13px; margin-bottom:10px;">5 — v0.6.0: update reusing the old install (empty cache)</p>
+        <pre class="code"><span class="prompt">$</span> cavs-client fetch <span class="str">http://127.0.0.1:8990</span> game_v2 \
+    <span class="flag">-o</span> out/game_v2.pck <span class="flag">--cache</span> ./cache \
+    <span class="flag">--previous-artifact</span> ./game_v1.pck <span class="flag">--stats-json</span> stats.json
+
+<span class="comment"># { "sources": { "previous_artifact_bytes": 120974668,</span>
+<span class="comment">#                "network_bytes": 6544479 },   ← −90% vs a cold v0.5 fetch</span>
+<span class="comment">#   "reconstructed_sha256_ok": true }</span></pre>
+      </div>
     </div>
   </div>
 </section>
@@ -908,6 +966,7 @@
       <div class="rel-row"><span class="ver">v0.3.0</span><span class="focus">Compact manifest</span><span class="res">Manifest wire overhead −75% to −77%</span></div>
       <div class="rel-row"><span class="ver">v0.4.0</span><span class="focus">Packfile storage</span><span class="res">5,775 chunk objects → 6 packfiles on tps-demo</span></div>
       <div class="rel-row"><span class="ver">v0.5.0</span><span class="focus">Production hardening</span><span class="res">Resume, repair, fuzzing, corruption matrix, large-build suite</span></div>
+      <div class="rel-row"><span class="ver">v0.6.0</span><span class="focus">Hybrid reconstruction</span><span class="res">Reuse the installed version: −90% updates on a cold cache, signatures, directory mode</span></div>
     </div>
   </div>
 </section>
@@ -971,6 +1030,7 @@
       <div class="faq-item"><button class="faq-q">Is CAVS a replacement for SteamPipe?</button><div class="faq-a"><p>No. CAVS can be used as an external delivery layer or as an analyzer-style technology. It does not require replacing engine formats — it works above existing binary artifacts.</p></div></div>
       <div class="faq-item"><button class="faq-q">Is CAVS a codec?</button><div class="faq-a"><p>No. CAVS does not compress pixels like AV1, H.264 or HEVC. It deduplicates and delivers already-built content-addressed chunks. For single videos or ABR ladders, savings are expected to be near zero.</p></div></div>
       <div class="faq-item"><button class="faq-q">Why not just use xdelta3 or bsdiff?</button><div class="faq-a"><p>Pairwise delta tools can produce smaller patches for one exact version pair. CAVS is designed for version streams: package once per release, serve many version jumps, reuse cache across versions, resume safely, and expose immutable CDN-cacheable storage.</p></div></div>
+      <div class="faq-item"><button class="faq-q">Can CAVS reuse the version already installed?</button><div class="faq-a"><p>Yes, since v0.6.0. Pass <span class="mono">--previous-artifact</span> and the client copies verified ranges straight from the old file, downloading only what changed — even with an empty chunk cache. On a 128&nbsp;MiB build a small update drops from 64.55&nbsp;MiB to 6.24&nbsp;MiB (−90%). Every copied range is BLAKE3-checked before it is written, and a corrupt old install safely falls back to the network.</p></div></div>
       <div class="faq-item"><button class="faq-q">Does CAVS preserve the original file?</button><div class="faq-a"><p>Yes. CAVS reconstructs the final artifact byte-for-byte and verifies it with SHA-256 before promotion. Reconstruction is byte-identical or it fails — never halfway.</p></div></div>
       <div class="faq-item"><button class="faq-q">What happens if a download is interrupted?</button><div class="faq-a"><p>v0.5.0 keeps a crash-safe journal and resumes bootstrap downloads with HTTP Range when possible. Chunk fetches resume from the persistent cache have-set.</p></div></div>
       <div class="faq-item"><button class="faq-q">What if the client cache is corrupt?</button><div class="faq-a"><p>The client can verify cached chunks, quarantine corrupt entries, and repair only the missing or corrupt chunks from the server — returning to zero-payload re-fetches afterward.</p></div></div>

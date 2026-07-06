@@ -6,6 +6,111 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0]
+
+The hybrid reconstruction release: CAVS can now use a previously installed
+artifact or directory tree as a first-class source of reusable bytes, while
+keeping the content-addressed cache, packfile store and verified,
+byte-identical reconstruction model intact. It folds the core idea of delta
+patching (old-version signatures, copy-range reuse, coalescing, preferred
+sources, no-op detection, staged applies) into the CAVS model — as design
+ideas, not a rewrite.
+
+Measured highlights (128 MiB synthetic suite, seed 5): a client with an
+**empty cache but the old version on disk** updates for 6.24 MiB instead of
+64.55 MiB (−90.3 % small change), 26.53 MiB instead of 64.56 MiB (−58.9 %
+medium), and 10.9 KiB instead of 64.56 MiB (−99.98 % shifted). The
+warm-cache path is byte-for-byte unchanged from v0.5 (no regression), every
+output stays byte-identical, and a corrupt previous install demotes to
+cache/network per range instead of failing. Range coalescing turns 1,082
+per-chunk ops into 18 contiguous reads on the shifted variant. A 128 MiB
+build's `.cavssig` signature is 88 KiB (0.07 %). Re-fetching an
+already-current install is a no-op: 0 payload bytes.
+
+### Added
+
+- **`--previous-artifact` client mode.** The old install is memory-mapped,
+  chunked with the packer's recorded profile and indexed by the new
+  manifest's hashes; matched ranges are copied directly — each one
+  BLAKE3-verified before writing, with the final SHA-256 gate unchanged. A
+  failed range demotes to cache/network and reports
+  `CAVS-E-PREVIOUS-ARTIFACT-MISMATCH` (recoverable). The client also
+  overrides a server bootstrap suggestion when the previous install makes
+  the chunk path cheaper.
+- **Hybrid reconstruction plans** (`cavs-rebuild-plan` crate). Every data
+  track is rebuilt through a unified, deterministic plan
+  (`CopyPreviousRange` / `CopyCacheChunk` / `FetchNetworkChunk`) with
+  cost-based source scoring (network ≫ seeks ≫ local reads), contiguity
+  preference, and strict adjacent-range coalescing up to 8 MiB per read.
+  The v0.5 cache+network flow is expressible as a plan with no
+  previous-range ops. `--dump-plan plan.json` exports it; `--no-hybrid`
+  restores v0.5 behaviour.
+- **CAVS signatures (`.cavssig`)** (`cavs-signature` crate) with
+  `cavs signature export|inspect|verify`: a compact (0.07 % of source),
+  deterministic description of an old artifact/directory — fixed 64 KiB
+  blocks, weak rolling-hash prefilter, BLAKE3-256 strong hashes, per-file
+  layout, Merkle root and a whole-file integrity trailer. Exportable from
+  `.cavs` containers, raw files or directories.
+  `cavs pack --against-signature old.cavssig` reports reusable bytes at
+  pack time without the old content. New fuzz target
+  (`fuzz_signature_decode`) asserts decode∘encode canonicality.
+- **Hybrid diff scanner.** rsync-style weak rolling hash over new bytes,
+  candidates confirmed with BLAKE3, `DATA` ops capped at 4 MiB, adjacent
+  copies coalesced — finds shifted/unaligned reuse against a signature
+  alone (no old bytes, no chunk cache).
+- **No-op detection** (default on; `--force-reconstruct` disables): outputs
+  that already match cost one manifest round-trip
+  (`delivery_mode: "no-op"`); a previous artifact that already *is* the
+  target installs by verified local copy (`"previous-copy"`); directory
+  updates skip unchanged files (mod-friendly).
+- **Directory/container mode (preview).** `cavs pack-dir ./Build -o b.cavs`
+  packages a tree as per-file deduplicated tracks plus dir/symlink/exec
+  metadata; the client reconstructs into a staging directory, verifies
+  every file hash, commits with per-file renames under a journal, and
+  optionally `--prune`s files dropped by the new version (unknown files —
+  mods, saves — are preserved by default).
+- **Delta benchmark baseline.** `cavs bench delta --old A --new B [--out d]`
+  measures a block-based delta model (64 KiB blocks, weak rolling hash +
+  BLAKE3 confirmation, COPY/DATA planning, zstd-1 transport) against full
+  re-download, the CAVS chunk route, and xdelta3/bsdiff when installed —
+  patch size, generation and apply times, plus JSON/markdown reports. See
+  docs/DELTA_COMPARISON.md for results and honest framing (pairwise patches
+  win per-pair bytes; CAVS wins the operational model).
+- **Compression benchmark.** `cavs bench compression --input f --algos
+  zstd-3,brotli-9` (Brotli feature-gated behind `brotli-bench`). Measured:
+  zstd and Brotli within 0.1 % on size, zstd ~40× faster to decode — zstd-3
+  stays the default.
+- **Static/CDN export plans.** `cavs store export --out dir --static-plans`
+  adds per-asset `chunk-map.json` (chunk → pack file, offset, lengths) so a
+  client against a static HTTP host can plan fetches with no smart server.
+- **Per-source fetch stats.** `--stats-json` now reports
+  `sources.{network,cache_chunk,previous_artifact,repair_wire}_bytes`,
+  demoted chunk counts, plan op counts before/after coalescing and
+  source-selection time.
+- **Error taxonomy additions** (stable codes): `CAVS-E-SIGNATURE-CORRUPT`,
+  `CAVS-E-SIGNATURE-MISMATCH`, `CAVS-E-PREVIOUS-ARTIFACT-MISSING`,
+  `CAVS-E-PREVIOUS-ARTIFACT-MISMATCH`, `CAVS-E-HYBRID-PLAN-INVALID`,
+  `CAVS-E-HYBRID-SOURCE-FAILED`, `CAVS-E-CONTAINER-APPLY-FAILED`,
+  `CAVS-E-CONTAINER-ROLLBACK-FAILED`, `CAVS-E-DELTA-BENCH-UNAVAILABLE`.
+
+### Changed
+
+- The client reconstruction path for container payloads (raw and directory)
+  now goes through the unified plan executor; existing cache/network
+  behaviour is preserved as a special case of the plan model (verified: the
+  planner never increases network bytes over v0.5 for the same cache
+  state). Media payloads keep the v0.5 streaming path.
+- Bloom false-positive repair now also consults the previous-artifact index
+  before re-fetching a referenced chunk.
+
+### Notes
+
+This release does not replace FastCDC or convert CAVS into a pairwise
+patcher. It adds a hybrid source model: cache chunks, previous-artifact
+ranges, packfile ranges and network chunks all participate in the same
+verified rebuild. New docs: docs/HYBRID_RECONSTRUCTION.md,
+docs/SIGNATURE_FORMAT.md, docs/DELTA_COMPARISON.md.
+
 ## [0.5.0]
 
 The production-hardening release: correctness under malformed input, recovery

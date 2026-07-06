@@ -758,6 +758,53 @@ impl GlobalStore {
         Ok(written)
     }
 
+    /// v0.6.0 static/CDN compatibility: write one `chunk-map.json` per
+    /// asset into an exported object tree. It maps every chunk the asset
+    /// references to its immutable pack file and byte range, so a client
+    /// against a *static* HTTP host can plan a fetch (compute its missing
+    /// set, then issue pack range requests) with no smart server at all.
+    pub fn export_static_plans(&self, out: &Path) -> Result<Vec<String>> {
+        if self.index.layout != StoreLayout::Packfiles {
+            return Err(StoreError::NotExportable(
+                "static plans require a packfile-layout store".into(),
+            ));
+        }
+        let mut written = Vec::new();
+        for (name, hexes) in &self.index.assets {
+            let mut chunks = Vec::with_capacity(hexes.len());
+            for hex in hexes {
+                let Some(info) = self.index.chunks.get(hex) else {
+                    continue;
+                };
+                let Some(pack) = info.pack.as_deref() else {
+                    return Err(StoreError::NotExportable(format!(
+                        "chunk {hex} is not packed (ingest still open?)"
+                    )));
+                };
+                chunks.push(serde_json::json!({
+                    "hash": hex,
+                    "len_raw": info.len_raw,
+                    "len_stored": info.len_stored,
+                    "flags": info.flags,
+                    "pack": format!("chunks/packs/{}/{pack}.cavspack", &pack[..2]),
+                    "pack_offset": info.pack_offset,
+                }));
+            }
+            let rel = format!("assets/{name}/chunk-map.json");
+            let dst = out.join(&rel);
+            std::fs::create_dir_all(dst.parent().unwrap())?;
+            std::fs::write(
+                &dst,
+                serde_json::to_vec_pretty(&serde_json::json!({
+                    "asset": name,
+                    "chunks": chunks,
+                }))?,
+            )?;
+            written.push(rel);
+        }
+        Ok(written)
+    }
+
     fn save_index(&self) -> Result<()> {
         let path = self.root.join("index.json");
         let tmp = path.with_extension("json.tmp");

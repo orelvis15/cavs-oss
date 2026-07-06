@@ -21,6 +21,7 @@ cavs-format = { workspace = true }
 cavs-manifest = { workspace = true }
 cavs-proto = { workspace = true }
 cavs-store = { workspace = true }
+cavs-signature = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
 uuid = { workspace = true }
@@ -29,7 +30,13 @@ ed25519-dalek = { workspace = true }
 rand_core = { workspace = true }
 sha2 = { workspace = true }
 zstd = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
+brotli = { version = "7", optional = true }
+
+[features]
+# Brotli is benchmark-only (compression cross-check); zstd stays the default.
+brotli-bench = ["dep:brotli"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

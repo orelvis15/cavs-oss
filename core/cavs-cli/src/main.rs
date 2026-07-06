@@ -3,14 +3,18 @@
 //! Converts videos into `.cavs` (via ffmpeg CMAF/fMP4 segmentation),
 //! reconstructs them back to playable MP4/HLS, inspects, verifies and plays.
 
+mod bench_compression;
+mod bench_delta;
 mod classify;
 mod corrupt;
 mod doctor;
 mod ffmpeg;
 mod manifest_cmd;
 mod pack;
+mod pack_dir;
 mod profile;
 mod report;
+mod signature_cmd;
 mod store;
 mod sweep;
 mod synth;
@@ -128,6 +132,41 @@ enum Command {
         /// (as produced by `cavs keygen`).
         #[arg(long)]
         sign_key: Option<PathBuf>,
+        /// Report reusable bytes against a previous version's `.cavssig`
+        /// (v0.6.0 hybrid reconstruction; raw mode).
+        #[arg(long)]
+        against_signature: Option<PathBuf>,
+    },
+    /// Package a directory tree as a container asset (v0.6.0 preview):
+    /// one deduplicated data track per file, plus directory/symlink/exec
+    /// metadata. Clients apply it with per-file no-op detection and staged
+    /// installs.
+    PackDir {
+        /// The directory to package.
+        input: PathBuf,
+        /// Output .cavs path.
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Chunk profile label (fixed-256k/…/fastcdc-64k…); default (and
+        /// `auto`) is the update-validated fastcdc-64k.
+        #[arg(long)]
+        profile: Option<String>,
+        /// Disable zstd compression of stored chunks.
+        #[arg(long)]
+        no_compress: bool,
+        /// zstd level for chunk storage/wire compression.
+        #[arg(long, default_value_t = 3)]
+        zstd_level: i32,
+        /// Sign the packed content with this Ed25519 secret key file.
+        #[arg(long)]
+        sign_key: Option<PathBuf>,
+    },
+    /// Export, inspect and verify compact `.cavssig` signatures (v0.6.0):
+    /// the old version's layout and block hashes, so new versions can be
+    /// planned against it without the old bytes.
+    Signature {
+        #[command(subcommand)]
+        action: SignatureAction,
     },
     /// Measure candidate chunk profiles on a payload (optionally against its
     /// previous version) and report the cheapest per cost model.
@@ -225,6 +264,34 @@ enum Command {
 }
 
 #[derive(Subcommand)]
+enum SignatureAction {
+    /// Export a `.cavssig` from a `.cavs` container (default) or a raw
+    /// file/directory (--raw).
+    Export {
+        /// A .cavs file, or with --raw any file or directory.
+        input: PathBuf,
+        /// Treat the input as a raw artifact/directory instead of a .cavs.
+        #[arg(long)]
+        raw: bool,
+        /// Block size in KiB (64 is the empirical sweet spot for delta scanning).
+        #[arg(long, default_value_t = 64)]
+        block_kib: u32,
+        /// Output .cavssig path.
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+    /// Print a signature's layout, chunk profile and hash counts.
+    Inspect { input: PathBuf },
+    /// Recompute every block hash of a source and compare.
+    Verify {
+        input: PathBuf,
+        /// The artifact or directory the signature claims to describe.
+        #[arg(long)]
+        against: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
 enum TestAction {
     /// Corruption matrix: mutate a copy of the .cavs (and its manifest,
     /// packfile and bootstrap forms) byte by byte and assert every decoder
@@ -263,6 +330,32 @@ enum BenchAction {
         /// Results directory.
         #[arg(long)]
         out: PathBuf,
+    },
+    /// Compare CAVS against a block-based delta patching model on a real
+    /// old/new pair (v0.6.0). Uses xdelta3/bsdiff too when on PATH.
+    Delta {
+        /// Old version (file or directory).
+        #[arg(long)]
+        old: PathBuf,
+        /// New version (file or directory — same kind as --old).
+        #[arg(long)]
+        new: PathBuf,
+        /// Directory for delta-comparison.{json,md}.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// Measure compression algorithms on a payload (v0.6.0): zstd always,
+    /// Brotli with `--features brotli-bench`. Defaults stay zstd-3.
+    Compression {
+        /// The payload to measure.
+        #[arg(long)]
+        input: PathBuf,
+        /// Comma-separated algos, e.g. zstd-1,zstd-3,zstd-19,brotli-1,brotli-9.
+        #[arg(long, default_value = "zstd-1,zstd-3,zstd-9,zstd-19,brotli-1,brotli-9")]
+        algos: String,
+        /// Write the report as markdown to this path.
+        #[arg(long)]
+        out: Option<PathBuf>,
     },
 }
 
@@ -326,6 +419,10 @@ enum StoreAction {
         /// Output directory (created if missing).
         #[arg(long)]
         out: PathBuf,
+        /// Also write per-asset `chunk-map.json` files (v0.6.0): everything
+        /// a static client needs to plan a fetch without a smart server.
+        #[arg(long)]
+        static_plans: bool,
     },
 }
 
@@ -346,6 +443,7 @@ fn main() -> Result<()> {
             zstd_level,
             transcode,
             sign_key,
+            against_signature,
         } => {
             let opts = pack::PackOptions {
                 segment_time,
@@ -358,6 +456,7 @@ fn main() -> Result<()> {
                 zstd_level,
                 force_transcode: transcode,
                 sign_key,
+                against_signature,
             };
             if raw {
                 pack::pack_raw(&inputs, &output, &opts)
@@ -365,6 +464,33 @@ fn main() -> Result<()> {
                 pack::pack_video(&inputs, &output, &opts)
             }
         }
+        Command::PackDir {
+            input,
+            output,
+            profile,
+            no_compress,
+            zstd_level,
+            sign_key,
+        } => pack_dir::pack_dir(
+            &input,
+            &output,
+            &pack_dir::PackDirOptions {
+                profile,
+                compress: !no_compress,
+                zstd_level,
+                sign_key,
+            },
+        ),
+        Command::Signature { action } => match action {
+            SignatureAction::Export {
+                input,
+                raw,
+                block_kib,
+                output,
+            } => signature_cmd::export(&input, raw, block_kib.max(1) * 1024, &output),
+            SignatureAction::Inspect { input } => signature_cmd::inspect(&input),
+            SignatureAction::Verify { input, against } => signature_cmd::verify(&input, &against),
+        },
         Command::Sweep {
             input,
             prev,
@@ -401,7 +527,7 @@ fn main() -> Result<()> {
             StoreAction::Gc { grace } => store::gc(&dir, grace),
             StoreAction::Stat => store::stat(&dir),
             StoreAction::Verify => store::verify(&dir),
-            StoreAction::Export { out } => store::export(&dir, &out),
+            StoreAction::Export { out, static_plans } => store::export(&dir, &out, static_plans),
         },
         Command::Manifest { action } => match action {
             ManifestAction::Export { input, out } => manifest_cmd::export(&input, out.as_deref()),
@@ -418,6 +544,10 @@ fn main() -> Result<()> {
         Command::Bench { action } => match action {
             BenchAction::Gen { out, size, seed } => synth::generate(&out, &size, seed),
             BenchAction::Suite { dataset, out } => synth::suite(&dataset, &out),
+            BenchAction::Delta { old, new, out } => bench_delta::bench(&old, &new, out.as_deref()),
+            BenchAction::Compression { input, algos, out } => {
+                bench_compression::bench(&input, &algos, out.as_deref())
+            }
         },
     }
 }
