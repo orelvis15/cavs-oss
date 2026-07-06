@@ -13,6 +13,14 @@ large immutable `.cavspack` files instead of one file per chunk, served by
 coalesced range reads. Loose stores keep working unchanged; `.cavs`
 file-serving is untouched.
 
+Measured on real Godot games (two versions ingested, full
+cold + update + warm HTTP session): chunk objects on disk drop from 130/807/
+5,775 (Marble/GDQuest/tps-demo) to **4/4/6 files**, and physical reads
+coalesce **65×/115×/170×** with **1.000 read amplification** (zero extra
+bytes read — chunks are packed in reconstruction order, so merged ranges are
+exactly contiguous). Wire bytes, routing and byte-identical reconstruction
+are identical to 0.3.0 in every layout and in `.cavs` file-serving mode.
+
 ### Added
 
 - **Packfile storage** (`cavs store add --storage packfiles`). Chunks are

@@ -121,6 +121,29 @@ content-addressable store stored the shared chunks once: **13.80 MiB logical →
 while serving each version byte-identically over HTTP. Garbage collection
 reclaims chunks that no published version references.
 
+## Packfile storage (v0.4.0) — operational shape at rest
+
+`store add --storage packfiles` keeps the same chunks in a few immutable
+content-addressed `.cavspack` files instead of one file per chunk, and the
+server coalesces each batch's pack reads (nearby chunks = one physical read).
+Same two-version stores as above, loose vs packfiles, full
+cold + update + warm session per layout:
+
+| Game | Chunk objects on disk | Physical reads (whole session) | Read amplification |
+|---|---|---|---|
+| MechanicalFlower/Marble | 130 → **4** | 130 → **2** (65×) | 1.000 |
+| GDQuest 3D third-person | 807 → **4** | 805 → **7** (115×) | 1.000 |
+| godotengine/tps-demo | 5,775 → **6** | 5,775 → **34** (170×) | 1.000 |
+
+Amplification 1.000 means coalescing read **zero** extra bytes: chunks are
+written in reconstruction order, so merged ranges are exactly contiguous.
+Wire bytes, routing and byte-identical reconstruction are unchanged vs the
+loose layout (and vs 0.3.0) — the win is operational: fewer objects to
+store/upload/list, fewer syscalls to serve, CDN-ready immutable packs
+(`store export` emits the deterministic object tree). Store disk size also
+drops slightly (tps-demo: −3.9%, filesystem block overhead of thousands of
+small files).
+
 ## Honest negatives (video suite)
 
 CAVS is not a codec and doesn't pretend to be:

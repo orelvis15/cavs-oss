@@ -20,7 +20,7 @@ store each unique chunk once, and transmit only the chunks a client lacks.
 |---|---|
 | `cavs-hash` | BLAKE3-256 chunk identity, incremental hasher, binary Merkle root, the content-signature message |
 | `cavs-chunker` | Chunking: fixed-size (CDN-aligned segments) and FastCDC (shift-resistant, default 64 KiB for game assets) |
-| `cavs-store` | In-memory dedup index used while packing, and the **global content-addressable store** (on-disk CAS with reference counting and GC) |
+| `cavs-store` | In-memory dedup index used while packing, and the **global content-addressable store** (on-disk CAS with reference counting and GC) — loose object-per-chunk, or immutable `.cavspack` packfiles read by coalesced ranges (0.4.0) |
 | `cavs-format` | The `.cavs` binary format: types, streaming writer, hardened reader/verifier, Ed25519 signing |
 | `cavs-proto` | CVSP wire protocol: the runtime `Manifest` model, sessions, compact binary batches; the Bloom-filter have-set |
 | `cavs-manifest` | Manifest wire formats: the compact binary v2 codec (`CAVSMF2`: chunk dictionary + varint plan, ~76% smaller than JSON) and `read_manifest`, which detects JSON v1 vs binary v2 from the bytes and normalizes both |
@@ -88,6 +88,16 @@ Client-side caching already delivers **egress** savings across versions and
 sessions. The **global store** (`cavs store` / `cavs-server --store`) adds
 **at-rest** savings: one physical copy of each unique chunk across every
 published version and title, with reference counting and garbage collection.
+
+Since 0.4.0 the store can keep those chunks in a few large immutable
+**packfiles** (`add --storage packfiles`) instead of one file per chunk:
+content-addressed `.cavspack` files written in reconstruction order, served
+by range reads that the server coalesces per batch (nearby chunks of one
+pack = one physical read). On real games this turns thousands of chunk
+objects into a handful of files and cuts physical reads 65–170× with zero
+read amplification — and `cavs store export` emits the store as a
+deterministic immutable tree for object storage/CDN. Loose stores keep
+working unchanged; wire behavior is identical either way.
 
 ## Design stance
 

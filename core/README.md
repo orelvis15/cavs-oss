@@ -18,7 +18,7 @@ full picture and [`../docs/FORMAT.md`](../docs/FORMAT.md) for the byte layout.
 |---|---|---|
 | [`cavs-hash`](cavs-hash) | lib | BLAKE3-256 chunk identity, Merkle root, signature message |
 | [`cavs-chunker`](cavs-chunker) | lib | Fixed-size and FastCDC chunking |
-| [`cavs-store`](cavs-store) | lib | Dedup index + on-disk global content-addressable store (refcount + GC) |
+| [`cavs-store`](cavs-store) | lib | Dedup index + on-disk global content-addressable store (refcount + GC; loose or `.cavspack` packfile layout with coalesced range reads) |
 | [`cavs-format`](cavs-format) | lib | The `.cavs` binary format: writer, hardened reader, Ed25519 signing |
 | [`cavs-proto`](cavs-proto) | lib | CVSP wire protocol: manifests, sessions, binary batches, Bloom have-set |
 | [`cavs-manifest`](cavs-manifest) | lib | Manifest wire formats: compact binary v2 (`CAVSMF2`) codec + JSON v1 compatibility reader |
