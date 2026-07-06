@@ -40,7 +40,7 @@ cavs-server *.cavs --tls-self-signed ./tls    # dev: generates a self-signed cer
 |---|---|
 | `POST /api/assets/{asset}/sessions` | Open a session with a have-set (list or Bloom); the response carries the delivery route decision |
 | `POST /api/sessions/{id}/batch` | Request tracks/segments; returns a binary CVSP batch |
-| `GET /api/assets/{asset}/manifest` | Signed manifest (chunk table, Merkle root, signature) |
+| `GET /api/assets/{asset}/manifest` | Signed manifest (chunk table, Merkle root, signature). JSON v1 by default; compact binary v2 via `Accept: application/vnd.cavs.manifest-v2` or `?format=binary-v2` |
 | `GET /api/assets/{asset}/bootstrap` | Full bootstrap artifact (whole asset, zstd) — immutable, CDN-cacheable, streamed from disk |
 | `GET /api/assets/{asset}/chunks/{hash}` | Direct chunk fetch — immutable, CDN-cacheable |
 | `GET /hls/{asset}/{track}/…` | HLS/CMAF reconstructed on the fly (video assets) |

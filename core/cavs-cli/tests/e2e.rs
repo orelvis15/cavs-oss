@@ -230,3 +230,57 @@ fn check_probe_duration(path: &Path) {
         "expected ~6s clip after reconstruction, got {dur}s"
     );
 }
+
+#[test]
+fn manifest_export_and_bench() {
+    let dir = tempfile::tempdir().unwrap();
+    let payload = pseudo_random(3_000_000, 21);
+    let pck = dir.path().join("build.pck");
+    std::fs::write(&pck, &payload).unwrap();
+    let cavs = dir.path().join("build.cavs");
+    let (ok, out) = run(&[
+        "pack",
+        "--raw",
+        pck.to_str().unwrap(),
+        "-o",
+        cavs.to_str().unwrap(),
+    ]);
+    assert!(ok, "pack failed:\n{out}");
+
+    // Export: readable JSON v1 with the expected fields.
+    let exported = dir.path().join("manifest.debug.json");
+    let (ok, out) = run(&[
+        "manifest",
+        "export",
+        cavs.to_str().unwrap(),
+        "--out",
+        exported.to_str().unwrap(),
+    ]);
+    assert!(ok, "manifest export failed:\n{out}");
+    let json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&exported).unwrap()).unwrap();
+    assert_eq!(json["asset"], "build");
+    assert!(json["chunk_table"].as_array().unwrap().len() > 1);
+
+    // Bench: reports both formats and the v0.3.0 acceptance threshold
+    // (binary v2 at least 50% smaller than JSON v1).
+    let report = dir.path().join("bench.json");
+    let (ok, out) = run(&[
+        "manifest",
+        "bench",
+        cavs.to_str().unwrap(),
+        "--json",
+        report.to_str().unwrap(),
+    ]);
+    assert!(ok, "manifest bench failed:\n{out}");
+    assert!(out.contains("json-v1"), "bench must report v1:\n{out}");
+    assert!(out.contains("binary-v2"), "bench must report v2:\n{out}");
+    let report: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&report).unwrap()).unwrap();
+    let v1 = report["json_v1"]["wire_bytes"].as_u64().unwrap();
+    let v2 = report["binary_v2"]["wire_bytes"].as_u64().unwrap();
+    assert!(
+        v2 * 2 <= v1,
+        "binary v2 ({v2}) must be at least 50% smaller than JSON v1 ({v1})"
+    );
+}

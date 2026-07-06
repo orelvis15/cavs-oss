@@ -5,6 +5,7 @@
 
 mod classify;
 mod ffmpeg;
+mod manifest_cmd;
 mod pack;
 mod profile;
 mod report;
@@ -188,6 +189,33 @@ enum Command {
         #[command(subcommand)]
         action: StoreAction,
     },
+    /// Inspect manifest formats: export readable JSON, benchmark
+    /// json-v1 vs binary-v2 (v0.3.0 compact manifest).
+    Manifest {
+        #[command(subcommand)]
+        action: ManifestAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ManifestAction {
+    /// Export the manifest of a .cavs as human-readable JSON (v1 format).
+    Export {
+        /// The .cavs file.
+        input: PathBuf,
+        /// Output path (stdout when omitted).
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// Compare manifest formats for a .cavs: wire size, parse time,
+    /// bytes per logical chunk.
+    Bench {
+        /// The .cavs file.
+        input: PathBuf,
+        /// Also write the report as JSON to this path.
+        #[arg(long)]
+        json: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -277,6 +305,10 @@ fn main() -> Result<()> {
             StoreAction::Rm { name } => store::remove(&dir, &name),
             StoreAction::Gc { grace } => store::gc(&dir, grace),
             StoreAction::Stat => store::stat(&dir),
+        },
+        Command::Manifest { action } => match action {
+            ManifestAction::Export { input, out } => manifest_cmd::export(&input, out.as_deref()),
+            ManifestAction::Bench { input, json } => manifest_cmd::bench(&input, json.as_deref()),
         },
     }
 }

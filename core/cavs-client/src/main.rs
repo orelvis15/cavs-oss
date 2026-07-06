@@ -155,12 +155,29 @@ pub struct FetchStats {
     pub seeded_chunks: u64,
     /// Time spent seeding the cache from the bootstrap, in ms.
     pub seed_ms: u64,
+    /// Manifest overhead metrics (v0.3.0 compact manifest).
+    pub manifest: ManifestStats,
+}
+
+/// How the manifest arrived and what it cost (v0.3.0 baseline metrics).
+#[derive(Clone)]
+pub struct ManifestStats {
+    /// Wire format served: "json-v1" or "binary-v2".
+    pub format: &'static str,
+    /// Bytes of the manifest response body.
+    pub wire_bytes: u64,
+    /// Time to decode the manifest into the runtime model, in ms.
+    pub parse_ms: f64,
+    /// Chunk references across all tracks/segments (with repetition).
+    pub chunk_count_logical: u64,
+    /// Distinct chunk hashes.
+    pub chunk_count_unique: u64,
 }
 
 impl FetchStats {
     fn to_json(&self) -> String {
         format!(
-            "{{\"inline_bytes\":{},\"inline_raw_bytes\":{},\"inline_chunks\":{},\"refs\":{},\"logical_bytes\":{},\"delivery_mode\":\"{}\",\"seeded_chunks\":{},\"seed_ms\":{}}}",
+            "{{\"inline_bytes\":{},\"inline_raw_bytes\":{},\"inline_chunks\":{},\"refs\":{},\"logical_bytes\":{},\"delivery_mode\":\"{}\",\"seeded_chunks\":{},\"seed_ms\":{},\"manifest\":{{\"format\":\"{}\",\"wire_bytes\":{},\"parse_ms\":{:.3},\"chunk_count_logical\":{},\"chunk_count_unique\":{}}}}}",
             self.inline_bytes,
             self.inline_raw_bytes,
             self.inline_chunks,
@@ -168,7 +185,12 @@ impl FetchStats {
             self.logical_bytes,
             self.delivery_mode,
             self.seeded_chunks,
-            self.seed_ms
+            self.seed_ms,
+            self.manifest.format,
+            self.manifest.wire_bytes,
+            self.manifest.parse_ms,
+            self.manifest.chunk_count_logical,
+            self.manifest.chunk_count_unique
         )
     }
 }
@@ -264,9 +286,37 @@ fn fetch(
 ) -> Result<(Vec<PathBuf>, FetchStats)> {
     let cache = ChunkCache::open(cache_dir)?;
 
-    // 1. Manifest (+ optional signature enforcement).
-    let manifest_json = http_get_string(agent, &format!("{server}/api/assets/{asset}/manifest"))?;
-    let manifest: Manifest = serde_json::from_str(&manifest_json)?;
+    // 1. Manifest (+ optional signature enforcement). We ask for the compact
+    //    binary v2 format; v1 servers ignore the Accept header and reply
+    //    JSON, which read_manifest detects from the bytes themselves.
+    let manifest_bytes =
+        http_get_manifest(agent, &format!("{server}/api/assets/{asset}/manifest"))?;
+    let parse_started = std::time::Instant::now();
+    let loaded = cavs_manifest::read_manifest(&manifest_bytes)
+        .map_err(|e| anyhow::anyhow!("bad manifest: {e}"))?;
+    let manifest = loaded.manifest;
+    let manifest_stats = ManifestStats {
+        format: loaded.format.label(),
+        wire_bytes: manifest_bytes.len() as u64,
+        parse_ms: parse_started.elapsed().as_secs_f64() * 1000.0,
+        chunk_count_logical: manifest
+            .tracks
+            .iter()
+            .map(|t| t.init_chunks.len() as u64)
+            .chain(manifest.segments.iter().map(|s| s.chunks.len() as u64))
+            .sum(),
+        chunk_count_unique: if manifest.chunk_table.is_empty() {
+            manifest_chunk_hashes(&manifest).len() as u64
+        } else {
+            manifest.chunk_table.len() as u64
+        },
+    };
+    eprintln!(
+        "[fetch] manifest {}: {} wire, parsed in {:.2} ms",
+        manifest_stats.format,
+        human_bytes(manifest_stats.wire_bytes),
+        manifest_stats.parse_ms
+    );
     if let Some(pk) = pubkey {
         // Accept a literal hex key or a path to a .pub file.
         let pk_hex = if pk.len() == 64 && pk.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -322,7 +372,16 @@ fn fetch(
     // fetch (an update) pays only for what changed. Any failure falls back
     // to the normal chunk path below.
     if session.delivery_mode.as_deref() == Some(cavs_proto::DELIVERY_BOOTSTRAP) {
-        match fetch_bootstrap(agent, server, asset, &manifest, &session, &cache, output) {
+        match fetch_bootstrap(
+            agent,
+            server,
+            asset,
+            &manifest,
+            &session,
+            &cache,
+            output,
+            &manifest_stats,
+        ) {
             Ok(result) => return Ok(result),
             Err(e) => {
                 eprintln!("[fetch] bootstrap route failed ({e}); falling back to chunks")
@@ -467,6 +526,7 @@ fn fetch(
             },
             seeded_chunks: 0,
             seed_ms: 0,
+            manifest: manifest_stats,
         },
     ))
 }
@@ -476,6 +536,7 @@ fn fetch(
 /// slicing the installed file along the manifest's chunk plan. Constant
 /// memory: the artifact streams to disk and chunks are read back one at a
 /// time.
+#[allow(clippy::too_many_arguments)]
 fn fetch_bootstrap(
     agent: &ureq::Agent,
     server: &str,
@@ -484,6 +545,7 @@ fn fetch_bootstrap(
     session: &SessionOpenResponse,
     cache: &ChunkCache,
     output: &Path,
+    manifest_stats: &ManifestStats,
 ) -> Result<(Vec<PathBuf>, FetchStats)> {
     // The bootstrap covers exactly one raw data track (the packer only emits
     // it for single-input packs). Anything else falls back to chunks.
@@ -636,6 +698,7 @@ fn fetch_bootstrap(
             delivery_mode: "bootstrap",
             seeded_chunks: seeded,
             seed_ms,
+            manifest: manifest_stats.clone(),
         },
     ))
 }
@@ -843,6 +906,29 @@ fn http_get_string(agent: &ureq::Agent, url: &str) -> Result<String> {
         .with_context(|| format!("GET {url}"))?
         .into_string()
         .context("reading response body")
+}
+
+/// GET the asset manifest asking for the compact binary v2 format, with
+/// JSON v1 as the negotiated fallback (v0.2.x servers ignore Accept and
+/// always answer JSON — both parse through `cavs_manifest::read_manifest`).
+fn http_get_manifest(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>> {
+    use std::io::Read as _;
+    let resp = agent
+        .get(url)
+        .set(
+            "accept",
+            &format!(
+                "{}, application/json;q=0.5",
+                cavs_manifest::MANIFEST_V2_CONTENT_TYPE
+            ),
+        )
+        .call()
+        .with_context(|| format!("GET {url}"))?;
+    let mut out = Vec::new();
+    resp.into_reader()
+        .read_to_end(&mut out)
+        .context("reading manifest body")?;
+    Ok(out)
 }
 
 fn http_get_bytes(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>> {

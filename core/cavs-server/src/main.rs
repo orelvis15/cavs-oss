@@ -14,8 +14,8 @@
 mod state;
 
 use anyhow::{Context, Result};
-use axum::extract::{Path, State};
-use axum::http::{header, StatusCode};
+use axum::extract::{Path, Query, State};
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -185,14 +185,58 @@ async fn list_assets(State(state): State<SharedState>) -> Json<Vec<cavs_proto::A
     Json(state.summaries())
 }
 
+#[derive(serde::Deserialize)]
+struct ManifestQuery {
+    /// `binary-v2` or `json-v1`; overrides content negotiation.
+    format: Option<String>,
+}
+
+/// v0.3.0 compact manifest: one endpoint, two wire formats. Binary v2 is
+/// served when the client asks for it (Accept header or `?format=`);
+/// JSON v1 stays the default so v0.2.x clients keep working unchanged.
 async fn manifest(
     State(state): State<SharedState>,
     Path(asset): Path<String>,
-) -> Result<Json<cavs_proto::Manifest>, AppError> {
-    state
+    Query(query): Query<ManifestQuery>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let manifest = state
         .manifest(&asset)
-        .map(Json)
-        .ok_or_else(|| not_found(format!("asset {asset}")))
+        .ok_or_else(|| not_found(format!("asset {asset}")))?;
+
+    let binary = match query.format.as_deref() {
+        Some("binary-v2") => true,
+        Some("json-v1") => false,
+        Some(other) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("unknown manifest format {other} (binary-v2 | json-v1)"),
+            ))
+        }
+        None => headers
+            .get(header::ACCEPT)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|accept| accept.contains(cavs_manifest::MANIFEST_V2_CONTENT_TYPE)),
+    };
+
+    if binary {
+        let bytes = cavs_manifest::encode_manifest_v2(&manifest)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        state.count_manifest_request("binary-v2", bytes.len() as u64);
+        Ok((
+            [(
+                header::CONTENT_TYPE,
+                cavs_manifest::MANIFEST_V2_CONTENT_TYPE,
+            )],
+            bytes,
+        )
+            .into_response())
+    } else {
+        let bytes = serde_json::to_vec(&manifest)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        state.count_manifest_request("json-v1", bytes.len() as u64);
+        Ok(([(header::CONTENT_TYPE, "application/json")], bytes).into_response())
+    }
 }
 
 async fn open_session(

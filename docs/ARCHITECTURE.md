@@ -22,7 +22,8 @@ store each unique chunk once, and transmit only the chunks a client lacks.
 | `cavs-chunker` | Chunking: fixed-size (CDN-aligned segments) and FastCDC (shift-resistant, default 64 KiB for game assets) |
 | `cavs-store` | In-memory dedup index used while packing, and the **global content-addressable store** (on-disk CAS with reference counting and GC) |
 | `cavs-format` | The `.cavs` binary format: types, streaming writer, hardened reader/verifier, Ed25519 signing |
-| `cavs-proto` | CVSP wire protocol: JSON manifests/sessions + compact binary batches; the Bloom-filter have-set |
+| `cavs-proto` | CVSP wire protocol: the runtime `Manifest` model, sessions, compact binary batches; the Bloom-filter have-set |
+| `cavs-manifest` | Manifest wire formats: the compact binary v2 codec (`CAVSMF2`: chunk dictionary + varint plan, ~76% smaller than JSON) and `read_manifest`, which detects JSON v1 vs binary v2 from the bytes and normalizes both |
 | `cavs-cli` | The `cavs` binary: pack / unpack / info / verify / keygen / store / play / sweep, plus the payload classifier and chunk-profile cost model |
 | `cavs-server` | Stateful HTTP/HTTPS origin: sessions, inline/ref planning, `--store` mode, HLS passthrough, metrics |
 | `cavs-client` | Native streaming client: persistent cache, `.part`→verify→rename reconstruction |
@@ -43,10 +44,12 @@ that reuses `cavs-hash` and `cavs-chunker`.
    new chunks. Packing the next version with `--prev <published .cavs>` keeps
    the profile consistent with what clients already cached.
 
-2. **The client announces what it has.** It opens a session sending the
-   have-set of its persistent cache — either an exact hash list, or a compact
-   Bloom filter for large caches. The server decides per chunk: send a
-   *reference* if the client already has it, or *inline* the payload if not.
+2. **The client announces what it has.** It first fetches the asset manifest —
+   negotiated as compact binary v2 (`CAVSMF2`, ~76% smaller than the JSON v1
+   equivalent) with JSON as the compatibility fallback — then opens a session
+   sending the have-set of its persistent cache: either an exact hash list, or
+   a compact Bloom filter for large caches. The server decides per chunk: send
+   a *reference* if the client already has it, or *inline* the payload if not.
 
 3. **The server picks the cheapest route (dual delivery).** At session open it
    estimates the chunk-path payload for this specific client. A cold client

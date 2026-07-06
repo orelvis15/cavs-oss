@@ -5,6 +5,7 @@ members = [
     "core/cavs-chunker",
     "core/cavs-store",
     "core/cavs-format",
+    "core/cavs-manifest",
     "core/cavs-proto",
     "core/cavs-cli",
     "core/cavs-server",
@@ -13,7 +14,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.2"
+version = "0.3.0"
 edition = "2021"
 license = "Apache-2.0"
 authors = ["Orelvis Lago Vasallo <orelvis15@gmail.com>"]
@@ -21,11 +22,12 @@ repository = "https://github.com/orelvis15/cavs-oss"
 homepage = "https://github.com/orelvis15/cavs-oss"
 
 [workspace.dependencies]
-cavs-hash = { path = "core/cavs-hash", version = "0.1.2" }
-cavs-chunker = { path = "core/cavs-chunker", version = "0.1.2" }
-cavs-format = { path = "core/cavs-format", version = "0.1.2" }
-cavs-store = { path = "core/cavs-store", version = "0.1.2" }
-cavs-proto = { path = "core/cavs-proto", version = "0.1.2" }
+cavs-hash = { path = "core/cavs-hash", version = "0.3.0" }
+cavs-chunker = { path = "core/cavs-chunker", version = "0.3.0" }
+cavs-format = { path = "core/cavs-format", version = "0.3.0" }
+cavs-manifest = { path = "core/cavs-manifest", version = "0.3.0" }
+cavs-store = { path = "core/cavs-store", version = "0.3.0" }
+cavs-proto = { path = "core/cavs-proto", version = "0.3.0" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
 axum = "0.8"

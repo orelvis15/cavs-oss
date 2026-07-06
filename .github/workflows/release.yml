@@ -153,6 +153,6 @@ jobs:
           # cargo publish waits for each crate to appear in the index before
           # returning, so publishing in dependency order is enough.
           for crate in cavs-hash cavs-chunker cavs-store cavs-proto cavs-format \
-                       cavs-cli cavs-server cavs-client cavs-steam; do
+                       cavs-manifest cavs-cli cavs-server cavs-client cavs-steam; do
             publish "$crate"
           done

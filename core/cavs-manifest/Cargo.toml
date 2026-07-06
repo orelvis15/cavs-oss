@@ -1,0 +1,20 @@
+[package]
+name = "cavs-manifest"
+description = "CAVS manifest formats: compact binary v2 codec and JSON v1 compatibility reader"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["cavs", "manifest", "varint", "serialization", "dedup"]
+categories = ["encoding", "game-development"]
+
+[dependencies]
+cavs-hash = { workspace = true }
+cavs-proto = { workspace = true }
+cavs-format = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+zstd = { workspace = true }

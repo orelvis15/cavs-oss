@@ -124,6 +124,10 @@ pub struct Metrics {
     pub bootstrap_sessions_total: AtomicU64,
     pub bootstraps_served_total: AtomicU64,
     pub bootstrap_bytes_total: AtomicU64,
+    pub manifest_json_requests_total: AtomicU64,
+    pub manifest_json_bytes_total: AtomicU64,
+    pub manifest_binary_requests_total: AtomicU64,
+    pub manifest_binary_bytes_total: AtomicU64,
 }
 
 pub struct AppState {
@@ -580,6 +584,23 @@ impl AppState {
         Ok(instrs)
     }
 
+    /// Count one manifest response in the per-format metrics.
+    pub fn count_manifest_request(&self, format: &str, bytes: u64) {
+        let (requests, total_bytes) = if format == "binary-v2" {
+            (
+                &self.metrics.manifest_binary_requests_total,
+                &self.metrics.manifest_binary_bytes_total,
+            )
+        } else {
+            (
+                &self.metrics.manifest_json_requests_total,
+                &self.metrics.manifest_json_bytes_total,
+            )
+        };
+        requests.fetch_add(1, Ordering::Relaxed);
+        total_bytes.fetch_add(bytes, Ordering::Relaxed);
+    }
+
     /// Path and size of the asset's verified bootstrap sidecar, if any.
     /// Counts the request in the bootstrap metrics.
     pub fn bootstrap_file(&self, asset_name: &str) -> Option<(PathBuf, u64)> {
@@ -668,6 +689,22 @@ impl AppState {
             ("cavs_bootstrap_sessions_total", &m.bootstrap_sessions_total),
             ("cavs_bootstraps_served_total", &m.bootstraps_served_total),
             ("cavs_bootstrap_bytes_total", &m.bootstrap_bytes_total),
+            (
+                "cavs_manifest_json_requests_total",
+                &m.manifest_json_requests_total,
+            ),
+            (
+                "cavs_manifest_json_bytes_total",
+                &m.manifest_json_bytes_total,
+            ),
+            (
+                "cavs_manifest_binary_requests_total",
+                &m.manifest_binary_requests_total,
+            ),
+            (
+                "cavs_manifest_binary_bytes_total",
+                &m.manifest_binary_bytes_total,
+            ),
         ];
         let mut out = String::new();
         for (name, counter) in counters {

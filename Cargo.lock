@@ -249,19 +249,21 @@ checksum = "8ae3f5d315924270530207e2a68396c3cc547f6dca3fbdca317cfb1a51edb593"
 
 [[package]]
 name = "cavs-chunker"
-version = "0.1.2"
+version = "0.3.0"
 dependencies = [
  "fastcdc",
 ]
 
 [[package]]
 name = "cavs-cli"
-version = "0.1.2"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "cavs-chunker",
  "cavs-format",
  "cavs-hash",
+ "cavs-manifest",
+ "cavs-proto",
  "cavs-store",
  "clap",
  "ed25519-dalek",
@@ -275,10 +277,11 @@ dependencies = [
 
 [[package]]
 name = "cavs-client"
-version = "0.1.2"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "cavs-hash",
+ "cavs-manifest",
  "cavs-proto",
  "clap",
  "ed25519-dalek",
@@ -293,7 +296,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-format"
-version = "0.1.2"
+version = "0.3.0"
 dependencies = [
  "cavs-hash",
  "cavs-store",
@@ -305,14 +308,26 @@ dependencies = [
 
 [[package]]
 name = "cavs-hash"
-version = "0.1.2"
+version = "0.3.0"
 dependencies = [
  "blake3",
 ]
 
 [[package]]
+name = "cavs-manifest"
+version = "0.3.0"
+dependencies = [
+ "cavs-format",
+ "cavs-hash",
+ "cavs-proto",
+ "serde_json",
+ "thiserror",
+ "zstd",
+]
+
+[[package]]
 name = "cavs-proto"
-version = "0.1.2"
+version = "0.3.0"
 dependencies = [
  "cavs-hash",
  "serde",
@@ -322,18 +337,20 @@ dependencies = [
 
 [[package]]
 name = "cavs-server"
-version = "0.1.2"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "axum",
  "axum-server",
  "cavs-format",
  "cavs-hash",
+ "cavs-manifest",
  "cavs-proto",
  "cavs-store",
  "clap",
  "rcgen",
  "rustls",
+ "serde",
  "serde_json",
  "tokio",
  "tokio-util",
@@ -343,7 +360,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-steam"
-version = "0.1.2"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "cavs-chunker",
@@ -358,7 +375,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-store"
-version = "0.1.2"
+version = "0.3.0"
 dependencies = [
  "cavs-hash",
  "serde",

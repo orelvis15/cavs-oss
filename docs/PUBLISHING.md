@@ -31,10 +31,11 @@ debugging a failed release.
    ```sh
    cargo login <your-token>
    ```
-3. Crate names are **first-come, first-served and permanent**. All nine crate
+3. Crate names are **first-come, first-served and permanent**. All ten crate
    names (`cavs-hash`, `cavs-chunker`, `cavs-store`, `cavs-format`,
-   `cavs-proto`, `cavs-cli`, `cavs-server`, `cavs-client`, `cavs-steam`) must be
-   available. Publishing `cavs-hash` first also lets you claim the namespace.
+   `cavs-proto`, `cavs-manifest`, `cavs-cli`, `cavs-server`, `cavs-client`,
+   `cavs-steam`) must be available. Publishing `cavs-hash` first also lets you
+   claim the namespace.
 
 ## How versioning works here
 
@@ -71,10 +72,13 @@ cargo publish -p cavs-proto      # → cavs-hash
 # Tier 3 — depend on tier 1/2
 cargo publish -p cavs-format     # → cavs-hash, cavs-store
 
-# Tier 4 — the binaries
-cargo publish -p cavs-cli        # → cavs-hash, cavs-chunker, cavs-format, cavs-store
-cargo publish -p cavs-server     # → cavs-hash, cavs-format, cavs-proto, cavs-store
-cargo publish -p cavs-client     # → cavs-hash, cavs-proto
+# Tier 4 — depends on tier 1/2/3
+cargo publish -p cavs-manifest   # → cavs-hash, cavs-proto, cavs-format
+
+# Tier 5 — the binaries
+cargo publish -p cavs-cli        # → cavs-hash, cavs-chunker, cavs-format, cavs-manifest, cavs-proto, cavs-store
+cargo publish -p cavs-server     # → cavs-hash, cavs-format, cavs-manifest, cavs-proto, cavs-store
+cargo publish -p cavs-client     # → cavs-hash, cavs-manifest, cavs-proto
 cargo publish -p cavs-steam      # → cavs-hash, cavs-chunker
 ```
 
@@ -88,8 +92,8 @@ cargo install cavs-steam    # the `cavs-steam` analyzer
 ```
 
 and depend on the libraries (`cavs-hash`, `cavs-chunker`, `cavs-store`,
-`cavs-format`, `cavs-proto`) directly. Docs build automatically on
-[docs.rs](https://docs.rs).
+`cavs-format`, `cavs-proto`, `cavs-manifest`) directly. Docs build
+automatically on [docs.rs](https://docs.rs).
 
 ## Validate before publishing
 

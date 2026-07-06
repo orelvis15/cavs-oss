@@ -16,6 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 cavs-hash = { workspace = true }
+cavs-manifest = { workspace = true }
 cavs-proto = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }

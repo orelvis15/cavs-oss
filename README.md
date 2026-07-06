@@ -29,6 +29,10 @@ a pixel codec.
 - **Constant memory**: the client reconstructs by streaming to disk
   (`.part` → verify → atomic rename), so RAM stays ~constant regardless of
   game size.
+- **Compact manifests (v0.3.0)**: the runtime manifest travels as a compact
+  binary format (`CAVSMF2`) — ~75–77% smaller than the JSON equivalent on real
+  games — negotiated transparently, with JSON kept as the default response,
+  debug export and compatibility path for older clients.
 - **Complementary, not competitive**: use the best codec/compressor for the
   bytes; CAVS deduplicates and transports above them.
 
@@ -171,15 +175,18 @@ See [`godot-plugin/README.md`](godot-plugin/README.md) for game integration and
 - **`cavs`** (CLI): package files/builds into `.cavs` (FastCDC + zstd +
   optional Ed25519 signature) with payload classification, `--profile auto`
   chunk-profile selection, `--bootstrap` cold-install artifacts and a
-  `sweep` cost report; inspect, verify, reconstruct, and manage a global
-  store (`add` / `rm` / `gc` / `stat`).
+  `sweep` cost report; inspect, verify, reconstruct, manage a global
+  store (`add` / `rm` / `gc` / `stat`), and inspect manifest formats
+  (`manifest export` / `manifest bench`).
 - **`cavs-server`**: stateful HTTP/HTTPS origin. Per-session have-set,
   inline/reference planning, dual-route decision (bootstrap vs chunks) per
-  client, CVSP binary batches, immutable CDN-cacheable chunk endpoint,
-  Prometheus metrics, and a `--store` mode.
+  client, manifest format negotiation (compact binary v2 / JSON v1), CVSP
+  binary batches, immutable CDN-cacheable chunk endpoint, Prometheus metrics,
+  and a `--store` mode.
 - **`cavs-client`**: native streaming client with a persistent cache and
-  atomic, verified reconstruction; takes the bootstrap route when offered
-  (seeding its cache); resumable and retry-safe.
+  atomic, verified reconstruction; negotiates the compact binary manifest,
+  takes the bootstrap route when offered (seeding its cache); resumable and
+  retry-safe.
 - **Godot plugin**: `CavsClient` in pure GDScript (no native binaries) —
   install as an addon, mount packs at runtime. See
   [`godot-plugin/README.md`](godot-plugin/README.md).

@@ -55,6 +55,10 @@ cavs store ./store add game_v2 game_v2.cavs   # shared chunks stored once
 cavs store ./store stat                        # storage savings
 cavs store ./store rm  game_v1                 # unpublish
 cavs store ./store gc  --grace 0               # reclaim unreferenced chunks
+
+# Manifest formats (v0.3.0)
+cavs manifest export v42.cavs --out manifest.debug.json  # readable JSON v1
+cavs manifest bench  v42.cavs --json bench.json          # json-v1 vs binary-v2
 ```
 
 Run `cavs --help` or `cavs <command> --help` for all options.
