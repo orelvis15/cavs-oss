@@ -149,9 +149,17 @@ pub fn verify(store_dir: &Path) -> Result<()> {
 }
 
 /// Export as a deterministic immutable object tree for object storage/CDN.
-pub fn export(store_dir: &Path, out: &Path) -> Result<()> {
+pub fn export(store_dir: &Path, out: &Path, static_plans: bool) -> Result<()> {
     let store = GlobalStore::open(store_dir)?;
-    let written = store.export_object_store(out)?;
+    let mut written = store.export_object_store(out)?;
+    if static_plans {
+        let plans = store.export_static_plans(out)?;
+        println!(
+            "plans   : {} chunk-map.json (static/CDN clients)",
+            plans.len()
+        );
+        written.extend(plans);
+    }
     let packs = written
         .iter()
         .filter(|p| p.starts_with("chunks/packs/"))

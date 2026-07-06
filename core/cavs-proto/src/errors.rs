@@ -40,6 +40,26 @@ pub enum ErrorCode {
     DiskFull,
     /// The input requires a feature this build does not support.
     UnsupportedFeature,
+    /// A `.cavssig` signature file is unparseable or fails integrity checks.
+    SignatureCorrupt,
+    /// A signature parsed but does not describe the given source artifact.
+    SignatureMismatch,
+    /// `--previous-artifact` points to a file that does not exist.
+    PreviousArtifactMissing,
+    /// A previous-artifact range failed verification; the client falls back
+    /// to cache/network for that range (recoverable).
+    PreviousArtifactMismatch,
+    /// A hybrid reconstruction plan is internally inconsistent (gaps or
+    /// overlaps in output coverage).
+    HybridPlanInvalid,
+    /// A hybrid source failed mid-execution and no fallback succeeded.
+    HybridSourceFailed,
+    /// A directory/container apply failed; the previous install is intact.
+    ContainerApplyFailed,
+    /// A directory/container rollback could not restore the previous state.
+    ContainerRollbackFailed,
+    /// `cavs bench wharf` needs an external tool that is not available.
+    WharfBenchUnavailable,
 }
 
 impl ErrorCode {
@@ -59,6 +79,15 @@ impl ErrorCode {
             ErrorCode::ResumeInvalid => "CAVS-E-RESUME-INVALID",
             ErrorCode::DiskFull => "CAVS-E-DISK-FULL",
             ErrorCode::UnsupportedFeature => "CAVS-E-UNSUPPORTED-FEATURE",
+            ErrorCode::SignatureCorrupt => "CAVS-E-SIGNATURE-CORRUPT",
+            ErrorCode::SignatureMismatch => "CAVS-E-SIGNATURE-MISMATCH",
+            ErrorCode::PreviousArtifactMissing => "CAVS-E-PREVIOUS-ARTIFACT-MISSING",
+            ErrorCode::PreviousArtifactMismatch => "CAVS-E-PREVIOUS-ARTIFACT-MISMATCH",
+            ErrorCode::HybridPlanInvalid => "CAVS-E-HYBRID-PLAN-INVALID",
+            ErrorCode::HybridSourceFailed => "CAVS-E-HYBRID-SOURCE-FAILED",
+            ErrorCode::ContainerApplyFailed => "CAVS-E-CONTAINER-APPLY-FAILED",
+            ErrorCode::ContainerRollbackFailed => "CAVS-E-CONTAINER-ROLLBACK-FAILED",
+            ErrorCode::WharfBenchUnavailable => "CAVS-E-WHARF-BENCH-UNAVAILABLE",
         }
     }
 
@@ -66,6 +95,19 @@ impl ErrorCode {
     /// unchanged (transient failure) or requires a different action.
     pub fn is_retryable(self) -> bool {
         matches!(self, ErrorCode::Network)
+    }
+
+    /// Whether the client can recover from this failure inside the same
+    /// operation by switching source (e.g. a corrupt previous artifact
+    /// falls back to cache/network).
+    pub fn is_recoverable(self) -> bool {
+        matches!(
+            self,
+            ErrorCode::Network
+                | ErrorCode::CacheCorruptRecoverable
+                | ErrorCode::PreviousArtifactMissing
+                | ErrorCode::PreviousArtifactMismatch
+        )
     }
 
     /// Prefix `msg` with the code: the canonical error-message shape.
@@ -81,7 +123,7 @@ impl std::fmt::Display for ErrorCode {
 }
 
 /// All codes, for docs/tests.
-pub const ALL_ERROR_CODES: [ErrorCode; 13] = [
+pub const ALL_ERROR_CODES: [ErrorCode; 22] = [
     ErrorCode::ManifestCorrupt,
     ErrorCode::UnsupportedManifestVersion,
     ErrorCode::ContainerCorrupt,
@@ -95,6 +137,15 @@ pub const ALL_ERROR_CODES: [ErrorCode; 13] = [
     ErrorCode::ResumeInvalid,
     ErrorCode::DiskFull,
     ErrorCode::UnsupportedFeature,
+    ErrorCode::SignatureCorrupt,
+    ErrorCode::SignatureMismatch,
+    ErrorCode::PreviousArtifactMissing,
+    ErrorCode::PreviousArtifactMismatch,
+    ErrorCode::HybridPlanInvalid,
+    ErrorCode::HybridSourceFailed,
+    ErrorCode::ContainerApplyFailed,
+    ErrorCode::ContainerRollbackFailed,
+    ErrorCode::WharfBenchUnavailable,
 ];
 
 /// Recover the first `CAVS-E-*` code embedded in a rendered error message

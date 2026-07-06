@@ -212,6 +212,36 @@ Failures carry stable error codes (`CAVS-E-BOOTSTRAP-HASH-MISMATCH`,
 `CAVS-E-CACHE-CORRUPT-RECOVERABLE`, `CAVS-E-NETWORK`, …) so launchers and
 scripts can decide retry/repair/give-up without parsing prose.
 
+### Hybrid reconstruction (v0.6.0)
+
+The previous installed version is now a first-class byte source: a client
+with an **empty cache but the old build on disk** copies verified ranges
+from it and downloads only what changed (measured: −90.3 % wire on a small
+update vs v0.5's cold path, −99.98 % on a shifted build — see
+[docs/HYBRID_RECONSTRUCTION.md](docs/HYBRID_RECONSTRUCTION.md)):
+
+```sh
+# Update reusing the old install directly (works with a cold cache)
+./target/release/cavs-client fetch http://127.0.0.1:8990 game_v2 \
+  -o ./install --cache ./cache --previous-artifact ./install/game_v1.pck
+
+# Compact old-version signatures (~0.07% of the source)
+./target/release/cavs signature export game_v1.cavs -o game_v1.cavssig
+./target/release/cavs pack --raw game_v2.pck --against-signature game_v1.cavssig -o v2.cavs
+
+# Directory/container mode (preview): per-file dedup, staged installs,
+# unchanged (modded) files untouched
+./target/release/cavs pack-dir ./Build_v2 -o build_v2.cavs
+./target/release/cavs-client fetch http://127.0.0.1:8990 build_v2 -o ./InstalledGame --cache ./cache
+
+# Compare against a Wharf-style (itch.io) patching model, honestly labeled
+./target/release/cavs bench wharf --old game_v1.pck --new game_v2.pck --out results/wharf
+```
+
+Already-current outputs are detected and skipped (no-op: 0 bytes), every
+copied range is BLAKE3-verified before it is written, and a corrupt old
+install demotes to cache/network instead of failing.
+
 ### Analyze a Steam build
 
 ```sh

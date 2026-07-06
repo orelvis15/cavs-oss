@@ -13,6 +13,7 @@ cavs-manifest = { path = "../core/cavs-manifest" }
 cavs-store = { path = "../core/cavs-store" }
 cavs-format = { path = "../core/cavs-format" }
 cavs-proto = { path = "../core/cavs-proto" }
+cavs-signature = { path = "../core/cavs-signature" }
 tempfile = "3"
 
 # Not a member of the main workspace: libFuzzer needs nightly + sanitizer.
@@ -52,6 +53,13 @@ bench = false
 [[bin]]
 name = "fuzz_batch_decode"
 path = "fuzz_targets/fuzz_batch_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_signature_decode"
+path = "fuzz_targets/fuzz_signature_decode.rs"
 test = false
 doc = false
 bench = false

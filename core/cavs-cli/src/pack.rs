@@ -36,6 +36,9 @@ pub struct PackOptions {
     pub zstd_level: i32,
     pub force_transcode: bool,
     pub sign_key: Option<PathBuf>,
+    /// Report how much of the new payload a client holding the signed old
+    /// version could reuse via hybrid reconstruction (v0.6.0).
+    pub against_signature: Option<PathBuf>,
 }
 
 /// Load an Ed25519 secret key (hex file from `cavs keygen`) and attach it.
@@ -43,6 +46,11 @@ fn apply_signing(w: &mut Writer, opts: &PackOptions) -> Result<()> {
     let Some(path) = &opts.sign_key else {
         return Ok(());
     };
+    sign_writer(w, path)
+}
+
+/// Attach a signing key to any writer (shared with `pack-dir`).
+pub fn sign_writer(w: &mut Writer, path: &Path) -> Result<()> {
     let hex = std::fs::read_to_string(path)
         .with_context(|| format!("cannot read signing key {}", path.display()))?;
     let hex = hex.trim();
@@ -358,6 +366,23 @@ pub fn pack_raw(inputs: &[PathBuf], output: &Path, opts: &PackOptions) -> Result
             } else if i == 0 {
                 eprintln!("[pack] --bootstrap ignored: it requires a single input");
             }
+        }
+        // v0.6.0: estimate hybrid reuse against a previous version known
+        // only through its signature (no old bytes required).
+        if let Some(sig_path) = &opts.against_signature {
+            let sig_bytes = std::fs::read(sig_path)
+                .with_context(|| format!("cannot read {}", sig_path.display()))?;
+            let sig = cavs_signature::CavsSignature::decode(&sig_bytes)
+                .map_err(|e| anyhow::anyhow!("bad signature {}: {e}", sig_path.display()))?;
+            let idx = cavs_signature::diff::WeakHashIndex::build(&sig);
+            let plan = cavs_signature::diff::diff_bytes(&idx, &data, Some(&name));
+            eprintln!(
+                "[pack] vs {}: {:.1}% reusable from the previous install ({} fresh across {} ops)",
+                sig.source_label,
+                plan.reused_bytes as f64 * 100.0 / data.len().max(1) as f64,
+                plan.inline_bytes,
+                plan.ops.len(),
+            );
         }
         let chunks = add_chunked(&mut w, &data, mode)?;
         let track_id = i as u32 + 1;

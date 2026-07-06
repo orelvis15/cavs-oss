@@ -1,0 +1,16 @@
+[package]
+name = "cavs-signature"
+description = "CAVS signature format (.cavssig): compact old-version block hashes for hybrid reconstruction"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+cavs-hash = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

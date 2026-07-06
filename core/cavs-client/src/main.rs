@@ -11,6 +11,7 @@
 #![allow(clippy::result_large_err)]
 
 mod cache;
+mod hybrid;
 mod journal;
 mod retry;
 
@@ -20,6 +21,7 @@ use cavs_hash::to_hex;
 use cavs_proto::errors::ErrorCode;
 use cavs_proto::{BatchRequest, DeliveryInstr, Manifest, SessionOpenRequest, SessionOpenResponse};
 use clap::{Parser, Subcommand};
+use hybrid::HybridOpts;
 use journal::{ResumeJournal, ResumeState};
 use std::path::{Path, PathBuf};
 
@@ -70,6 +72,26 @@ enum Command {
         /// Start clean instead of resuming a previous interrupted fetch.
         #[arg(long)]
         no_resume: bool,
+        /// Previously installed artifact (e.g. the old game_v1.pck): verified
+        /// byte ranges are copied from it instead of fetched (v0.6.0 hybrid
+        /// reconstruction).
+        #[arg(long)]
+        previous_artifact: Option<PathBuf>,
+        /// Disable hybrid planning: v0.5 behaviour (cache + network only).
+        #[arg(long)]
+        no_hybrid: bool,
+        /// Write the reconstruction plan(s) as JSON to this path.
+        #[arg(long)]
+        dump_plan: Option<PathBuf>,
+        /// Disable no-op detection: always reconstruct outputs even when
+        /// they already match the target hashes.
+        #[arg(long)]
+        force_reconstruct: bool,
+        /// Directory assets: after a successful apply, remove files that are
+        /// no longer part of the container (off by default; unknown files —
+        /// e.g. mods — are preserved).
+        #[arg(long)]
+        prune: bool,
     },
     /// Resume interrupted fetches recorded in the cache's journal.
     Resume {
@@ -166,8 +188,20 @@ fn main() -> Result<()> {
             ca,
             pubkey,
             no_resume,
+            previous_artifact,
+            no_hybrid,
+            dump_plan,
+            force_reconstruct,
+            prune,
         } => {
             let agent = build_agent(ca.as_deref())?;
+            let hybrid_opts = HybridOpts {
+                previous_artifact,
+                enabled: !no_hybrid,
+                dump_plan,
+                force_reconstruct,
+                prune,
+            };
             let (_, stats) = fetch(
                 &agent,
                 &server,
@@ -176,6 +210,7 @@ fn main() -> Result<()> {
                 &cache,
                 pubkey.as_deref(),
                 !no_resume,
+                &hybrid_opts,
             )?;
             if let Some(path) = stats_json {
                 std::fs::write(&path, stats.to_json())
@@ -214,6 +249,10 @@ fn main() -> Result<()> {
                     &cache,
                     pubkey.as_deref(),
                     true,
+                    &HybridOpts {
+                        enabled: true,
+                        ..HybridOpts::default()
+                    },
                 ) {
                     eprintln!("[resume] {} failed: {e:#}", j.asset);
                     failures += 1;
@@ -242,6 +281,10 @@ fn main() -> Result<()> {
                 &cache,
                 pubkey.as_deref(),
                 true,
+                &HybridOpts {
+                    enabled: true,
+                    ..HybridOpts::default()
+                },
             )?;
             let Some(target) = primaries.first() else {
                 bail!("no playable track in asset {asset}");
@@ -383,7 +426,8 @@ pub struct FetchStats {
     pub inline_chunks: u64,
     pub refs: u64,
     pub logical_bytes: u64,
-    /// Route taken: "chunks", "references" or "bootstrap" (v2 dual route).
+    /// Route taken: "chunks", "references", "bootstrap" (v2 dual route),
+    /// "no-op" or "previous-copy" (v0.6.0 no-op detection).
     pub delivery_mode: &'static str,
     /// Chunks inserted into the cache by slicing the bootstrap artifact.
     pub seeded_chunks: u64,
@@ -391,6 +435,15 @@ pub struct FetchStats {
     pub seed_ms: u64,
     /// Manifest overhead metrics (v0.3.0 compact manifest).
     pub manifest: ManifestStats,
+    /// The whole fetch was skipped: outputs already matched (v0.6.0).
+    pub no_op: bool,
+    /// Directory mode: files skipped because they already matched.
+    pub no_op_files: u64,
+    pub no_op_bytes: u64,
+    /// Per-source byte accounting of the plan executor (v0.6.0 hybrid).
+    pub sources: Option<hybrid::ExecOutcome>,
+    /// Aggregated reconstruction-plan stats (v0.6.0 hybrid).
+    pub plan: Option<cavs_rebuild_plan::PlanStats>,
 }
 
 /// How the manifest arrived and what it cost (v0.3.0 baseline metrics).
@@ -409,23 +462,71 @@ pub struct ManifestStats {
 }
 
 impl FetchStats {
+    /// Stats with every v0.6.0 extension zeroed (bootstrap / plain routes).
+    #[allow(clippy::too_many_arguments)]
+    fn v05(
+        inline_bytes: u64,
+        inline_raw_bytes: u64,
+        inline_chunks: u64,
+        refs: u64,
+        logical_bytes: u64,
+        delivery_mode: &'static str,
+        seeded_chunks: u64,
+        seed_ms: u64,
+        manifest: ManifestStats,
+    ) -> Self {
+        FetchStats {
+            inline_bytes,
+            inline_raw_bytes,
+            inline_chunks,
+            refs,
+            logical_bytes,
+            delivery_mode,
+            seeded_chunks,
+            seed_ms,
+            manifest,
+            no_op: false,
+            no_op_files: 0,
+            no_op_bytes: 0,
+            sources: None,
+            plan: None,
+        }
+    }
+
     fn to_json(&self) -> String {
-        format!(
-            "{{\"inline_bytes\":{},\"inline_raw_bytes\":{},\"inline_chunks\":{},\"refs\":{},\"logical_bytes\":{},\"delivery_mode\":\"{}\",\"seeded_chunks\":{},\"seed_ms\":{},\"manifest\":{{\"format\":\"{}\",\"wire_bytes\":{},\"parse_ms\":{:.3},\"chunk_count_logical\":{},\"chunk_count_unique\":{}}}}}",
-            self.inline_bytes,
-            self.inline_raw_bytes,
-            self.inline_chunks,
-            self.refs,
-            self.logical_bytes,
-            self.delivery_mode,
-            self.seeded_chunks,
-            self.seed_ms,
-            self.manifest.format,
-            self.manifest.wire_bytes,
-            self.manifest.parse_ms,
-            self.manifest.chunk_count_logical,
-            self.manifest.chunk_count_unique
-        )
+        let mut v = serde_json::json!({
+            "inline_bytes": self.inline_bytes,
+            "inline_raw_bytes": self.inline_raw_bytes,
+            "inline_chunks": self.inline_chunks,
+            "refs": self.refs,
+            "logical_bytes": self.logical_bytes,
+            "delivery_mode": self.delivery_mode,
+            "seeded_chunks": self.seeded_chunks,
+            "seed_ms": self.seed_ms,
+            "no_op": self.no_op,
+            "no_op_files": self.no_op_files,
+            "no_op_bytes": self.no_op_bytes,
+            "manifest": {
+                "format": self.manifest.format,
+                "wire_bytes": self.manifest.wire_bytes,
+                "parse_ms": self.manifest.parse_ms,
+                "chunk_count_logical": self.manifest.chunk_count_logical,
+                "chunk_count_unique": self.manifest.chunk_count_unique,
+            },
+        });
+        if let Some(s) = &self.sources {
+            v["sources"] = serde_json::json!({
+                "network_bytes": self.inline_bytes + s.repair_wire_bytes,
+                "cache_chunk_bytes": s.cache_chunk_bytes,
+                "previous_artifact_bytes": s.previous_artifact_bytes,
+                "repair_wire_bytes": s.repair_wire_bytes,
+                "demoted_chunks": s.demoted_chunks,
+            });
+        }
+        if let Some(p) = &self.plan {
+            v["reconstruction_plan"] = serde_json::to_value(p).unwrap_or_default();
+        }
+        v.to_string()
     }
 }
 
@@ -519,6 +620,7 @@ fn fetch(
     cache_dir: &Path,
     pubkey: Option<&str>,
     resume: bool,
+    hybrid_opts: &HybridOpts,
 ) -> Result<(Vec<PathBuf>, FetchStats)> {
     let cache = ChunkCache::open(cache_dir)?;
 
@@ -588,13 +690,191 @@ fn fetch(
         eprintln!("[fetch] content signature OK (signer {})", &pk_hex[..16]);
     }
 
+    // v0.6.0 hybrid setup: container payloads (raw single/multi-file packs
+    // and directory trees) can reuse verified bytes from disk.
+    let payload_kind = manifest
+        .meta
+        .iter()
+        .find(|(k, _)| k == "payload")
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default();
+    let is_container = payload_kind == "raw" || payload_kind == "directory";
+    let sha_by_name: std::collections::HashMap<String, String> = manifest
+        .meta
+        .iter()
+        .filter_map(|(k, v)| {
+            k.strip_prefix("sha256:")
+                .map(|n| (n.to_string(), v.clone()))
+        })
+        .collect();
+    let data_track_names: Vec<String> = manifest
+        .tracks
+        .iter()
+        .filter(|t| t.kind != "video" && t.kind != "audio")
+        .map(|t| t.name.clone())
+        .collect();
+
+    // No-op level 1: every output file already exists and matches its
+    // manifest digest — nothing to download, nothing to rewrite.
+    if is_container
+        && !hybrid_opts.force_reconstruct
+        && !data_track_names.is_empty()
+        && data_track_names.len() == manifest.tracks.len()
+    {
+        let mut matched_bytes = 0u64;
+        let all_match = manifest.tracks.iter().all(|t| {
+            let Some(expected) = sha_by_name.get(&t.name) else {
+                return false;
+            };
+            if t.name.contains("..") || t.name.starts_with('/') {
+                return false;
+            }
+            let target = output.join(&t.name);
+            if hybrid::file_matches_sha256(&target, expected) {
+                matched_bytes += std::fs::metadata(&target).map(|m| m.len()).unwrap_or(0);
+                true
+            } else {
+                false
+            }
+        });
+        if all_match {
+            if let Some(j) = ResumeJournal::load(cache_dir, asset) {
+                j.discard(cache_dir);
+            }
+            eprintln!(
+                "[fetch] no-op: {} output file(s) already match the target hashes",
+                manifest.tracks.len()
+            );
+            let primaries = manifest
+                .tracks
+                .iter()
+                .filter(|t| t.codec == "raw")
+                .map(|t| output.join(&t.name))
+                .collect();
+            let mut stats = FetchStats::v05(
+                0,
+                0,
+                0,
+                0,
+                manifest_logical_bytes(&manifest),
+                "no-op",
+                0,
+                0,
+                manifest_stats,
+            );
+            stats.no_op = true;
+            stats.no_op_files = manifest.tracks.len() as u64;
+            stats.no_op_bytes = matched_bytes;
+            return Ok((primaries, stats));
+        }
+    }
+
+    // Previous installed artifact: open, chunk with the packer's profile
+    // and index by the hashes this manifest needs. Unusable previous
+    // artifacts degrade to a warning, never a failure.
+    let mut prev: Option<hybrid::PreviousArtifact> = None;
+    if hybrid_opts.enabled && is_container {
+        if let Some(path) = &hybrid_opts.previous_artifact {
+            if !path.is_file() {
+                eprintln!(
+                    "[hybrid] {}",
+                    ErrorCode::PreviousArtifactMissing.msg(format!(
+                        "{} not found; continuing without it",
+                        path.display()
+                    ))
+                );
+            } else {
+                // No-op level 2: the previous artifact IS the new version
+                // (single-file assets): install it locally, zero network.
+                if !hybrid_opts.force_reconstruct
+                    && data_track_names.len() == 1
+                    && manifest.tracks.len() == 1
+                {
+                    let name = &data_track_names[0];
+                    if let Some(expected) = sha_by_name.get(name) {
+                        if !name.contains("..")
+                            && !name.starts_with('/')
+                            && hybrid::file_matches_sha256(path, expected)
+                        {
+                            eprintln!(
+                                "[fetch] no-op: previous artifact already matches the target; copying locally"
+                            );
+                            let final_path = output.join(name);
+                            std::fs::create_dir_all(output)?;
+                            let mut part = PartFile::create(final_path.clone(), true)?;
+                            let mut reader = std::io::BufReader::new(std::fs::File::open(path)?);
+                            let mut buf = [0u8; 64 * 1024];
+                            let mut copied = 0u64;
+                            loop {
+                                use std::io::Read as _;
+                                let n = reader.read(&mut buf)?;
+                                if n == 0 {
+                                    break;
+                                }
+                                part.append_bytes(&buf[..n])?;
+                                copied += n as u64;
+                            }
+                            let installed = part.finish(Some(expected))?;
+                            if let Some(j) = ResumeJournal::load(cache_dir, asset) {
+                                j.discard(cache_dir);
+                            }
+                            let mut stats = FetchStats::v05(
+                                0,
+                                0,
+                                0,
+                                0,
+                                manifest_logical_bytes(&manifest),
+                                "previous-copy",
+                                0,
+                                0,
+                                manifest_stats,
+                            );
+                            stats.no_op = true;
+                            stats.no_op_files = 1;
+                            stats.no_op_bytes = copied;
+                            return Ok((vec![installed], stats));
+                        }
+                    }
+                }
+                let needed: std::collections::HashSet<String> =
+                    manifest_chunk_hashes(&manifest).into_iter().collect();
+                let profile_label = data_track_names.first().and_then(|name| {
+                    let key = format!("profile:{name}");
+                    manifest
+                        .meta
+                        .iter()
+                        .find(|(k, _)| *k == key)
+                        .map(|(_, v)| v.as_str())
+                });
+                let mode = hybrid::mode_from_profile_label(profile_label);
+                match hybrid::PreviousArtifact::open_and_index(path, mode, &needed) {
+                    Ok(p) => {
+                        eprintln!(
+                            "[hybrid] previous artifact {}: {} of {} chunks reusable (indexed in {} ms)",
+                            path.display(),
+                            p.index.len(),
+                            needed.len(),
+                            p.indexed_ms
+                        );
+                        prev = Some(p);
+                    }
+                    Err(e) => eprintln!(
+                        "[hybrid] previous artifact unusable ({e:#}); continuing without it"
+                    ),
+                }
+            }
+        }
+    }
+
     // 2. Announce our have-set (intersecting locally with the manifest keeps
     //    the request small: only hashes this asset actually uses). Large
     //    have-sets are summarised with a Bloom filter so the session-open
     //    body stays compact; false positives are repaired in step 3b.
+    // Previous-artifact matches count as "have": the server sends refs for
+    // them and the plan executor reads them from the old file directly.
     let have: Vec<String> = manifest_chunk_hashes(&manifest)
         .into_iter()
-        .filter(|h| cache.contains(h))
+        .filter(|h| cache.contains(h) || prev.as_ref().is_some_and(|p| p.index.contains_key(h)))
         .collect();
     let open_req = if have.len() > BLOOM_THRESHOLD {
         let mut bloom = cavs_proto::BloomFilter::with_capacity(have.len());
@@ -623,12 +903,49 @@ fn fetch(
         session.session_id, session.known_chunks
     );
 
+    // v0.6.0: the server's bootstrap suggestion assumes the have-set is the
+    // whole local state. When a previous artifact covers most of the asset,
+    // the chunk path (missing chunks only) beats re-downloading the full
+    // artifact — override the advisory route in that case. The raw missing
+    // estimate overstates the compressed wire cost, so this never picks the
+    // chunk path when the bootstrap is actually cheaper.
+    let mut take_bootstrap =
+        session.delivery_mode.as_deref() == Some(cavs_proto::DELIVERY_BOOTSTRAP);
+    if take_bootstrap && prev.as_ref().is_some_and(|p| !p.index.is_empty()) {
+        let have_set: std::collections::HashSet<&str> = have.iter().map(|s| s.as_str()).collect();
+        let mut seen = std::collections::HashSet::new();
+        let mut missing_raw = 0u64;
+        for t in &manifest.tracks {
+            for c in &t.init_chunks {
+                if !have_set.contains(c.hash.as_str()) && seen.insert(c.hash.as_str()) {
+                    missing_raw += c.len as u64;
+                }
+            }
+        }
+        for s in &manifest.segments {
+            for c in &s.chunks {
+                if !have_set.contains(c.hash.as_str()) && seen.insert(c.hash.as_str()) {
+                    missing_raw += c.len as u64;
+                }
+            }
+        }
+        let bootstrap_size = session.bootstrap_size.unwrap_or(u64::MAX);
+        if bootstrap_size >= missing_raw {
+            eprintln!(
+                "[hybrid] previous artifact makes the chunk path cheaper ({} missing vs {} bootstrap); overriding route",
+                human_bytes(missing_raw),
+                human_bytes(bootstrap_size)
+            );
+            take_bootstrap = false;
+        }
+    }
+
     // v2 dual route: for a cold cache the server may have measured that the
     // full compressed artifact is cheaper than the chunk path. Download it,
     // verify, install, and seed the local chunk cache from it — so the NEXT
     // fetch (an update) pays only for what changed. Any failure falls back
     // to the normal chunk path below.
-    if session.delivery_mode.as_deref() == Some(cavs_proto::DELIVERY_BOOTSTRAP) {
+    if take_bootstrap {
         match fetch_bootstrap(
             agent,
             server,
@@ -735,8 +1052,11 @@ fn fetch(
                 }
                 DeliveryInstr::Ref { hash } => {
                     ref_count += 1;
-                    // Bloom false positive: server thinks we have it, we don't.
-                    if !cache.contains(&hex) {
+                    // Bloom false positive: server thinks we have it, but
+                    // neither the cache nor the previous artifact does.
+                    if !cache.contains(&hex)
+                        && !prev.as_ref().is_some_and(|p| p.index.contains_key(&hex))
+                    {
                         missing_refs.push(hash);
                     }
                 }
@@ -772,9 +1092,34 @@ fn fetch(
         }
     }
 
-    // 4. Reconstrucción streaming a disco: temporal .part -> verificar
-    //    sha256 -> rename. Peak RAM = one chunk, not the whole asset.
-    let primaries = reconstruct_streaming(&manifest, &cache, output)?;
+    // 4. Reconstruction. Container payloads (raw/directory) go through the
+    //    unified plan executor (v0.6.0): every data track gets a
+    //    ReconstructionPlan whose sources are the previous artifact, the
+    //    chunk cache and the just-fetched network chunks. Media payloads
+    //    keep the v0.5 streaming path.
+    let (primaries, recon) = if is_container {
+        reconstruct_with_plans(
+            agent,
+            server,
+            asset,
+            &manifest,
+            &payload_kind,
+            &cache,
+            output,
+            prev.as_ref(),
+            hybrid_opts,
+        )?
+    } else {
+        (
+            reconstruct_streaming(&manifest, &cache, output)?,
+            ReconOutcome::default(),
+        )
+    };
+    if let Some(path) = &hybrid_opts.dump_plan {
+        std::fs::write(path, serde_json::to_string_pretty(&recon.plans)?)
+            .with_context(|| format!("cannot write {}", path.display()))?;
+        eprintln!("[hybrid] plan dumped to {}", path.display());
+    }
 
     // The fetch is complete and verified: drop the journal and any
     // leftover bootstrap partial from an earlier attempt.
@@ -805,24 +1150,34 @@ fn fetch(
             (logical.saturating_sub(inline_bytes)) as f64 * 100.0 / logical as f64
         }
     );
-    Ok((
-        primaries,
-        FetchStats {
-            inline_bytes,
-            inline_raw_bytes,
-            inline_chunks: inline_count,
-            refs: ref_count,
-            logical_bytes: logical,
-            delivery_mode: if inline_count == 0 {
-                "references"
-            } else {
-                "chunks"
-            },
-            seeded_chunks: 0,
-            seed_ms: 0,
-            manifest: manifest_stats,
+    if let Some(outcome) = &recon.sources {
+        println!(
+            "sources : {} previous artifact / {} cache / {} network repair",
+            human_bytes(outcome.previous_artifact_bytes),
+            human_bytes(outcome.cache_chunk_bytes),
+            human_bytes(outcome.repair_wire_bytes),
+        );
+    }
+    let mut stats = FetchStats::v05(
+        inline_bytes,
+        inline_raw_bytes,
+        inline_count,
+        ref_count,
+        logical,
+        if inline_count == 0 {
+            "references"
+        } else {
+            "chunks"
         },
-    ))
+        0,
+        0,
+        manifest_stats,
+    );
+    stats.no_op_files = recon.no_op_files;
+    stats.no_op_bytes = recon.no_op_bytes;
+    stats.sources = recon.sources;
+    stats.plan = recon.plan;
+    Ok((primaries, stats))
 }
 
 /// The v2 bootstrap route: download the whole compressed artifact, verify it
@@ -1067,17 +1422,17 @@ fn fetch_bootstrap(
     );
     Ok((
         vec![installed],
-        FetchStats {
-            inline_bytes: wire_bytes,
-            inline_raw_bytes: raw_bytes,
-            inline_chunks: 0,
-            refs: 0,
-            logical_bytes: logical,
-            delivery_mode: "bootstrap",
-            seeded_chunks: seeded,
+        FetchStats::v05(
+            wire_bytes,
+            raw_bytes,
+            0,
+            0,
+            logical,
+            "bootstrap",
+            seeded,
             seed_ms,
-            manifest: manifest_stats.clone(),
-        },
+            manifest_stats.clone(),
+        ),
     ))
 }
 
@@ -1191,6 +1546,243 @@ impl PartFile {
         std::fs::rename(&self.part_path, &self.final_path)?;
         Ok(self.final_path)
     }
+}
+
+/// What the plan-based reconstruction did, for stats and `--dump-plan`.
+#[derive(Default)]
+struct ReconOutcome {
+    plans: Vec<cavs_rebuild_plan::ReconstructionPlan>,
+    sources: Option<hybrid::ExecOutcome>,
+    plan: Option<cavs_rebuild_plan::PlanStats>,
+    no_op_files: u64,
+    no_op_bytes: u64,
+}
+
+/// v0.6.0 unified reconstruction for container payloads: every data track
+/// is rebuilt by a [`cavs_rebuild_plan::ReconstructionPlan`] executed over
+/// the previous artifact, the chunk cache and the network. Directory
+/// payloads are staged first and committed atomically per file after all
+/// hashes verify.
+#[allow(clippy::too_many_arguments)]
+fn reconstruct_with_plans(
+    agent: &ureq::Agent,
+    server: &str,
+    asset: &str,
+    manifest: &Manifest,
+    payload_kind: &str,
+    cache: &ChunkCache,
+    output: &Path,
+    prev: Option<&hybrid::PreviousArtifact>,
+    opts: &HybridOpts,
+) -> Result<(Vec<PathBuf>, ReconOutcome)> {
+    std::fs::create_dir_all(output)?;
+    let dir_mode = payload_kind == "directory";
+    let staging_root = output.join(".cavs-staging");
+    let sha_by_name: std::collections::HashMap<&str, &str> = manifest
+        .meta
+        .iter()
+        .filter_map(|(k, v)| k.strip_prefix("sha256:").map(|n| (n, v.as_str())))
+        .collect();
+
+    let mut recon = ReconOutcome::default();
+    let mut agg_sources = hybrid::ExecOutcome::default();
+    let mut agg_plan = cavs_rebuild_plan::PlanStats::default();
+    let mut primaries = Vec::new();
+    let mut staged: Vec<(PathBuf, PathBuf)> = Vec::new();
+    let empty_index = std::collections::HashMap::new();
+    let prev_index = prev.map(|p| &p.index).unwrap_or(&empty_index);
+
+    for track in &manifest.tracks {
+        if track.kind == "video" || track.kind == "audio" {
+            bail!("container payload with media tracks is not supported");
+        }
+        if track.name.contains("..") || track.name.starts_with('/') {
+            bail!("unsafe track name: {}", track.name);
+        }
+        let expected = sha_by_name.get(track.name.as_str()).copied();
+        let final_path = output.join(&track.name);
+
+        // No-op level 3 (directory mode): an unchanged file — including one
+        // the player modded and the developer did not touch — is left alone.
+        if dir_mode && !opts.force_reconstruct {
+            if let Some(exp) = expected {
+                if hybrid::file_matches_sha256(&final_path, exp) {
+                    recon.no_op_files += 1;
+                    recon.no_op_bytes +=
+                        std::fs::metadata(&final_path).map(|m| m.len()).unwrap_or(0);
+                    continue;
+                }
+            }
+        }
+
+        let needed = hybrid::needed_chunks_for_track(manifest, track.track_id);
+        let plan = cavs_rebuild_plan::plan(
+            asset,
+            &track.name,
+            &needed,
+            cavs_rebuild_plan::availability_from_sets(|h| cache.contains(h), prev_index),
+        );
+        let dest = if dir_mode {
+            staging_root.join(&track.name)
+        } else {
+            final_path.clone()
+        };
+        let mut part = PartFile::create(dest, expected.is_some())?;
+        let outcome = hybrid::execute_plan(
+            &plan,
+            prev,
+            cache,
+            |bytes| part.append_bytes(bytes),
+            |hash| http_get_bytes(agent, &format!("{server}/api/assets/{asset}/chunks/{hash}")),
+        )?;
+        let written = part.finish(expected)?;
+        if dir_mode {
+            staged.push((written, final_path));
+        } else if track.codec == "raw" {
+            primaries.push(written);
+        }
+
+        agg_sources.previous_artifact_bytes += outcome.previous_artifact_bytes;
+        agg_sources.cache_chunk_bytes += outcome.cache_chunk_bytes;
+        agg_sources.demoted_chunks += outcome.demoted_chunks;
+        agg_sources.repair_wire_bytes += outcome.repair_wire_bytes;
+        agg_plan.ops_total += plan.stats.ops_total;
+        agg_plan.ops_before_coalescing += plan.stats.ops_before_coalescing;
+        agg_plan.coalesced_ops += plan.stats.coalesced_ops;
+        agg_plan.copy_previous_range_ops += plan.stats.copy_previous_range_ops;
+        agg_plan.copy_cache_chunk_ops += plan.stats.copy_cache_chunk_ops;
+        agg_plan.fetch_chunk_ops += plan.stats.fetch_chunk_ops;
+        agg_plan.previous_artifact_bytes += plan.stats.previous_artifact_bytes;
+        agg_plan.cache_chunk_bytes += plan.stats.cache_chunk_bytes;
+        agg_plan.network_bytes += plan.stats.network_bytes;
+        agg_plan.source_selection_ms += plan.stats.source_selection_ms;
+        recon.plans.push(plan);
+    }
+
+    if dir_mode {
+        commit_directory(manifest, output, &staging_root, &staged, opts.prune)
+            .map_err(|e| anyhow!(ErrorCode::ContainerApplyFailed.msg(format!("{e:#}"))))?;
+    }
+    recon.sources = Some(agg_sources);
+    recon.plan = Some(agg_plan);
+    Ok((primaries, recon))
+}
+
+/// Directory-mode commit: every staged file verified already, so this is
+/// only renames plus metadata. Order keeps the tree usable at every step:
+/// dirs first, then file moves, then symlinks/permissions, prune last.
+/// The journal records intent so an interrupted apply can be diagnosed and
+/// finished by simply re-running the fetch (per-file no-op detection makes
+/// that cheap).
+fn commit_directory(
+    manifest: &Manifest,
+    output: &Path,
+    staging_root: &Path,
+    staged: &[(PathBuf, PathBuf)],
+    prune: bool,
+) -> Result<()> {
+    let meta_paths = |prefix: &'static str| {
+        manifest
+            .meta
+            .iter()
+            .filter_map(move |(k, v)| k.strip_prefix(prefix).map(|p| (p.to_string(), v.clone())))
+            .filter(|(p, _)| !p.contains("..") && !p.starts_with('/'))
+    };
+
+    // Journal the planned moves before touching the target tree.
+    if !staged.is_empty() {
+        std::fs::create_dir_all(staging_root)?;
+        let journal: Vec<serde_json::Value> = staged
+            .iter()
+            .map(|(from, to)| serde_json::json!({"from": from, "to": to}))
+            .collect();
+        let _ = std::fs::write(
+            staging_root.join("apply-journal.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({"moves": journal}))?,
+        );
+    }
+
+    for (dir, _) in meta_paths("dir:") {
+        std::fs::create_dir_all(output.join(dir))?;
+    }
+    for (from, to) in staged {
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::rename(from, to).with_context(|| format!("installing {}", to.display()))?;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for (path, _) in meta_paths("exec:") {
+            let target = output.join(&path);
+            if let Ok(meta) = std::fs::metadata(&target) {
+                let mut perm = meta.permissions();
+                perm.set_mode(perm.mode() | 0o755);
+                let _ = std::fs::set_permissions(&target, perm);
+            }
+        }
+        for (path, link_target) in meta_paths("symlink:") {
+            let at = output.join(&path);
+            if let Some(parent) = at.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let _ = std::fs::remove_file(&at);
+            std::os::unix::fs::symlink(&link_target, &at)
+                .with_context(|| format!("creating symlink {}", at.display()))?;
+        }
+    }
+    #[cfg(not(unix))]
+    for (path, _) in meta_paths("symlink:") {
+        eprintln!("[apply] skipping symlink {path} (unsupported on this platform)");
+    }
+
+    if prune {
+        let mut keep: std::collections::HashSet<PathBuf> = manifest
+            .tracks
+            .iter()
+            .map(|t| output.join(&t.name))
+            .collect();
+        for (p, _) in meta_paths("symlink:") {
+            keep.insert(output.join(p));
+        }
+        let keep_dirs: std::collections::HashSet<PathBuf> = keep
+            .iter()
+            .flat_map(|p| p.ancestors().map(Path::to_path_buf).collect::<Vec<_>>())
+            .chain(meta_paths("dir:").map(|(d, _)| output.join(d)))
+            .collect();
+        prune_extraneous(output, staging_root, &keep, &keep_dirs)?;
+    }
+
+    let _ = std::fs::remove_dir_all(staging_root);
+    Ok(())
+}
+
+/// Remove files (and then empty dirs) under `dir` that are not part of the
+/// new container. The staging root is never touched.
+fn prune_extraneous(
+    dir: &Path,
+    staging_root: &Path,
+    keep: &std::collections::HashSet<PathBuf>,
+    keep_dirs: &std::collections::HashSet<PathBuf>,
+) -> Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path == staging_root {
+            continue;
+        }
+        let meta = std::fs::symlink_metadata(&path)?;
+        if meta.is_dir() && !meta.file_type().is_symlink() {
+            prune_extraneous(&path, staging_root, keep, keep_dirs)?;
+            if !keep_dirs.contains(&path) && std::fs::read_dir(&path)?.next().is_none() {
+                let _ = std::fs::remove_dir(&path);
+            }
+        } else if !keep.contains(&path) {
+            eprintln!("[apply] pruning {}", path.display());
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+    Ok(())
 }
 
 /// Mirror of `cavs unpack`, streaming from the chunk cache: per video track

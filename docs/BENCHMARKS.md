@@ -195,6 +195,55 @@ nothing. Update egress tracks the changed fraction linearly, and manifests
 stay compact (1.28 MiB JSON → 311 KiB binary v2 for ~8,600 chunks).
 Ingesting v1 + v2-small into a packfile store yields 6 immutable packs.
 
+## Hybrid reconstruction (v0.6.0) — previous install as a byte source
+
+128 MiB synthetic suite (`bench gen --size 128MiB --seed 5`), fastcdc-64k,
+release binaries, localhost server. "Cold" = empty chunk cache; "cold +
+previous" = empty cache but the old build on disk (the situation every
+pairwise patcher assumes — and where v0.5 had to pay the full artifact).
+
+| Update variant | v0.5 cold | v0.6 cold + previous install | Reduction | Warm cache (v0.5 = v0.6) |
+|---|---:|---:|---:|---:|
+| small change | 64.55 MiB | **6.24 MiB** | **−90.3 %** | 6.24 MiB |
+| medium change | 64.56 MiB | **26.53 MiB** | **−58.9 %** | 26.53 MiB |
+| shifted (every byte moves) | 64.56 MiB | **10.9 KiB** | **−99.98 %** | 10.9 KiB |
+
+- Warm-cache wire bytes are identical to v0.5 — the unified plan executor
+  introduces **no regression** on any existing path (152 workspace tests,
+  including the full v0.5 e2e suites, pass unchanged).
+- Every copied range is BLAKE3-verified before writing; final SHA-256 gate
+  unchanged; all outputs byte-identical (`cmp`).
+- Range coalescing: shifted variant plans 1,082 chunk ops → 18 contiguous
+  reads (60×); small 1,087 → 154 (7×); strict contiguity, read
+  amplification 1.0.
+- A previous install with a corrupted byte demotes exactly the affected
+  range to network (`CAVS-E-PREVIOUS-ARTIFACT-MISMATCH`) and still ends
+  byte-identical.
+- No-op re-fetch of an already-current install: **0 payload bytes**,
+  ~0.4 s (manifest + one local SHA-256).
+- `.cavssig` signature of the 128 MiB build: 88 KiB (0.067 %),
+  deterministic, one flipped source byte detected.
+
+## CAVS vs Wharf (itch.io) — v0.6.0 baseline
+
+Wharf-style model (fixed 64 KiB blocks, weak rolling hash + BLAKE3
+confirmation, DATA/BLOCK_RANGE with coalescing, zstd-1 transport —
+labeled: not the official butler binary), same suite:
+
+| Pair | Full re-download | Wharf-style patch | xdelta3 -9 | bsdiff | CAVS update |
+|---|---:|---:|---:|---:|---:|
+| small | 64.05 MiB | 1.94 MiB | 1.94 MiB | 1.96 MiB | 6.06 MiB |
+| medium | 64.05 MiB | 8.83 MiB | 8.82 MiB | 8.90 MiB | 26.28 MiB |
+| shifted | 64.06 MiB | 4.04 KiB | 4.65 KiB | 4.67 KiB | 10.90 KiB |
+
+Pairwise patches win per-pair bytes (inherent: they ship dirty regions,
+CAVS ships whole chunks); CAVS packages once per release, serves every
+version jump from one deduplicated, CDN-cacheable store, and resumes and
+self-repairs. Full tables, timings and framing:
+[WHARF_COMPARISON.md](WHARF_COMPARISON.md). Compression cross-check
+(`bench compression`): zstd and Brotli within 0.1 % on size here, zstd
+~40× faster decode — zstd-3 stays the default.
+
 ## Honest negatives (video suite)
 
 CAVS is not a codec and doesn't pretend to be:

@@ -190,6 +190,7 @@ pub fn suite(dataset: &Path, out: &Path) -> Result<()> {
         zstd_level: 3,
         force_transcode: false,
         sign_key: None,
+        against_signature: None,
     };
 
     let mut base_chunks: Option<HashSet<[u8; 32]>> = None;
