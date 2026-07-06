@@ -262,3 +262,46 @@ fn json_error_is_structured() {
         Err(ManifestError::Json(_))
     ));
 }
+
+#[test]
+fn chunk_locations_round_trip_and_stay_optional() {
+    use cavs_manifest::{encode_manifest_v2_with_locations, ChunkLocation, ChunkLocations};
+    let manifest = sample_manifest();
+
+    // Without locations: decodes with locations = None (0.3.0 behavior).
+    let plain = encode_manifest_v2(&manifest).unwrap();
+    assert!(read_manifest(&plain).unwrap().locations.is_none());
+
+    // With locations for a subset of the dictionary, across two packs.
+    let pack_a = hash_chunk(b"pack-a");
+    let pack_b = hash_chunk(b"pack-b");
+    let mut locations = ChunkLocations::new();
+    for (i, hex) in manifest.chunk_table.iter().enumerate().take(10) {
+        locations.insert(
+            hex.clone(),
+            ChunkLocation {
+                pack_id: if i % 2 == 0 { pack_a } else { pack_b },
+                offset: (i as u64) * 65536,
+                stored_len: 60000 + i as u32,
+            },
+        );
+    }
+    let encoded = encode_manifest_v2_with_locations(&manifest, Some(&locations)).unwrap();
+    let loaded = read_manifest(&encoded).unwrap();
+    // The manifest itself is unchanged by the extra section...
+    assert_eq!(as_value(&manifest), as_value(&loaded.manifest));
+    // ...and the hints round-trip exactly.
+    assert_eq!(loaded.locations.as_ref(), Some(&locations));
+
+    // Corruption in the locations section fails cleanly; flips are either
+    // detected or (reserved header bytes) leave the decode unchanged.
+    for i in 0..encoded.len() {
+        let mut mutated = encoded.clone();
+        mutated[i] ^= 0x01;
+        let _ = read_manifest(&mutated); // must not panic
+    }
+
+    // An empty location map is omitted entirely.
+    let empty = encode_manifest_v2_with_locations(&manifest, Some(&ChunkLocations::new())).unwrap();
+    assert_eq!(empty, plain);
+}

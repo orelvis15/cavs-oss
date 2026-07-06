@@ -55,6 +55,9 @@ const COMPRESSION_ZSTD: u8 = 1;
 const SECTION_ASSET_INFO: u64 = 1;
 const SECTION_CHUNK_PLAN: u64 = 2;
 const SECTION_CHUNK_DICTIONARY: u64 = 3;
+/// Optional since 0.4.0: physical chunk locations (packfile hints).
+/// 0.3.0 readers skip it as an unknown section kind.
+const SECTION_CHUNK_LOCATIONS: u64 = 4;
 
 /// Sections at or above this raw size are stored zstd-compressed.
 const COMPRESS_MIN_SECTION: usize = 32 * 1024;
@@ -74,14 +77,42 @@ const DICT_ENTRY_MIN_BYTES: u64 = 33;
 // Encoder
 // ---------------------------------------------------------------------------
 
+/// Where a chunk physically lives (packfile hint, since 0.4.0).
+///
+/// Advisory only: a consumer must verify chunk bytes by BLAKE3 regardless
+/// of where a hint pointed, and fall back to an index lookup when a hint
+/// is missing or stale.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChunkLocation {
+    /// Content-addressed pack id (BLAKE3 of the `.cavspack` bytes).
+    pub pack_id: ChunkHash,
+    /// Offset into the pack's data region.
+    pub offset: u64,
+    /// Stored (possibly compressed) length.
+    pub stored_len: u32,
+}
+
+/// Chunk-hash (hex) → physical location, as carried by the optional
+/// ChunkLocations section.
+pub type ChunkLocations = HashMap<String, ChunkLocation>;
+
 /// Encode the runtime manifest as binary v2 bytes.
 ///
 /// Fails only when the manifest itself is inconsistent (hashes that are not
 /// valid 64-char hex, strings above the wire limit).
 pub fn encode_manifest_v2(manifest: &Manifest) -> Result<Vec<u8>, ManifestError> {
+    encode_manifest_v2_with_locations(manifest, None)
+}
+
+/// Encode binary v2 with an optional ChunkLocations section (packfile
+/// hints). Hashes not present in the manifest's dictionary are ignored.
+pub fn encode_manifest_v2_with_locations(
+    manifest: &Manifest,
+    locations: Option<&ChunkLocations>,
+) -> Result<Vec<u8>, ManifestError> {
     let dictionary = Dictionary::build(manifest)?;
 
-    let sections: [(u64, Vec<u8>); 3] = [
+    let mut sections: Vec<(u64, Vec<u8>)> = vec![
         (SECTION_ASSET_INFO, encode_asset_info(manifest)?),
         (
             SECTION_CHUNK_PLAN,
@@ -89,6 +120,11 @@ pub fn encode_manifest_v2(manifest: &Manifest) -> Result<Vec<u8>, ManifestError>
         ),
         (SECTION_CHUNK_DICTIONARY, encode_dictionary(&dictionary)),
     ];
+    if let Some(locations) = locations {
+        if let Some(bytes) = encode_locations(&dictionary, locations) {
+            sections.push((SECTION_CHUNK_LOCATIONS, bytes));
+        }
+    }
 
     // Compress large sections; keep small ones raw.
     let mut stored: Vec<(u64, u8, Vec<u8>, usize, ChunkHash)> = Vec::new();
@@ -210,6 +246,43 @@ fn encode_dictionary(dict: &Dictionary) -> Vec<u8> {
     out
 }
 
+/// ChunkLocations layout: `pack_count`, `pack_count × [32]` pack ids, then
+/// `entry_count × { dict_index, pack_ord, offset, stored_len }` (varints),
+/// entries in ascending dictionary order.
+fn encode_locations(dict: &Dictionary, locations: &ChunkLocations) -> Option<Vec<u8>> {
+    let mut entries: Vec<(u32, &ChunkLocation)> = Vec::new();
+    for (index, hash) in dict.hashes.iter().enumerate() {
+        if let Some(loc) = locations.get(&to_hex(hash)) {
+            entries.push((index as u32, loc));
+        }
+    }
+    if entries.is_empty() {
+        return None;
+    }
+    // Pack table in first-reference order (deterministic: dict order).
+    let mut pack_ord: HashMap<ChunkHash, u64> = HashMap::new();
+    let mut packs: Vec<ChunkHash> = Vec::new();
+    for (_, loc) in &entries {
+        pack_ord.entry(loc.pack_id).or_insert_with(|| {
+            packs.push(loc.pack_id);
+            packs.len() as u64 - 1
+        });
+    }
+    let mut out = Vec::with_capacity(8 + packs.len() * 32 + entries.len() * 8);
+    write_varuint(packs.len() as u64, &mut out);
+    for pack in &packs {
+        out.extend_from_slice(pack);
+    }
+    write_varuint(entries.len() as u64, &mut out);
+    for (index, loc) in entries {
+        write_varuint(index as u64, &mut out);
+        write_varuint(pack_ord[&loc.pack_id], &mut out);
+        write_varuint(loc.offset, &mut out);
+        write_varuint(loc.stored_len as u64, &mut out);
+    }
+    Some(out)
+}
+
 fn encode_asset_info(manifest: &Manifest) -> Result<Vec<u8>, ManifestError> {
     let mut out = Vec::new();
     put_str(&mut out, &manifest.asset)?;
@@ -289,6 +362,13 @@ fn put_opt_str(out: &mut Vec<u8>, s: Option<&str>) -> Result<(), ManifestError> 
 
 /// Decode binary v2 bytes back into the runtime manifest.
 pub fn decode_manifest_v2(bytes: &[u8]) -> Result<Manifest, ManifestError> {
+    Ok(decode_manifest_v2_full(bytes)?.0)
+}
+
+/// Decode binary v2 including the optional ChunkLocations section.
+pub fn decode_manifest_v2_full(
+    bytes: &[u8],
+) -> Result<(Manifest, Option<ChunkLocations>), ManifestError> {
     if bytes.len() > MAX_MANIFEST_BYTES {
         return Err(ManifestError::TooLarge);
     }
@@ -335,11 +415,13 @@ pub fn decode_manifest_v2(bytes: &[u8]) -> Result<Manifest, ManifestError> {
     let mut asset_info: Option<Vec<u8>> = None;
     let mut chunk_plan: Option<Vec<u8>> = None;
     let mut dictionary: Option<Vec<u8>> = None;
+    let mut locations_bytes: Option<Vec<u8>> = None;
     for section in &table {
         let slot = match section.kind {
             SECTION_ASSET_INFO => &mut asset_info,
             SECTION_CHUNK_PLAN => &mut chunk_plan,
             SECTION_CHUNK_DICTIONARY => &mut dictionary,
+            SECTION_CHUNK_LOCATIONS => &mut locations_bytes,
             // Unknown sections are legal (future extensions): skip them.
             _ => continue,
         };
@@ -396,7 +478,54 @@ pub fn decode_manifest_v2(bytes: &[u8]) -> Result<Manifest, ManifestError> {
     let mut manifest = decode_asset_info(&asset_info)?;
     manifest.chunk_table = hex[..chunk_table_count].to_vec();
     decode_chunk_plan(&chunk_plan, &hex, &lens, &mut manifest)?;
-    Ok(manifest)
+    let locations = match locations_bytes {
+        Some(bytes) => Some(decode_locations(&bytes, &hex)?),
+        None => None,
+    };
+    Ok((manifest, locations))
+}
+
+fn decode_locations(mut input: &[u8], hex: &[String]) -> Result<ChunkLocations, ManifestError> {
+    let input = &mut input;
+    let pack_count = read_varuint(input)?;
+    if pack_count > input.len() as u64 / 32 + 1 {
+        return Err(ManifestError::OutOfBounds("pack count"));
+    }
+    let mut packs = Vec::with_capacity(pack_count as usize);
+    for _ in 0..pack_count {
+        packs.push(take_hash(input)?);
+    }
+    let entry_count = read_varuint(input)?;
+    if entry_count > input.len() as u64 / 4 + 1 {
+        return Err(ManifestError::OutOfBounds("location count"));
+    }
+    let mut locations = ChunkLocations::with_capacity(entry_count as usize);
+    for _ in 0..entry_count {
+        let dict_index = read_varuint(input)?;
+        let hash = hex
+            .get(dict_index as usize)
+            .ok_or(ManifestError::OutOfBounds("dictionary index"))?;
+        let pack_ord = read_varuint(input)?;
+        let pack_id = *packs
+            .get(pack_ord as usize)
+            .ok_or(ManifestError::OutOfBounds("pack ordinal"))?;
+        let offset = read_varuint(input)?;
+        let stored_len = take_varu32(input, "stored length")?;
+        if locations
+            .insert(
+                hash.clone(),
+                ChunkLocation {
+                    pack_id,
+                    offset,
+                    stored_len,
+                },
+            )
+            .is_some()
+        {
+            return Err(ManifestError::Malformed("duplicate chunk location"));
+        }
+    }
+    ensure_consumed(input, "ChunkLocations").map(|()| locations)
 }
 
 fn decode_dictionary(mut input: &[u8]) -> Result<(Vec<ChunkHash>, Vec<u32>, usize), ManifestError> {

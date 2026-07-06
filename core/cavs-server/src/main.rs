@@ -220,8 +220,12 @@ async fn manifest(
     };
 
     if binary {
-        let bytes = cavs_manifest::encode_manifest_v2(&manifest)
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        // Packfile-store assets also carry chunk location hints (0.4.0).
+        let bytes = cavs_manifest::encode_manifest_v2_with_locations(
+            &manifest,
+            state.manifest_locations(&asset),
+        )
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         state.count_manifest_request("binary-v2", bytes.len() as u64);
         Ok((
             [(
@@ -267,7 +271,7 @@ async fn get_bootstrap(
     State(state): State<SharedState>,
     Path(asset): Path<String>,
 ) -> Result<Response, AppError> {
-    let (path, size) = state
+    let (path, size, blake3_hex) = state
         .bootstrap_file(&asset)
         .ok_or_else(|| not_found(format!("bootstrap for {asset}")))?;
     let file = tokio::fs::File::open(&path)
@@ -283,6 +287,7 @@ async fn get_bootstrap(
                 header::CACHE_CONTROL,
                 "public, max-age=31536000, immutable".to_string(),
             ),
+            (header::ETAG, format!("\"blake3-{blake3_hex}\"")),
         ],
         axum::body::Body::from_stream(stream),
     )
@@ -298,9 +303,13 @@ async fn get_chunk(
         .ok_or_else(|| not_found(format!("chunk {hash}")))?;
     Ok((
         [
-            (header::CONTENT_TYPE, "application/octet-stream"),
+            (header::CONTENT_TYPE, "application/octet-stream".to_string()),
             // Content-addressed: immutable forever, ideal for edge caches.
-            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+            (
+                header::CACHE_CONTROL,
+                "public, max-age=31536000, immutable".to_string(),
+            ),
+            (header::ETAG, format!("\"blake3-{hash}\"")),
         ],
         bytes,
     )

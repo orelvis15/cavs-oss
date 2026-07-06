@@ -17,7 +17,10 @@
 mod v2;
 pub mod varint;
 
-pub use v2::{decode_manifest_v2, encode_manifest_v2};
+pub use v2::{
+    decode_manifest_v2, decode_manifest_v2_full, encode_manifest_v2,
+    encode_manifest_v2_with_locations, ChunkLocation, ChunkLocations,
+};
 
 use cavs_proto::Manifest;
 
@@ -49,6 +52,10 @@ impl ManifestFormat {
 pub struct LoadedManifest {
     pub manifest: Manifest,
     pub format: ManifestFormat,
+    /// Physical chunk locations (packfile hints), when the binary v2
+    /// manifest carried the optional ChunkLocations section. Advisory:
+    /// consumers verify chunk bytes by hash regardless.
+    pub locations: Option<ChunkLocations>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -92,15 +99,18 @@ pub fn read_manifest(bytes: &[u8]) -> Result<LoadedManifest, ManifestError> {
         return Err(ManifestError::TooLarge);
     }
     if bytes.starts_with(MANIFEST_V2_MAGIC) {
+        let (manifest, locations) = decode_manifest_v2_full(bytes)?;
         return Ok(LoadedManifest {
-            manifest: decode_manifest_v2(bytes)?,
+            manifest,
             format: ManifestFormat::BinaryV2,
+            locations,
         });
     }
     if looks_like_json(bytes) {
         return Ok(LoadedManifest {
             manifest: serde_json::from_slice(bytes)?,
             format: ManifestFormat::JsonV1,
+            locations: None,
         });
     }
     Err(ManifestError::UnknownFormat)

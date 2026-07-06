@@ -3,15 +3,22 @@
 //! collect zero-ref chunks, and report storage savings.
 
 use crate::report::human_bytes;
+use crate::StorageArg;
 use anyhow::{Context, Result};
 use cavs_format::{Reader, SEGMENT_FLAG_RANDOM_ACCESS};
 use cavs_hash::to_hex;
-use cavs_store::{AssetRecord, GlobalStore, StoreSegment, StoreTrack};
+use cavs_store::{AssetRecord, GlobalStore, StoreLayout, StoreSegment, StoreTrack};
 use std::path::Path;
 
 /// Ingest a `.cavs` file into the store under `asset_name`, deduplicating
-/// its chunks against everything already stored.
-pub fn add(store_dir: &Path, asset_name: &str, cavs_path: &Path) -> Result<()> {
+/// its chunks against everything already stored. `storage` selects the
+/// physical layout when the store is newly created.
+pub fn add(
+    store_dir: &Path,
+    asset_name: &str,
+    cavs_path: &Path,
+    storage: Option<StorageArg>,
+) -> Result<()> {
     let mut reader =
         Reader::open(cavs_path).with_context(|| format!("cannot open {}", cavs_path.display()))?;
     // Refuse to ingest content whose embedded signature is invalid.
@@ -20,7 +27,11 @@ pub fn add(store_dir: &Path, asset_name: &str, cavs_path: &Path) -> Result<()> {
         cavs_format::SignatureStatus::Unsigned => None,
     };
 
-    let mut store = GlobalStore::open(store_dir)?;
+    let layout = storage.map(|s| match s {
+        StorageArg::Loose => StoreLayout::Loose,
+        StorageArg::Packfiles => StoreLayout::Packfiles,
+    });
+    let mut store = GlobalStore::open_with_layout(store_dir, layout)?;
     let chunks = reader.chunks().to_vec();
 
     // Store every unique chunk (in stored/compressed form) into the CAS.
@@ -129,6 +140,43 @@ pub fn stat(store_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Re-hash every chunk and check every referenced pack's integrity.
+pub fn verify(store_dir: &Path) -> Result<()> {
+    let store = GlobalStore::open(store_dir)?;
+    let checked = store.verify()?;
+    println!("verify  : OK — {checked} chunks re-hashed, packs intact");
+    Ok(())
+}
+
+/// Export as a deterministic immutable object tree for object storage/CDN.
+pub fn export(store_dir: &Path, out: &Path) -> Result<()> {
+    let store = GlobalStore::open(store_dir)?;
+    let written = store.export_object_store(out)?;
+    let packs = written
+        .iter()
+        .filter(|p| p.starts_with("chunks/packs/"))
+        .count();
+    println!(
+        "exported: {} objects ({packs} packs) -> {}",
+        written.len(),
+        out.display()
+    );
+    println!("layout  :");
+    for rel in written.iter().take(6) {
+        println!("  {rel}");
+    }
+    if written.len() > 6 {
+        println!("  … {} more", written.len() - 6);
+    }
+    println!(
+        "headers : packs/indexes are content-addressed — serve them with\n          \
+         Cache-Control: public, max-age=31536000, immutable\n          \
+         ETag: \"blake3-<filename stem>\"\n          \
+         assets/<name>/record.json is mutable — Cache-Control: no-cache"
+    );
+    Ok(())
+}
+
 fn print_stats(store: &GlobalStore) {
     let s = store.stats();
     // stored_bytes can briefly exceed the logical (referenced) total when
@@ -152,4 +200,17 @@ fn print_stats(store: &GlobalStore) {
         human_bytes(s.stored_bytes),
         saved
     );
+    if s.layout == StoreLayout::Packfiles {
+        let live_pct = if s.pack_disk_bytes == 0 {
+            100.0
+        } else {
+            s.pack_live_bytes as f64 * 100.0 / s.pack_disk_bytes as f64
+        };
+        println!(
+            "packs   : {} packfiles · {} on disk · {:.1}% live",
+            s.pack_count,
+            human_bytes(s.pack_disk_bytes),
+            live_pct
+        );
+    }
 }
