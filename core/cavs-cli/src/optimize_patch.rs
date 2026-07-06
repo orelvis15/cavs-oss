@@ -266,7 +266,7 @@ pub fn compress(data: &[u8], compression: &str) -> Result<Vec<u8>> {
         }
         _ if compression.starts_with("brotli-") => {
             let quality = &compression[7..];
-            run_pipe("brotli", &["-c", &format!("-q{quality}")], data)
+            run_pipe("brotli", &["-c", &format!("--quality={quality}")], data)
         }
         other => bail!("unknown compression {other} (use zstd-N, brotli-N or none)"),
     }

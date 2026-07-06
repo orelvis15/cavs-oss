@@ -17,12 +17,18 @@ same bytes, and the decoder only accepts the canonical form.
 cavs signature export game_v1.cavs -o game_v1.cavssig      # from a container
 cavs signature export --raw game_v1.pck -o game_v1.cavssig # from a raw file
 cavs signature export --raw ./Build_v1 -o build_v1.cavssig # from a directory
-cavs signature inspect game_v1.cavssig
+cavs signature inspect game_v1.cavssig           # --json for tooling
+cavs signature ls build_v1.cavssig               # every entry (v0.7.0)
 cavs signature verify game_v1.cavssig --against game_v1.pck
 
 # Report reusable bytes at pack time, old content not required:
 cavs pack --raw game_v2.pck --against-signature game_v1.cavssig -o game_v2.cavs
 ```
+
+Signatures also drive the v0.7.0 offline toolkit: `cavs preview`
+classifies a new build against one, `cavs diff-plan` diffs against one
+(`--old-signature`), and `cavs verify-install` checks an install against
+one ([OFFLINE_TOOLKIT.md](OFFLINE_TOOLKIT.md)).
 
 Exporting from a `.cavs` streams the *reconstructed* data tracks through
 the block hasher, so the signature describes what a client's previous
