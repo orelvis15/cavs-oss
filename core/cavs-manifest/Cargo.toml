@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
+readme = "README.md"
+keywords = ["cavs", "manifest", "varint", "serialization", "dedup"]
+categories = ["encoding", "game-development"]
 
 [dependencies]
 cavs-hash = { workspace = true }

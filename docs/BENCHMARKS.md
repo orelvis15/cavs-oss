@@ -42,6 +42,26 @@ stays on the chunk path, and every reconstruction was byte-identical.
 - A client that cold-installed via the bootstrap route pays the same update
   prices: cache seeding reproduces the exact chunk plan of the served version.
 
+## Compact manifest (v0.3.0) — metadata overhead
+
+The runtime manifest used to travel as JSON. The binary v2 format (`CAVSMF2`,
+served by content negotiation, JSON kept for compatibility) stores each unique
+chunk hash once and references it by varint index. Measured on the same real
+games (64 KiB CDC, `cavs manifest bench` + real HTTP sessions):
+
+| Game | Manifest JSON v1 | Binary v2 | Saved | Parse v1 → v2 |
+|---|---:|---:|---:|---|
+| godotengine/tps-demo | 894.2 KiB | **208.5 KiB** | **−76.7%** | 0.53 → 0.49 ms |
+| GDQuest 3D third-person | 103.1 KiB | **24.8 KiB** | **−75.9%** | 0.062 → 0.058 ms |
+| MechanicalFlower/Marble | 20.3 KiB | **5.1 KiB** | **−75.0%** | 0.018 → 0.017 ms |
+
+Chunk-path bytes are unchanged (the tps-demo update is still 1.64 MiB), so the
+improvement lands where metadata dominates: a warm re-fetch — the "is there an
+update?" check every launcher does — now costs ~75% less wire, and total
+update egress improves up to −26.6% (tps-demo: manifest was a third of the
+update cost). Cold installs, warm re-fetch = 0 payload bytes and byte-identical
+reconstruction were re-verified on all three games.
+
 ## CAVS vs dedicated delta tools
 
 Update payload v1→v2, in MiB. Per-pair deltas win on raw bytes — that is not

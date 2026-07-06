@@ -213,6 +213,106 @@ For a video track packaged from CMAF/HLS:
 - A valid progressive MP4 = `init.mp4` + all `.m4s` concatenated (fMP4). These
   are the same bytes a browser would append to an MSE `SourceBuffer`.
 
+## Manifest wire format v2 — `CAVSMF2` (since 0.3.0)
+
+The runtime **manifest** (what a server announces to clients so they can plan
+a fetch) is separate from the `.cavs` container. Two wire formats carry the
+same runtime model:
+
+- **JSON v1** — the original human-readable manifest. Still the default
+  response of `GET /api/assets/{asset}/manifest`, the debug export
+  (`cavs manifest export`) and the compatibility path for old clients.
+- **Binary v2** — a compact sectioned encoding, served when the client asks
+  for it (`Accept: application/vnd.cavs.manifest-v2` or `?format=binary-v2`).
+  Implemented in the `cavs-manifest` crate; ~75–77% smaller than JSON v1 on
+  real 64 KiB-chunked game builds, with parse time at parity.
+
+Readers detect the format from the bytes themselves (`CAVSMF2\0` magic vs
+JSON), so no out-of-band hint is needed.
+
+### Envelope
+
+Integers are unsigned **LEB128 varints** unless sized; scalars little-endian.
+Varint decoding is strict: truncated input, more than 10 bytes, bits beyond
+u64 and overlong encodings (a redundant trailing zero continuation byte) are
+rejected, so every value has exactly one valid wire form.
+
+```
+Header:
+  magic          8 bytes   "CAVSMF2\0"
+  version_major  u16       2 (an unknown major invalidates the read)
+  version_minor  u16       0
+  flags          u32       reserved (0)
+  hash_alg       u8        1 = BLAKE3-256
+  section_count  varuint   max 64
+
+Section table (section_count entries):
+  kind           varuint
+  compression    u8        0 = none, 1 = zstd
+  offset         varuint   into the data region (after the table)
+  stored_len     varuint
+  raw_len        varuint
+  hash           [32]      BLAKE3-256 of the RAW (uncompressed) section
+
+Data region: the sections' stored bytes, in table order.
+```
+
+Section kinds: `1` AssetInfo, `2` ChunkPlan, `3` ChunkDictionary. Unknown
+kinds are skipped (forward compatibility); the three above are mandatory and
+may not repeat. Sections whose raw encoding is ≥ 32 KiB are zstd-compressed
+(level 3) when that actually shrinks them.
+
+### Sections
+
+Strings are `varuint length + UTF-8` (≤ 64 KiB). `Option` is a 0/1 byte tag.
+
+```
+AssetInfo (1):
+  asset          str
+  asset_uuid     str
+  merkle_root    str            // hex, may be empty
+  signature      Option<str>    // hex Ed25519, if signed
+  signer_pubkey  Option<str>
+  meta_count     varuint
+  meta_count × { key str; value str }
+
+ChunkDictionary (3):
+  count              varuint
+  chunk_table_count  varuint    // first N entries = the container's chunk
+                                // table, in Merkle leaf order
+  count × {
+    hash  [32]                  // raw BLAKE3-256 (not hex)
+    len   varuint               // raw chunk length
+  }
+
+ChunkPlan (2):
+  track_count varuint
+  track_count × { track_id varuint; kind str; codec str; name str;
+                  timescale varuint; n varuint; n × dict_index varuint }
+  segment_count varuint
+  segment_count × { segment_id varuint; track_id varuint; pts_start varuint;
+                    duration varuint; random_access u8;
+                    n varuint; n × dict_index varuint }
+  dict_pin_count varuint
+  dict_pin_count × dict_index varuint
+```
+
+The encoding win over JSON v1: each unique chunk hash is stored **once**, as
+32 raw bytes in the dictionary, and every chunk reference in the plan is a
+1–2 byte varint index — versus a repeated 64-char hex string plus field names
+per reference in JSON.
+
+### Decoder hardening
+
+The decoder never trusts a length before validating it: input capped at
+256 MiB, section bounds checked against the data region, `raw_len` bounded
+both absolutely and relative to `stored_len` (≤ 100×, the zstd-bomb guard),
+counts bounded by the bytes that could actually encode them, dictionary
+indexes bounded by the dictionary, and every section must be consumed
+exactly. Section hashes make any payload corruption a clean
+`SectionHashMismatch` error. This is exercised by truncation sweeps and a
+full single-byte-flip corruption sweep in the `cavs-manifest` tests.
+
 ## Planned extensions (v1.x, via `feature_flags` + new sections)
 
 - Sub-chunk delta (`PatchBytes`, delta against a base chunk). Under research:

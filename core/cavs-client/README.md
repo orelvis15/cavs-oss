@@ -23,6 +23,12 @@ plan. The next update therefore only pays for changed chunks. Any failure on
 this path falls back to the normal chunk route. `--stats-json` reports which
 route was taken (`delivery_mode`), plus `seeded_chunks` and `seed_ms`.
 
+**Compact manifest (v0.3.0)**: the client requests the binary v2 manifest
+(~76% smaller than JSON) and falls back to JSON v1 transparently on older
+servers — the format is detected from the bytes. `--stats-json` includes a
+`manifest` block: `format`, `wire_bytes`, `parse_ms`, `chunk_count_logical`,
+`chunk_count_unique`.
+
 ## Use
 
 ```sh

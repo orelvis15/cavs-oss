@@ -4,8 +4,11 @@ The CVSP wire protocol types shared by server and clients.
 
 ## What it does
 
-- **Control plane (JSON)**: `Manifest`, `SessionOpenRequest` /
-  `SessionOpenResponse`, `BatchRequest`, `AssetSummary`.
+- **Control plane**: `Manifest`, `SessionOpenRequest` /
+  `SessionOpenResponse`, `BatchRequest`, `AssetSummary`. Sessions travel as
+  JSON; the manifest travels as JSON v1 or as the compact binary v2 format
+  implemented in the `cavs-manifest` crate (both decode into the same
+  `Manifest`).
 - **Data plane (binary `CVSP`)**: compact batch encoding of delivery
   instructions — `Ref` (client already has the chunk) or `Inline` (payload, as
   stored, possibly zstd). `decode_stream` consumes a batch incrementally from a

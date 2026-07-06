@@ -14,6 +14,15 @@ dramatically while keeping full JSON v1 compatibility for old clients and
 servers. Reconstruction, dual-route behavior and warm-cache savings are
 unchanged.
 
+Measured on real Godot games (64 KiB CDC, real HTTP sessions): manifests
+shrink 75–77% — tps-demo 894 → 209 KiB, GDQuest 103 → 25 KiB, Marble
+20 → 5 KiB — with parse time at parity with JSON. Chunk-path bytes are
+byte-for-byte identical to 0.1.2 (tps-demo update still 1.64 MiB), warm
+re-fetch stays at 0 payload bytes and reconstruction stays byte-identical.
+Since the manifest is the dominant cost of an update check, a warm re-fetch
+now costs ~75% less wire; total update egress improves up to −26.6%
+(tps-demo) depending on how much the manifest weighed.
+
 ### Added
 
 - **`cavs-manifest` crate.** One home for manifest wire formats: a strict
