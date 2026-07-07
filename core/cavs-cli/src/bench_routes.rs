@@ -47,6 +47,20 @@ pub struct RoutesArgs<'a> {
 }
 
 pub fn bench(args: &RoutesArgs) -> Result<()> {
+    let report = collect(args)?;
+    print_report(&report);
+    std::fs::write(
+        args.out.join("routes.json"),
+        serde_json::to_vec_pretty(&report)?,
+    )?;
+    std::fs::write(args.out.join("routes.md"), markdown(&report))?;
+    println!("results : {}/routes.md + routes.json", args.out.display());
+    Ok(())
+}
+
+/// Measure every route and return the report without printing or writing
+/// summaries (temp artifacts still land under `args.out`).
+pub fn collect(args: &RoutesArgs) -> Result<RoutesReport> {
     if args.old.is_dir() != args.new.is_dir() {
         bail!("--old and --new must both be files or both be directories");
     }
@@ -255,14 +269,7 @@ pub fn bench(args: &RoutesArgs) -> Result<()> {
         }
     }
 
-    print_report(&report);
-    std::fs::write(
-        args.out.join("routes.json"),
-        serde_json::to_vec_pretty(&report)?,
-    )?;
-    std::fs::write(args.out.join("routes.md"), markdown(&report))?;
-    println!("results : {}/routes.md + routes.json", args.out.display());
-    Ok(())
+    Ok(report)
 }
 
 /// (label, bytes) of every file in a build.
@@ -324,7 +331,7 @@ fn print_report(r: &RoutesReport) {
     }
 }
 
-fn markdown(r: &RoutesReport) -> String {
+pub fn markdown(r: &RoutesReport) -> String {
     let mut md = String::new();
     md.push_str("# Delivery route comparison\n\n");
     md.push_str(&format!(

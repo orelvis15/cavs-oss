@@ -10,17 +10,18 @@ members = [
     "core/cavs-signature",
     "core/cavs-rebuild-plan",
     "core/cavs-plan",
+    "core/cavs-analyzer",
+    "core/cavs-workspace",
     "core/cavs-cli",
     "core/cavs-server",
     "core/cavs-client",
-    "steam-analyzer",
 ]
 # The libFuzzer harness needs nightly and its own profile; it builds from
 # fuzz/ with `cargo +nightly fuzz run <target>`.
 exclude = ["fuzz"]
 
 [workspace.package]
-version = "0.8.0"
+version = "0.9.0"
 edition = "2021"
 license = "Apache-2.0"
 authors = ["Orelvis Lago Vasallo <orelvis15@gmail.com>"]
@@ -28,15 +29,17 @@ repository = "https://github.com/orelvis15/cavs-oss"
 homepage = "https://github.com/orelvis15/cavs-oss"
 
 [workspace.dependencies]
-cavs-hash = { path = "core/cavs-hash", version = "0.8.0" }
-cavs-chunker = { path = "core/cavs-chunker", version = "0.8.0" }
-cavs-format = { path = "core/cavs-format", version = "0.8.0" }
-cavs-manifest = { path = "core/cavs-manifest", version = "0.8.0" }
-cavs-store = { path = "core/cavs-store", version = "0.8.0" }
-cavs-proto = { path = "core/cavs-proto", version = "0.8.0" }
-cavs-signature = { path = "core/cavs-signature", version = "0.8.0" }
-cavs-rebuild-plan = { path = "core/cavs-rebuild-plan", version = "0.8.0" }
-cavs-plan = { path = "core/cavs-plan", version = "0.8.0" }
+cavs-hash = { path = "core/cavs-hash", version = "0.9.0" }
+cavs-chunker = { path = "core/cavs-chunker", version = "0.9.0" }
+cavs-format = { path = "core/cavs-format", version = "0.9.0" }
+cavs-manifest = { path = "core/cavs-manifest", version = "0.9.0" }
+cavs-store = { path = "core/cavs-store", version = "0.9.0" }
+cavs-proto = { path = "core/cavs-proto", version = "0.9.0" }
+cavs-signature = { path = "core/cavs-signature", version = "0.9.0" }
+cavs-rebuild-plan = { path = "core/cavs-rebuild-plan", version = "0.9.0" }
+cavs-plan = { path = "core/cavs-plan", version = "0.9.0" }
+cavs-analyzer = { path = "core/cavs-analyzer", version = "0.9.0" }
+cavs-workspace = { path = "core/cavs-workspace", version = "0.9.0" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
 axum = "0.8"
@@ -55,6 +58,7 @@ memmap2 = "0.9"
 tokio-util = { version = "0.7", features = ["io"] }
 
 blake3 = "1.5"
+chacha20poly1305 = "0.10"
 fastcdc = "3.1"
 zstd = "0.13"
 anyhow = "1.0"

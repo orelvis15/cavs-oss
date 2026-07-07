@@ -3,6 +3,7 @@
 //! Converts videos into `.cavs` (via ffmpeg CMAF/fMP4 segmentation),
 //! reconstructs them back to playable MP4/HLS, inspects, verifies and plays.
 
+mod analyze_packs;
 mod apply_cmd;
 mod bench_butler;
 mod bench_butler_full;
@@ -11,8 +12,10 @@ mod bench_delta;
 mod bench_pairwise;
 mod bench_pipeline;
 mod bench_routes;
+mod bench_steampipe_cases;
 mod bench_versions;
 mod blob_detect;
+mod build_cmd;
 mod classify;
 mod compare;
 mod corrupt;
@@ -21,18 +24,24 @@ mod doctor;
 mod ffmpeg;
 mod ignore;
 mod inspect_cmd;
+mod io_estimate;
 mod manifest_cmd;
+mod optimize_layout;
 mod optimize_patch;
 mod pack;
 mod pack_dir;
 mod patch_policy;
 mod patch_v2;
+mod plan_update;
 mod preview;
 mod profile;
 mod publish_dir;
+mod publish_preview;
 mod report;
 mod route_plan;
+mod serve_cmd;
 mod signature_cmd;
+mod steampipe_cmd;
 mod store;
 mod sweep;
 mod synth;
@@ -40,6 +49,7 @@ mod test_recovery;
 mod tool_metrics;
 mod unpack;
 mod verify_install;
+mod workspace_cmd;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -522,6 +532,440 @@ enum Command {
         #[command(subcommand)]
         action: BenchAction,
     },
+    /// SteamPipe-style build diagnostics (v0.9.0): explain why an update
+    /// is expensive under a fixed-1MiB public model and how to fix the
+    /// layout. Estimates only — never Valve's exact implementation.
+    Analyze {
+        #[command(subcommand)]
+        action: AnalyzeAction,
+    },
+    /// Analyze pack files across two builds (v0.9.0): change heatmaps,
+    /// scatteredness, TOC churn, compressed blobs, size advisories.
+    AnalyzePacks {
+        /// Old build (directory or single pack file).
+        old: PathBuf,
+        /// New build (same kind as old).
+        new: PathBuf,
+        /// Engine hint: auto|generic|unreal|unity|godot.
+        #[arg(long, default_value = "auto")]
+        engine: String,
+        /// Write the report as Markdown to this path.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Estimate the local disk I/O cost of an update per delivery route
+    /// (v0.9.0): reads, writes, temp disk and per-device time estimates.
+    IoEstimate {
+        /// Old build (file or directory).
+        old: PathBuf,
+        /// New build (same kind as old).
+        new: PathBuf,
+        /// TOML file of device profiles (defaults: hdd, sata_ssd, nvme).
+        #[arg(long)]
+        device_profiles: Option<PathBuf>,
+        /// Write the report as Markdown to this path.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Release-readiness report (v0.9.0): measure every delivery route
+    /// for a build against its predecessor, add the SteamPipe-style
+    /// estimate, flag layout problems and recommend a route.
+    PublishPreview {
+        /// The new build (directory or artifact). Omit in workspace mode.
+        build: Option<PathBuf>,
+        /// The previous build (same kind).
+        #[arg(long)]
+        previous: Option<PathBuf>,
+        /// Workspace mode: resolve builds from this workspace instead.
+        #[arg(long)]
+        workspace: Option<PathBuf>,
+        /// App id inside the workspace (default: the workspace default).
+        #[arg(long)]
+        app: Option<String>,
+        /// Source build id (workspace mode), e.g. build_1001.
+        #[arg(long)]
+        from: Option<String>,
+        /// Target build id (workspace mode).
+        #[arg(long)]
+        to: Option<String>,
+        /// Routes to include: all (default) also probes butler/pairwise
+        /// proxies when their tools are installed.
+        #[arg(long, default_value = "all")]
+        routes: String,
+        /// Path to the butler binary (default: `butler` on PATH).
+        #[arg(long)]
+        butler_bin: Option<String>,
+        /// Results directory (preview.md + preview.json + route artifacts).
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Choose the best delivery route under a policy (v0.9.0):
+    /// network/CPU/RAM/disk-weighted scoring per client state.
+    PlanUpdate {
+        /// Installed old version (omit for a fresh install).
+        #[arg(long)]
+        from: Option<PathBuf>,
+        /// Target version.
+        #[arg(long)]
+        to: PathBuf,
+        /// Pre-generated `.cavsplan` for this pair (exact size).
+        #[arg(long)]
+        plan: Option<PathBuf>,
+        /// Pre-generated `.cavspatch` for this pair (exact size).
+        #[arg(long)]
+        patch: Option<PathBuf>,
+        /// Bootstrap artifact for the target (exact size).
+        #[arg(long)]
+        bootstrap: Option<PathBuf>,
+        /// Comma-separated client state: warm-cache, cold-cache,
+        /// has-previous-install, cold-install, low-ram, low-disk,
+        /// slow-hdd, fast-nvme.
+        #[arg(long, default_value = "")]
+        client_state: String,
+        /// Policy: network_min|cpu_min|ram_min|disk_io_min|balanced|
+        /// hdd_friendly|developer_fast.
+        #[arg(long, default_value = "balanced")]
+        policy: String,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Advisory build-layout recommendations for patch-efficient output
+    /// (v0.9.0). Never modifies files.
+    OptimizeLayout {
+        /// Old build.
+        old: PathBuf,
+        /// New build.
+        new: PathBuf,
+        /// Engine hint: auto|generic|unreal|unity|godot.
+        #[arg(long, default_value = "auto")]
+        engine: String,
+        /// Write the plan as Markdown to this path.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Write the plan as JSON for future automation.
+        #[arg(long)]
+        write_plan: Option<PathBuf>,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Local app/depot/branch/build workspace (v0.9.0): SteamPipe-like
+    /// distribution concepts as local metadata, no platform required.
+    Workspace {
+        #[command(subcommand)]
+        action: WorkspaceAction,
+    },
+    /// Manage depots in a workspace app and analyze content sharing.
+    Depot {
+        #[command(subcommand)]
+        action: DepotAction,
+    },
+    /// Manage branches: add, promote, rollback, promote-preview.
+    Branch {
+        #[command(subcommand)]
+        action: BranchAction,
+    },
+    /// Record builds in a workspace; sign, verify, encrypt or decrypt
+    /// release artifacts (local authenticity — not DRM).
+    Build {
+        #[command(subcommand)]
+        action: BuildAction,
+    },
+    /// Simulate what a player downloads for an install or update, by
+    /// platform, language and ownership (v0.9.0).
+    InstallPlan {
+        /// Workspace directory.
+        #[arg(long, default_value = "./cavs-workspace")]
+        workspace: PathBuf,
+        /// App id (default: the workspace default app).
+        #[arg(long)]
+        app: Option<String>,
+        /// Branch whose current build is the target.
+        #[arg(long)]
+        branch: Option<String>,
+        /// Player platform: windows|linux|macos.
+        #[arg(long)]
+        platform: Option<String>,
+        /// Player language, e.g. es.
+        #[arg(long)]
+        language: Option<String>,
+        /// Comma-separated owned depot ids (e.g. base,dlc1,lang-es).
+        #[arg(long, default_value = "")]
+        owned: String,
+        /// Installed build id (omit for a fresh install).
+        #[arg(long)]
+        from: Option<String>,
+        /// Target build id (overrides --branch).
+        #[arg(long)]
+        to: Option<String>,
+        /// Write the plan as Markdown to this path.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Local development content server over a workspace (v0.9.0).
+    /// No auth, plain HTTP — never production.
+    Serve {
+        /// Workspace directory.
+        workspace: PathBuf,
+        /// App id (default: the workspace default app).
+        #[arg(long)]
+        app: Option<String>,
+        /// Branch used in the startup banner (informational).
+        #[arg(long)]
+        branch: Option<String>,
+        /// Directory of published release files, served under
+        /// /api/assets/{asset}/{file}.
+        #[arg(long)]
+        releases: Option<PathBuf>,
+        /// Port to listen on (127.0.0.1 only).
+        #[arg(long, default_value_t = 8990)]
+        port: u16,
+    },
+}
+
+#[derive(Subcommand)]
+enum AnalyzeAction {
+    /// Diagnose a build transition under the SteamPipe-style fixed-1MiB
+    /// model: scattered churn, shuffling, TOC churn, compressed blobs,
+    /// metadata churn — with recommendations.
+    Steampipe {
+        /// Old build (file or directory).
+        old: PathBuf,
+        /// New build (same kind as old).
+        new: PathBuf,
+        /// Engine hint: auto|generic|unreal|unity|godot.
+        #[arg(long, default_value = "auto")]
+        engine: String,
+        /// Exclude entries matching this glob (repeatable; merged with
+        /// `.cavsignore`).
+        #[arg(long)]
+        ignore: Vec<String>,
+        /// Write the report to this path (.md, or .json by extension).
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Alias of `cavs bench steampipe-style`: numbers only, no diagnosis.
+    UpdateCost {
+        /// Old build (file or directory).
+        old: PathBuf,
+        /// New build (same kind as old).
+        new: PathBuf,
+        /// Update model to estimate (only steampipe-style today).
+        #[arg(long, default_value = "steampipe-style")]
+        model: String,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Godot-specific PCK analysis: byte-level report, and when the PCK
+    /// directory is parseable, the resource paths behind each change.
+    GodotPck {
+        /// Old .pck file.
+        old: PathBuf,
+        /// New .pck file.
+        new: PathBuf,
+        /// Write the report as Markdown to this path.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum WorkspaceAction {
+    /// Create a workspace with one app.
+    Init {
+        /// Workspace directory (created).
+        path: PathBuf,
+        /// App id, e.g. my-game.
+        #[arg(long)]
+        app: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum DepotAction {
+    /// Add a depot to an app.
+    Add {
+        /// Depot id, e.g. base, windows, hd-textures, lang-es.
+        id: String,
+        /// Human-readable name (default: the id).
+        #[arg(long)]
+        name: Option<String>,
+        /// Platform filter: windows|linux|macos.
+        #[arg(long)]
+        platform: Option<String>,
+        /// Language filter, e.g. es.
+        #[arg(long)]
+        language: Option<String>,
+        /// Players only get this depot when they own it.
+        #[arg(long)]
+        optional: bool,
+        #[arg(long, default_value = "./cavs-workspace")]
+        workspace: PathBuf,
+        #[arg(long)]
+        app: Option<String>,
+    },
+    /// Compute shared bytes across every depot pair of a build.
+    AnalyzeSharing {
+        #[arg(long, default_value = "./cavs-workspace")]
+        workspace: PathBuf,
+        #[arg(long)]
+        app: Option<String>,
+        /// Build id (default: the latest build).
+        #[arg(long)]
+        build: Option<String>,
+        /// Write the report as Markdown to this path.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum BranchAction {
+    /// Add a branch to an app.
+    Add {
+        /// Branch id, e.g. public, beta, nightly.
+        id: String,
+        /// Human-readable name (default: the id).
+        #[arg(long)]
+        name: Option<String>,
+        /// Hide from default listings (local metadata only).
+        #[arg(long)]
+        private: bool,
+        #[arg(long, default_value = "./cavs-workspace")]
+        workspace: PathBuf,
+        #[arg(long)]
+        app: Option<String>,
+    },
+    /// Point a branch at a build (atomic local metadata change).
+    Promote {
+        #[arg(long, default_value = "./cavs-workspace")]
+        workspace: PathBuf,
+        #[arg(long)]
+        app: Option<String>,
+        #[arg(long)]
+        branch: String,
+        #[arg(long)]
+        build: String,
+    },
+    /// Preview the per-depot update cost of promoting a build.
+    PromotePreview {
+        #[arg(long, default_value = "./cavs-workspace")]
+        workspace: PathBuf,
+        #[arg(long)]
+        app: Option<String>,
+        #[arg(long)]
+        branch: String,
+        #[arg(long)]
+        build: String,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Re-point a branch at an earlier build it served before.
+    Rollback {
+        #[arg(long, default_value = "./cavs-workspace")]
+        workspace: PathBuf,
+        #[arg(long)]
+        app: Option<String>,
+        #[arg(long)]
+        branch: String,
+        #[arg(long)]
+        to: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum BuildAction {
+    /// Record a build from depot source directories.
+    Create {
+        #[arg(long, default_value = "./cavs-workspace")]
+        workspace: PathBuf,
+        #[arg(long)]
+        app: Option<String>,
+        /// Branch to point at the new build.
+        #[arg(long)]
+        branch: Option<String>,
+        /// Depot content as id=path (repeatable).
+        #[arg(long)]
+        depot: Vec<String>,
+        /// Human-readable label, e.g. build_1001 or v1.2.3.
+        #[arg(long)]
+        label: Option<String>,
+    },
+    /// Sign an artifact (build, manifest, plan) with an Ed25519 key.
+    Sign {
+        /// The artifact to sign.
+        artifact: PathBuf,
+        /// Ed25519 secret key file (from `cavs keygen`).
+        #[arg(long)]
+        key: PathBuf,
+        /// Signature output (default: <artifact>.sig).
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// Verify an artifact against its detached signature.
+    Verify {
+        /// The artifact to verify.
+        artifact: PathBuf,
+        /// Ed25519 public key file (.pub from `cavs keygen`).
+        #[arg(long = "pub", value_name = "PUBKEY")]
+        pubkey: PathBuf,
+        /// Signature file (default: <artifact>.sig).
+        #[arg(long)]
+        sig: Option<PathBuf>,
+    },
+    /// Encrypt an artifact for local storage/transport (XChaCha20-
+    /// Poly1305). Optional, and not DRM.
+    Encrypt {
+        /// The artifact to encrypt.
+        artifact: PathBuf,
+        /// 32-byte hex content key (`cavs build content-key`).
+        #[arg(long)]
+        key: PathBuf,
+        /// Encrypted output path.
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Decrypt a CAVS-encrypted artifact.
+    Decrypt {
+        /// The encrypted artifact.
+        artifact: PathBuf,
+        /// The content key it was encrypted with.
+        #[arg(long)]
+        key: PathBuf,
+        /// Decrypted output path.
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Generate a random 32-byte content key for encrypt/decrypt.
+    ContentKey {
+        /// Key output path.
+        #[arg(long)]
+        out: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -755,6 +1199,65 @@ enum BenchAction {
         /// PRNG seed (same seed + size => identical trees).
         #[arg(long, default_value_t = 5)]
         seed: u64,
+    },
+    /// Pack-pathology benchmark (v0.9.0): deterministic layouts
+    /// (localized, shifted, shuffled, distributed TOC, global vs
+    /// per-asset compression, new packs, directory builds, Godot PCKs)
+    /// measured under the SteamPipe-style model, real .cavsplans and
+    /// external tools when installed.
+    SteampipeCases {
+        /// Results directory.
+        #[arg(long)]
+        out: PathBuf,
+        /// Assets (1 MiB each) per generated pack.
+        #[arg(long, default_value_t = 32)]
+        assets: usize,
+        /// PRNG seed (same seed => identical datasets).
+        #[arg(long, default_value_t = 9)]
+        seed: u64,
+        /// Also run the external butler harness with this binary.
+        #[arg(long)]
+        butler_bin: Option<String>,
+        /// Include bsdiff/xdelta3 pairwise proxies when installed.
+        #[arg(long)]
+        include_pairwise: bool,
+        /// Keep the generated datasets on disk after the run.
+        #[arg(long)]
+        keep_datasets: bool,
+    },
+    /// Estimate a SteamPipe-style fixed-chunk update for one old→new
+    /// transition (v0.9.0). A public model — not Valve's implementation,
+    /// and the report says so.
+    SteampipeStyle {
+        /// Old build (file or directory).
+        old: PathBuf,
+        /// New build (same kind as old).
+        new: PathBuf,
+        /// Fixed chunk size (default 1MiB, the documented SteamPipe size).
+        #[arg(long)]
+        chunk_size: Option<String>,
+        /// Chunk hash (only blake3 today).
+        #[arg(long, default_value = "blake3")]
+        hash: String,
+        /// Transfer estimate compression: none|zstd-3|zstd-19.
+        #[arg(long, default_value = "zstd-3")]
+        compression: String,
+        /// Chunk match scope: per-file (documented model) or global.
+        #[arg(long, default_value = "per-file")]
+        scope: String,
+        /// Exclude entries matching this glob (repeatable; merged with
+        /// `.cavsignore`).
+        #[arg(long)]
+        ignore: Vec<String>,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+        /// Also write a Markdown report to this path.
+        #[arg(long)]
+        markdown: Option<PathBuf>,
+        /// Results directory (steampipe-style.md + .json).
+        #[arg(long)]
+        out: Option<PathBuf>,
     },
     /// Many-version stream (v0.7.0): v1→vN with ~3% drift per release;
     /// compares CAVS store-once delivery against pairwise patch storage
@@ -1219,6 +1722,48 @@ fn main() -> Result<()> {
                 include_pairwise_proxy,
                 out: &out,
             }),
+            BenchAction::SteampipeCases {
+                out,
+                assets,
+                seed,
+                butler_bin,
+                include_pairwise,
+                keep_datasets,
+            } => bench_steampipe_cases::bench(&bench_steampipe_cases::CasesArgs {
+                out: &out,
+                assets,
+                seed,
+                butler_bin: butler_bin.as_deref(),
+                include_pairwise,
+                keep_datasets,
+            }),
+            BenchAction::SteampipeStyle {
+                old,
+                new,
+                chunk_size,
+                hash,
+                compression,
+                scope,
+                ignore,
+                json,
+                markdown,
+                out,
+            } => {
+                if hash != "blake3" {
+                    anyhow::bail!("CAVS-E-STEAMPIPE-MODEL-INVALID: only blake3 is supported");
+                }
+                steampipe_cmd::bench(&steampipe_cmd::BenchArgs {
+                    old: &old,
+                    new: &new,
+                    chunk_size: chunk_size.as_deref(),
+                    compression: &compression,
+                    scope: &scope,
+                    ignore,
+                    json,
+                    markdown: markdown.as_deref(),
+                    out: out.as_deref(),
+                })
+            }
             BenchAction::VersionStream {
                 out,
                 size,
@@ -1226,6 +1771,291 @@ fn main() -> Result<()> {
                 seed,
             } => bench_versions::bench(&out, &size, versions, seed),
         },
+        Command::Analyze { action } => match action {
+            AnalyzeAction::Steampipe {
+                old,
+                new,
+                engine,
+                ignore,
+                out,
+                json,
+            } => steampipe_cmd::analyze_steampipe(&steampipe_cmd::AnalyzeArgs {
+                old: &old,
+                new: &new,
+                engine: &engine,
+                ignore,
+                json,
+                out: out.as_deref(),
+            }),
+            AnalyzeAction::UpdateCost {
+                old,
+                new,
+                model,
+                json,
+            } => {
+                if model != "steampipe-style" {
+                    anyhow::bail!(
+                        "CAVS-E-STEAMPIPE-MODEL-INVALID: unknown model '{model}' \
+                         (only steampipe-style today)"
+                    );
+                }
+                steampipe_cmd::bench(&steampipe_cmd::BenchArgs {
+                    old: &old,
+                    new: &new,
+                    chunk_size: None,
+                    compression: "zstd-3",
+                    scope: "per-file",
+                    ignore: Vec::new(),
+                    json,
+                    markdown: None,
+                    out: None,
+                })
+            }
+            AnalyzeAction::GodotPck {
+                old,
+                new,
+                out,
+                json,
+            } => analyze_packs::analyze_godot_pck(&analyze_packs::GodotArgs {
+                old: &old,
+                new: &new,
+                out: out.as_deref(),
+                json,
+            }),
+        },
+        Command::AnalyzePacks {
+            old,
+            new,
+            engine,
+            out,
+            json,
+        } => analyze_packs::analyze_packs(&analyze_packs::PacksArgs {
+            old: &old,
+            new: &new,
+            engine: &engine,
+            out: out.as_deref(),
+            json,
+        }),
+        Command::IoEstimate {
+            old,
+            new,
+            device_profiles,
+            out,
+            json,
+        } => io_estimate::io_estimate(&io_estimate::IoArgs {
+            old: &old,
+            new: &new,
+            device_profiles: device_profiles.as_deref(),
+            out: out.as_deref(),
+            json,
+        }),
+        Command::PublishPreview {
+            build,
+            previous,
+            workspace,
+            app,
+            from,
+            to,
+            routes,
+            butler_bin,
+            out,
+            json,
+        } => {
+            let all = routes == "all";
+            let butler = match &butler_bin {
+                Some(b) => Some(b.as_str()),
+                None if all || routes.contains("butler") => Some("butler"),
+                None => None,
+            };
+            publish_preview::publish_preview(&publish_preview::PreviewArgs {
+                build: build.as_deref(),
+                previous: previous.as_deref(),
+                workspace: workspace.as_deref(),
+                app: app.as_deref(),
+                from_build: from.as_deref(),
+                to_build: to.as_deref(),
+                butler_bin: butler,
+                include_pairwise: all || routes.contains("bsdiff") || routes.contains("xdelta"),
+                out: out.as_deref(),
+                json,
+            })
+        }
+        Command::PlanUpdate {
+            from,
+            to,
+            plan,
+            patch,
+            bootstrap,
+            client_state,
+            policy,
+            json,
+        } => plan_update::plan_update(&plan_update::PlanUpdateArgs {
+            from: from.as_deref(),
+            to: &to,
+            plan_file: plan.as_deref(),
+            patch_file: patch.as_deref(),
+            bootstrap_file: bootstrap.as_deref(),
+            client_state: &client_state,
+            policy: &policy,
+            json,
+        }),
+        Command::OptimizeLayout {
+            old,
+            new,
+            engine,
+            out,
+            write_plan,
+            json,
+        } => optimize_layout::optimize_layout(&optimize_layout::LayoutArgs {
+            old: &old,
+            new: &new,
+            engine: &engine,
+            out: out.as_deref(),
+            write_plan: write_plan.as_deref(),
+            json,
+        }),
+        Command::Workspace { action } => match action {
+            WorkspaceAction::Init { path, app } => workspace_cmd::init(&path, &app),
+        },
+        Command::Depot { action } => match action {
+            DepotAction::Add {
+                id,
+                name,
+                platform,
+                language,
+                optional,
+                workspace,
+                app,
+            } => workspace_cmd::depot_add(
+                &workspace,
+                app.as_deref(),
+                &id,
+                name.as_deref(),
+                platform.as_deref(),
+                language.as_deref(),
+                optional,
+            ),
+            DepotAction::AnalyzeSharing {
+                workspace,
+                app,
+                build,
+                out,
+                json,
+            } => workspace_cmd::depot_analyze_sharing(
+                &workspace,
+                app.as_deref(),
+                build.as_deref(),
+                out.as_deref(),
+                json,
+            ),
+        },
+        Command::Branch { action } => match action {
+            BranchAction::Add {
+                id,
+                name,
+                private,
+                workspace,
+                app,
+            } => {
+                workspace_cmd::branch_add(&workspace, app.as_deref(), &id, name.as_deref(), private)
+            }
+            BranchAction::Promote {
+                workspace,
+                app,
+                branch,
+                build,
+            } => workspace_cmd::branch_promote(&workspace, app.as_deref(), &branch, &build),
+            BranchAction::PromotePreview {
+                workspace,
+                app,
+                branch,
+                build,
+                json,
+            } => workspace_cmd::branch_promote_preview(
+                &workspace,
+                app.as_deref(),
+                &branch,
+                &build,
+                json,
+            ),
+            BranchAction::Rollback {
+                workspace,
+                app,
+                branch,
+                to,
+            } => workspace_cmd::branch_rollback(&workspace, app.as_deref(), &branch, &to),
+        },
+        Command::Build { action } => match action {
+            BuildAction::Create {
+                workspace,
+                app,
+                branch,
+                depot,
+                label,
+            } => workspace_cmd::build_create(
+                &workspace,
+                app.as_deref(),
+                branch.as_deref(),
+                label.as_deref(),
+                &depot,
+            ),
+            BuildAction::Sign { artifact, key, out } => {
+                build_cmd::sign(&artifact, &key, out.as_deref())
+            }
+            BuildAction::Verify {
+                artifact,
+                pubkey,
+                sig,
+            } => build_cmd::verify(&artifact, &pubkey, sig.as_deref()),
+            BuildAction::Encrypt { artifact, key, out } => {
+                build_cmd::encrypt(&artifact, &key, &out)
+            }
+            BuildAction::Decrypt { artifact, key, out } => {
+                build_cmd::decrypt(&artifact, &key, &out)
+            }
+            BuildAction::ContentKey { out } => build_cmd::generate_content_key(&out),
+        },
+        Command::InstallPlan {
+            workspace,
+            app,
+            branch,
+            platform,
+            language,
+            owned,
+            from,
+            to,
+            out,
+            json,
+        } => workspace_cmd::install_plan(&workspace_cmd::InstallPlanArgs {
+            workspace: &workspace,
+            app: app.as_deref(),
+            branch: branch.as_deref(),
+            platform: platform.as_deref(),
+            language: language.as_deref(),
+            owned: owned
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .collect(),
+            from_build: from.as_deref(),
+            to_build: to.as_deref(),
+            json,
+            out: out.as_deref(),
+        }),
+        Command::Serve {
+            workspace,
+            app,
+            branch,
+            releases,
+            port,
+        } => serve_cmd::serve(&serve_cmd::ServeArgs {
+            workspace,
+            app,
+            branch,
+            releases,
+            port,
+        }),
     }
 }
 
