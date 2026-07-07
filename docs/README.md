@@ -25,6 +25,9 @@
   offline, pairwise proxies, many-version storage.
 - [BUTLER_COMPARISON.md](BUTLER_COMPARISON.md) — v0.7.0: the external butler
   benchmark harness and how its results are (and are not) comparable.
-- [PAIRWISE_SIDECARS.md](PAIRWISE_SIDECARS.md) — v0.7.0 experimental:
-  optional `.cavspatch` sidecars for hot version pairs, and the O(N²) risk.
+- [PAIRWISE_SIDECARS.md](PAIRWISE_SIDECARS.md) — v0.8.0: `.cavspatch` v2
+  optimized sidecars with per-file strategy selection, memory budgets,
+  the hot-pair policy and the O(N²) rule.
+- [DELIVERY_PLANNER.md](DELIVERY_PLANNER.md) — v0.8.0: the route planner —
+  no-op/chunks/hybrid/plan/sidecar/bootstrap scored under client profiles.
 - [PAPER.md](PAPER.md) — the technical paper: design, rationale, and results.

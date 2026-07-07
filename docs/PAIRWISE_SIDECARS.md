@@ -1,70 +1,110 @@
-# Optimized pairwise sidecars (`.cavspatch`, experimental v0.7.0)
+# Optimized pairwise sidecars (`.cavspatch` v2, v0.8.0)
 
 For a *hot* old→new pair — "previous release → latest" for most players —
-a dedicated byte-level patch can beat chunked delivery on wire bytes.
-Sidecars make that an **optional route inside CAVS** without changing the
-architecture: content stays content-addressed; a sidecar is just a
-cheaper edge for one specific version jump.
+a dedicated patch can beat chunked delivery on wire bytes. Sidecars make
+that an **optional route inside CAVS** without changing the architecture:
+content stays content-addressed; a sidecar is just a cheaper edge for one
+specific version jump.
+
+v2 works on whole directory builds and picks the best strategy **per
+file** by measuring real candidate sizes — not by always running one
+algorithm:
+
+| Strategy | Payload | Wins on | Apply memory |
+|---|---|---|---|
+| `copy-old` | none | unchanged + renamed/moved files | streaming |
+| `plan-ops` | inline data + copy ranges | shifted/insert-heavy binaries | streaming (~8 MiB reads) |
+| `bsdiff` | external byte delta | small binary mutations | old + new + patch in RAM |
+| `xdelta3` | external byte delta | compressed/high-entropy blobs | windowed |
+| `full-data` | recompressed file | new files | streaming |
+
+Every candidate that applies is generated and measured; the smallest
+payload is kept (ties break toward the lower-memory strategy). Renames
+are detected by content hash and ship as **zero-payload metadata**.
 
 ```bash
-# Generate (needs bsdiff or xdelta3 on PATH):
-cavs optimize-patch --old game_v1.pck --new game_v2.pck \
-  --algo xdelta3 --compression zstd-19 --out patches/v1_to_v2.cavspatch
+# Generate (per-file auto selection; bsdiff/xdelta3 used when on PATH):
+cavs optimize-patch --old ./Build_v1 --new ./Build_v2 \
+  --algo auto --compression auto \
+  --explain-strategies strategies.md \
+  -o patches/v1_to_v2.cavspatch
 
-# Apply (verifies both ends, atomic rename):
-cavs apply-patch --old game_v1.pck --patch patches/v1_to_v2.cavspatch -o game_v2.pck
+# Apply — staged, journaled, every hash verified before commit:
+cavs apply-patch --old ./InstalledGame --patch patches/v1_to_v2.cavspatch \
+  -o ./InstalledGame --delete-removed-files
 
-# Inspect:
-cavs file patches/v1_to_v2.cavspatch
+# Refuse strategies that exceed a device's memory budget:
+cavs apply-patch ... --memory-budget 128MiB
 ```
+
+`--explain-strategies` writes a per-file report: size, detected shape
+(archive/high-entropy/plain), block-level reuse, every candidate's
+measured bytes and why the winner won.
 
 ## Format
 
-`CAVSPCH1` magic; algo + compression labels; size and full BLAKE3 of
-*both* the old and new artifacts; the compressed patch payload; a BLAKE3
-integrity trailer over the whole file. Apply refuses the wrong old
-version (`CAVS-E-APPLY-HASH-MISMATCH`), verifies the produced output
-before the atomic rename, and a corrupt sidecar fails at decode
-(`CAVS-E-PLAN-CORRUPT`).
+`CAVSPCH2` magic; old and new entry tables (paths, sizes, full BLAKE3
+per file, exec bits, symlinks); one strategy per new file; managed
+deletions; independently compressed payload sections (zstd-19 or
+brotli-9, whichever is smaller under `--compression auto`) each with its
+own BLAKE3; an integrity trailer over the whole file. Strict LEB128
+varints, capped counts, path-traversal rejection — the same decoding
+discipline as `.cavssig` and `.cavsplan`.
 
-## The O(N²) warning
+Apply refuses the wrong old version (`CAVS-E-APPLY-HASH-MISMATCH`),
+verifies every reconstructed file before the commit phase, journals its
+state (`staging → verified → committing → committed`), and a corrupt
+sidecar fails at decode (`CAVS-E-PATCH-CORRUPT`). v1 sidecars
+(`CAVSPCH1`, whole-artifact) remain applicable.
 
-A sidecar serves **exactly one pair**. With N published versions there
-are N·(N−1)/2 pairs — at 10 versions that is already 45 patches, each of
-which must be generated, stored and invalidated correctly. Measured in
-`cavs bench version-stream`: 10 versions of a 32 MiB build fit in a
-30.6 MiB CAVS store that serves any jump; full pairwise coverage would
-need 45 dedicated patches plus full artifacts for reinstalls.
+## Memory budgets
 
-Recommended policy — generate sidecars only for configured hot pairs:
+bsdiff's apply holds roughly *old + new + patch* in memory; that is the
+price of its small patches. The sidecar records enough to estimate its
+peak apply memory up front, so a constrained client can refuse it:
 
 ```text
-pairs = previous → latest        (most players)
-        latest-stable → latest   (slow channel)
-max_pairs_per_release = 3
+$ cavs apply-patch ... --memory-budget 128MiB
+CAVS-E-MEMORY-BUDGET-EXCEEDED: estimated peak 391 MiB exceeds budget
+128 MiB — use the .cavsplan route (streaming, ~40 MiB) or raise
+--memory-budget
 ```
 
-Route selection stays cost-based: use the sidecar when the client has the
-exact old version and the sidecar is smaller than the hybrid route;
-otherwise fall back to chunk/hybrid/bootstrap delivery. In v0.7.0 the
-comparison is offline (`cavs bench routes` includes both); server-side
-advertising of sidecars is future work.
+The [delivery planner](DELIVERY_PLANNER.md) does this automatically: on a
+`low-memory` profile a bsdiff-heavy sidecar is excluded and the plan
+route wins even when it costs a few percent more bytes.
 
-## Measured (128 MiB artifact, small change)
+## The O(N²) rule: hot pairs only
 
-| Route | Wire bytes | Gen time | Peak RSS |
-|---|---:|---:|---:|
-| sidecar xdelta3+zstd-19 | 1.94 MiB | 1.0 s | 397 MiB |
-| sidecar bsdiff+zstd-19 | 1.96 MiB | 33 s | 2.3 GiB |
-| CAVS offline plan | 1.94 MiB | 0.4 s | streaming |
-| CAVS chunk/hybrid wire | 6.06 MiB | 0.3 s | streaming |
+A sidecar serves **exactly one pair**. With N published versions there
+are N·(N−1)/2 pairs — 45 at 10 versions, 4,950 at 100. CAVS never
+generates all of them: the content-addressed store already serves *any*
+jump. `cavs patch-policy` decides the few pairs worth optimizing:
 
-On this workload the sidecar ties the CAVS plan — sidecars earn their
-keep on byte-scrambled or compressed single-file inputs where block
-reuse collapses (see the compressed-blob row in
-[ROUTE_BENCHMARKS.md](ROUTE_BENCHMARKS.md), where xdelta3 wins 2.5 MiB
-vs 22 MiB).
+```toml
+[optimized_patches]
+enabled = true
+max_pairs_per_release = 3
+max_total_patch_storage_ratio = 0.25
+pairs = ["previous", "latest-stable", "top-installed"]
+algorithm = "auto"
+compression = "auto"
+expire_after_days = 90
+```
 
-`cavs bench pairwise-proxy` measures this class against butler-style
-optimized patches; results are always labeled **proxy**, never as
-official itch.io backend numbers ([BUTLER_COMPARISON.md](BUTLER_COMPARISON.md)).
+```bash
+cavs patch-policy --versions v1,v2,...,v10 \
+  --distribution installed-shares.json --config cavs-patches.toml
+```
+
+`previous` covers the adjacent update; `latest-stable` covers the slow
+channel; `top-installed` reads a version→share map so the biggest player
+populations get a dedicated patch. Explicit pins (`"v3->v10"`) are
+honored first. Every version pair the policy does *not* cover is still
+served by chunks/hybrid/plan — no missing routes.
+
+## Measured
+
+See [ROUTE_BENCHMARKS.md](ROUTE_BENCHMARKS.md) for the current full
+tables, including the v0.8.0 full-pipeline runs where the per-file
+sidecar competes against externally generated optimized patches.

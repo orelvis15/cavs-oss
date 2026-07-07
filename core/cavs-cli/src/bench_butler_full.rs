@@ -142,6 +142,7 @@ pub fn run(old: &Path, new: &Path, butler_bin: &str, out: &Path) -> Result<Butle
                 "rediff",
                 "--rediff-quality",
                 "9",
+                "--patch",
                 &patch.display().to_string(),
                 "--old",
                 &old_dir.display().to_string(),

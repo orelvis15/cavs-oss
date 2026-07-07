@@ -93,11 +93,15 @@ pub fn run(old: &Path, new: &Path, out: Option<&Path>) -> Result<()> {
         });
     }
 
-    // ---- Case 3: wrong old install → hash mismatch, nothing committed -----
+    // ---- Case 3: corrupt old install → never commit bad bytes -------------
+    // Two outcomes are correct: the apply fails cleanly (hash mismatch,
+    // corrupt file untouched), or it self-heals — deduplicated content can
+    // source the damaged range from another file, in which case the final
+    // tree must be byte-for-byte the new build. What must never happen is
+    // committing bytes that are neither.
     {
         let install = work.path().join("install-wrong-old");
         crate::bench_butler::copy_tree(old, &install)?;
-        // Corrupt one old file the plan copies from (same size, new bytes).
         if let Some((rel, bytes)) = old_files
             .iter()
             .find(|(r, b)| !b.is_empty() && new_files.get(*r).map(|n| n != *b).unwrap_or(false))
@@ -108,19 +112,36 @@ pub fn run(old: &Path, new: &Path, out: Option<&Path>) -> Result<()> {
             }
             std::fs::write(install.join(rel), &corrupted)?;
             let status = apply_cmd(&install, &plan_path).status()?;
-            let committed_bad = tree_contents(&install)?
-                .iter()
-                .any(|(r, b)| new_files.get(r).map(|n| n == b).unwrap_or(false) && r == rel);
+            let (ok, detail) = if status.success() {
+                if managed_tree_matches(&install, &new_files)? {
+                    (
+                        true,
+                        "self-healed: damaged range sourced from deduplicated \
+                         content elsewhere; output verified byte-identical"
+                            .to_string(),
+                    )
+                } else {
+                    (
+                        false,
+                        "apply reported success but the tree does not match the new build"
+                            .to_string(),
+                    )
+                }
+            } else {
+                let got = std::fs::read(install.join(rel))?;
+                let untouched_or_new =
+                    got == corrupted || new_files.get(rel).map(|n| *n == got).unwrap_or(false);
+                if untouched_or_new {
+                    (true, "failed cleanly, nothing bad committed".to_string())
+                } else {
+                    (false, format!("{rel} left in a torn state"))
+                }
+            };
             report.cases.push(CaseResult {
                 case: "corrupt old install".into(),
                 runs: 1,
-                ok: !status.success() && !committed_bad,
-                detail: if status.success() {
-                    "apply succeeded reading corrupt old bytes (output hash should have caught it)"
-                        .into()
-                } else {
-                    "failed cleanly, nothing committed".into()
-                },
+                ok,
+                detail,
             });
         }
     }

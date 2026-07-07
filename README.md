@@ -50,6 +50,15 @@ a pixel codec.
   with journaled staged applies, stable directory mode with `.cavsignore`,
   and a fair external **butler offline** benchmark plus a multi-route
   comparison suite.
+- **Delivery planner (v0.8.0)**: `cavs route-plan` scores every route
+  (no-op / chunks / hybrid / plan / sidecar / bootstrap / full) for one
+  concrete client state under device profiles; `.cavspatch` v2 optimized
+  sidecars pick the best strategy **per file** (copy-old with rename
+  detection, plan ops, bsdiff, xdelta3, full data) by measuring real
+  candidates; `cavs patch-policy` keeps sidecars to hot pairs (never
+  O(N²)); `cavs publish-dir` produces a whole release in one pass; and
+  `cavs bench full-pipeline` proves it against the complete external
+  butler pipeline (default *and* rediff-optimized patches).
 - **Complementary, not competitive**: use the best codec/compressor for the
   bytes; CAVS deduplicates and transports above them.
 
@@ -294,12 +303,49 @@ applying with a streaming ~8 MiB memory budget. Benchmark it yourself:
 ./target/release/cavs bench version-stream --out results/stream --versions 10
 ```
 
-The butler harness measures butler's **offline/default** patch, not itch.io's
+The butler harness measures butler's **offline/default** patch, not the
 backend-optimized patch; bsdiff/xdelta3 results are labeled as an optimized
 pairwise **proxy**. Full tables and framing:
 [docs/ROUTE_BENCHMARKS.md](docs/ROUTE_BENCHMARKS.md),
 [docs/BUTLER_COMPARISON.md](docs/BUTLER_COMPARISON.md),
 [docs/OFFLINE_TOOLKIT.md](docs/OFFLINE_TOOLKIT.md).
+
+### Delivery planner & optimized sidecars (v0.8.0)
+
+```sh
+# Publish a release in one pass: container + signature + plan +
+# optimized sidecar, preceded by a preview (renames, blob warnings)
+./target/release/cavs publish-dir ./Build_v2 --previous ./Build_v1 --out-dir releases/
+
+# Per-file optimized sidecar for a hot pair, with the reasoning written out
+./target/release/cavs optimize-patch --old ./Build_v1 --new ./Build_v2 \
+  --algo auto --compression auto --explain-strategies why.md -o v1_to_v2.cavspatch
+
+# Which pairs deserve a sidecar (never all O(N²) pairs)
+./target/release/cavs patch-policy --versions v1,v2,...,v10 --distribution shares.json
+
+# Pick the route for one client state under a device profile
+./target/release/cavs route-plan --installed ./InstalledGame --new ./Build_v2 \
+  --patch v1_to_v2.cavspatch --profile low-memory
+
+# The proof report: every CAVS route vs the complete butler pipeline
+# (default diff AND rediff --rediff-quality 9), honest verdicts included
+./target/release/cavs bench full-pipeline --old ./Build_v1 --new ./Build_v2 \
+  --butler-bin ./butler --include-pairwise --out results/pipeline
+
+# Prove interrupted applies never break an install
+./target/release/cavs test apply-recovery --old ./Build_v1 --new ./Build_v2
+```
+
+Measured on the 126 MiB directory release: CAVS auto-route ties the
+optimized external patch on bytes (2.51 MiB) and apply time while using
+**4.2× less memory** and generating **21× faster**; on a shifted 128 MiB
+artifact it wins every column (4.21 KiB vs 11.39 KiB, 2.2× faster apply,
+12% of the RAM); the compressed-blob weak case now routes through a
+byte-level delta automatically (2.53 MiB where block routes paid
+21.9 MiB). Planner and sidecar details:
+[docs/DELIVERY_PLANNER.md](docs/DELIVERY_PLANNER.md),
+[docs/PAIRWISE_SIDECARS.md](docs/PAIRWISE_SIDECARS.md).
 
 ### Analyze a Steam build
 
@@ -326,6 +372,12 @@ See [`godot-plugin/README.md`](godot-plugin/README.md) for game integration and
   `verify-install` / `file` / `ls`, `pack-dir` with `.cavsignore`,
   `optimize-patch`) and the external benchmark harnesses
   (`bench butler-offline` / `pairwise-proxy` / `routes` / `version-stream`).
+  v0.8.0 adds the delivery planner (`route-plan`), per-file optimized
+  sidecars (`optimize-patch --algo auto`, `apply-patch --memory-budget`),
+  the hot-pair policy (`patch-policy`), one-command publishing
+  (`publish-dir`), the full external pipeline harnesses
+  (`bench butler-full` / `full-pipeline`) and the interrupted-apply matrix
+  (`test apply-recovery`).
 - **`cavs-server`**: stateful HTTP/HTTPS origin. Per-session have-set,
   inline/reference planning, dual-route decision (bootstrap vs chunks) per
   client, manifest format negotiation (compact binary v2 / JSON v1), CVSP

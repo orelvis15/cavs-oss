@@ -1,10 +1,10 @@
 //! `cavs bench pairwise-proxy` — approximate the *optimized pairwise
-//! patch* class (à la itch.io's backend bsdiff + high-quality Brotli)
+//! patch* class (bsdiff + high-quality recompression)
 //! with transparent local tools.
 //!
 //! Labeling rule: every number here is an **optimized pairwise proxy** —
-//! bsdiff/xdelta3 plus a chosen recompression — not an official itch.io
-//! backend result. Tools and versions are recorded; every apply is
+//! bsdiff/xdelta3 plus a chosen recompression, produced by transparent
+//! local tools. Tools and versions are recorded; every apply is
 //! verified byte-identical before its size is reported.
 
 use crate::optimize_patch::compress;
@@ -59,7 +59,7 @@ pub fn bench(
 
 pub fn run(old: &Path, new: &Path, algos: &str, compressions: &str) -> Result<ProxyReport> {
     let mut report = ProxyReport {
-        label: "optimized pairwise proxy (NOT official itch.io backend results)".into(),
+        label: "optimized pairwise proxy (bsdiff/xdelta3 + recompression, local tools)".into(),
         mode: if old.is_dir() {
             "directory"
         } else {

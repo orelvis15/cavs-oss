@@ -5,11 +5,9 @@
 //! binary (`-j` JSON-lines mode), captures raw output, measures wall time
 //! and peak RSS, and verifies the applied output byte-for-byte.
 //!
-//! Labeling rule: results are **butler offline/default patch** numbers —
-//! the rsync-style patch `butler push` computes locally. itch.io's backend
-//! later regenerates an optimized patch (bsdiff + high-quality Brotli)
-//! that this harness cannot reproduce; `cavs bench pairwise-proxy`
-//! approximates that class separately and is labeled as a proxy.
+//! Labeling rule: results are **butler default patch** numbers — the
+//! rsync-style patch `butler diff` computes. The optimized patch class
+//! (`butler rediff`) is measured separately by `cavs bench butler-full`.
 
 use crate::report::human_bytes;
 use crate::tool_metrics::{run_measured, version_line, MeasuredRun};
@@ -69,8 +67,7 @@ pub fn run(old: &Path, new: &Path, butler_bin: &str, out: &Path) -> Result<Butle
         bail!(
             "{}",
             ErrorCode::ButlerNotFound.msg(format!(
-                "cannot execute {butler_bin:?}; pass --butler-bin or install butler \
-                 (https://itchio.itch.io/butler)"
+                "cannot execute {butler_bin:?}; pass --butler-bin or install butler"
             ))
         );
     }
@@ -96,7 +93,7 @@ pub fn run(old: &Path, new: &Path, butler_bin: &str, out: &Path) -> Result<Butle
     let mut report = ButlerReport {
         tool: "butler".into(),
         butler_version: version_line(butler_bin, "-V"),
-        label: "butler offline/default patch (not itch.io's backend-optimized patch)".into(),
+        label: "butler default patch (bench butler-full measures the rediff-optimized one)".into(),
         mode: mode.into(),
         old_size_bytes: tree_size(&old_dir)?,
         new_size_bytes: tree_size(&new_dir)?,

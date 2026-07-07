@@ -299,12 +299,24 @@ pub fn bench(args: &PipelineArgs) -> Result<()> {
 
     // ---- CAVS auto-route ------------------------------------------------------
     {
-        let best = report
+        // Same policy as `cavs route-plan`: smallest network payload, and
+        // among routes within 1% of it, the fastest apply.
+        let candidates: Vec<&PipelineRow> = report
             .rows
             .iter()
             .filter(|r| r.family == "cavs" && r.output_ok != Some(false))
-            .min_by_key(|r| r.network_bytes)
-            .cloned();
+            .collect();
+        let best = candidates
+            .iter()
+            .map(|r| r.network_bytes)
+            .min()
+            .and_then(|min_bytes| {
+                candidates
+                    .iter()
+                    .filter(|r| r.network_bytes as f64 <= min_bytes as f64 * 1.01)
+                    .min_by_key(|r| r.apply_ms.unwrap_or(u64::MAX))
+            })
+            .map(|r| (*r).clone());
         if let Some(best) = best {
             report.auto_route = Some(best.route.clone());
             report.rows.push(PipelineRow {
