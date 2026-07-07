@@ -36,6 +36,7 @@ zstd = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
+tar = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }
 chacha20poly1305 = { workspace = true }
@@ -47,3 +48,5 @@ brotli-bench = ["dep:brotli"]
 
 [dev-dependencies]
 tempfile = { workspace = true }
+serde_json = { workspace = true }
+zstd = { workspace = true }

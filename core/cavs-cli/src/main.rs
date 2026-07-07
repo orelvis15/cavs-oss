@@ -17,6 +17,7 @@ mod bench_steampipe_cases;
 mod bench_versions;
 mod blob_detect;
 mod build_cmd;
+mod certify;
 mod classify;
 mod compare;
 mod corrupt;
@@ -110,6 +111,9 @@ impl ChunkModeArg {
 }
 
 #[derive(Subcommand)]
+// One Command is parsed per process; the size spread from flag-heavy
+// variants (certify) is irrelevant.
+#[allow(clippy::large_enum_variant)]
 enum Command {
     /// Package files (--raw) or videos into a deduplicated .cavs.
     ///
@@ -715,6 +719,17 @@ enum Command {
         /// Machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
+    },
+    /// Release-readiness certification (v1.0.0): integrity, byte-identical
+    /// reconstruction, route selection per client state, regression guard,
+    /// Godot PCK flow, workspace install plans and reproducible reports —
+    /// one command, stable exit codes (0 pass, 1 fail, 2 warnings,
+    /// 3 missing dependency, 4 invalid input, 5 internal error).
+    Certify {
+        #[command(subcommand)]
+        action: Option<certify::CertifyAction>,
+        #[command(flatten)]
+        full: certify::FullArgs,
     },
     /// Local development content server over a workspace (v0.9.0).
     /// No auth, plain HTTP — never production.
@@ -2044,6 +2059,10 @@ fn main() -> Result<()> {
             json,
             out: out.as_deref(),
         }),
+        Command::Certify { action, full } => {
+            let code = certify::dispatch(action, &full);
+            std::process::exit(code);
+        }
         Command::Serve {
             workspace,
             app,
