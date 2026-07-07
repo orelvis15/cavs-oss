@@ -1,0 +1,5 @@
+{"level":"info","message":"• Patching /private/tmp/claude-501/-Users-l41777-Documents-repositories-bitlakelab-code/e62c89dc-b5dd-4c8d-aad3-ba9fbd887de4/scratchpad/res/A-dir/butler-full/ApplyOptimized (in-place)","time":1783425445,"type":"log"}
+{"level":"info","message":"Save interval: 2s","time":1783425445,"type":"log"}
+{"level":"info","message":"✓ Before commit, staging dir is 5.44 MiB","time":1783425445,"type":"log"}
+{"level":"info","message":"• Committing...","time":1783425445,"type":"log"}
+{"level":"info","message":"✓ Patched 126.89 MiB (44 files, 3 dirs, 0 symlinks) @ 428.72 MiB/s (a few seconds total)","time":1783425445,"type":"log"}

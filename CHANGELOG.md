@@ -6,103 +6,85 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.8.0]
+## [0.8.0] — Auto-route optimized delivery
 
-The delivery planner release. CAVS stops being "one patch algorithm" and
-becomes an explicit **multi-route delivery system**: per-file optimized
-pairwise sidecars, a cost-based route planner with device profiles, a
-hot-pair patch policy that avoids O(N²) storage, one-command publishing,
-and a proof benchmark that measures every CAVS route against the complete
-external butler pipeline — default `diff` *and* optimized
-`rediff --rediff-quality 9` — on the same transition.
+CAVS v0.8.0 introduces auto-route optimized delivery: a planner that can
+choose between chunks, hybrid reconstruction, offline plans, optimized
+sidecars, bootstrap, full download, or no-op based on client state,
+memory budget, and measured route cost.
 
-Measured highlights (synthetic builds, seed 5; butler v15.28.0, xdelta3
-3.2.0, bsdiff; every output verified byte-identical; CAVS apply times and
-peak RSS measured by running the real binaries under `/usr/bin/time`):
+In the v0.8.0 benchmark suite, CAVS auto-route matched or beat the
+optimized baseline in network bytes, apply time, peak RAM, correctness,
+multi-version storage, and arbitrary version jumps, while keeping
+sidecar generation limited to selected hot pairs instead of requiring
+all-pairs patches.
 
-- **Typical directory release (126 MiB):** CAVS auto-route 2.51 MiB /
-  generate 0.54 s / apply 391 ms / **23 MiB RSS** vs butler optimized
-  2.51 MiB / 11.6 s / 403 ms / 97 MiB — bytes and apply tie, 4.2× less
-  memory, 21× faster generation.
-- **Shifted artifact (128 MiB):** CAVS 4.21 KiB / 170 ms / 11 MiB vs
-  butler optimized 11.39 KiB / 370 ms / 94 MiB — wins every column, and
-  beats raw bsdiff/xdelta3 on bytes.
-- **Compressed blob (62 MiB .tar.zst) — the v0.7.0 weak case, closed:**
-  the per-file optimizer routes the blob through xdelta3; CAVS auto-route
-  2.53 MiB (was 21.9 MiB via block routes), 13% below butler optimized.
-- **Many-version storage (10 × 32 MiB):** store + 3 policy-chosen hot
-  sidecars = 35.91 MiB serving any jump vs 144.23 MiB for all-pairs
-  bsdiff — 75% less, no O(N²).
-- **Low-memory apply (256 MiB):** a bsdiff sidecar needs 517 MiB real
-  RSS; `--memory-budget 128MiB` refuses it up front and the planner
-  serves the plan route instead — 7.63 MiB at 27 MiB real RSS.
-- **Interrupted-apply matrix:** 10 SIGKILLed applies recovered via the
-  journal; corrupt plans rejected untouched; a corrupted old install
-  fails cleanly or self-heals through deduplicated content; mods and
-  mtimes survive everything.
+### Results
+
+Measured on the reproducible v0.8.0 suite (synthetic builds, seed 5;
+butler v15.28.0 default `diff` *and* optimized `rediff --rediff-quality
+9` as baselines; bsdiff 4.3, xdelta3 3.2.0; Apple M3 Pro). Raw outputs,
+environment, exact reproduction commands and known tradeoffs:
+[docs/results/v0.8.0/](docs/results/v0.8.0/README.md).
+
+- Matched optimized-baseline bytes on typical directory updates
+  (2.51 MiB vs 2.51 MiB, apply within 5%) while generating 21× faster
+  and using 4.2× less peak RAM (23 vs 97 MiB).
+- Beat the optimized baseline on shifted artifacts: 4.21 KiB vs
+  11.39 KiB, with faster apply and lower RAM.
+- Closed the compressed-blob weak case with per-file xdelta3 routing:
+  2.53 MiB where block routes paid 21.9 MiB on the same change.
+- Reduced 10-version stream storage by 75% versus all-pairs patches
+  (35.91 MiB store + hot pairs vs 144.23 MiB in 45 patches), still
+  serving arbitrary version jumps.
+- Enforced memory budgets at apply time: a 517 MiB-RSS bsdiff sidecar is
+  refused under `--memory-budget 128MiB` and the planner serves the
+  streaming plan route (27 MiB RSS) at comparable bytes.
+- Preserved byte-identical output across every route, including 10
+  SIGKILL-interrupted applies recovered via the journal.
+
+Not claimed: the default `butler diff` remains faster to generate than a
+full sidecar, its apply was marginally faster on the directory case, and
+dedicated pairwise patches can still win bytes on inputs outside this
+suite — see the tradeoffs table in the results directory.
 
 ### Added
 
-- **`.cavspatch` v2** (`CAVSPCH2`) — optimized pairwise sidecars for whole
-  directory builds with **per-file strategy selection**: `copy-old`
-  (unchanged + renames/moves detected by content, zero payload),
-  `plan-ops` (CAVS copy ranges + inline data, streaming apply), `bsdiff`,
-  `xdelta3`, `full-data`. Every applicable candidate is generated and
-  measured; the smallest payload wins (ties break toward lower apply
-  memory). Sections compressed independently (best of zstd-19/brotli-9
-  under `--compression auto`) with per-section BLAKE3;
-  `--explain-strategies` writes a per-file report of every measured
-  candidate and why the winner won. v1 sidecars remain applicable.
-- **`cavs apply-patch`** (extended) — staged, journaled directory apply
-  for v2 sidecars with per-file hash verification before commit,
-  `--delete-removed-files`, `--check-old`, and **`--memory-budget`**:
-  strategies whose estimated peak exceeds the budget are refused up
-  front (`CAVS-E-MEMORY-BUDGET-EXCEEDED`) with the streaming plan route
-  suggested instead.
-- **`cavs route-plan`** — the delivery planner: scores no-op / chunks /
-  hybrid / cavsplan / cavspatch / bootstrap / full for one concrete
-  client state under a device profile (`default`, `low-memory`,
-  `slow-network`, `low-disk`). Exact prices for provided sidecar/plan/
-  bootstrap files, measured chunk diff, labeled estimates elsewhere;
-  over-budget or wrong-pair sidecars are excluded with the reason.
-- **`cavs patch-policy`** — hot-pair planning from a TOML policy
-  (`previous`, `latest-stable`, `top-installed` from an
-  installed-share JSON, explicit pins, `max_pairs_per_release`, storage
-  ratio, expiry). Never all O(N²) pairs; every uncovered jump is served
-  by the content-addressed store.
-- **`cavs publish-dir`** — one pass from an exported build folder to a
-  publishable release: container + `.cavssig` + `.cavsplan` vs the
-  previous release + optional optimized sidecar, preceded by a preview
-  with rename detection and compressed-blob warnings. `--preview` for a
-  dry run.
-- **`cavs preview`** (extended) — renamed/moved files detected from the
-  signature alone and reported with zero-payload notes;
-  `--detect-compressed-blobs` flags archives by magic bytes (zip, gzip,
-  zstd, 7z, xz, bzip2, rar) and high-entropy payloads, with the real
-  update cost through the blob quantified.
-- **`cavs bench butler-full`** — the complete external butler pipeline:
-  `diff`, `rediff --rediff-quality 9`, apply and verify for both
-  patches, with times, peak RSS and raw JSON lines captured.
-- **`cavs bench full-pipeline`** — the proof report: every CAVS route,
-  the CAVS auto-route (planner policy), butler default + optimized and
-  the pairwise proxies in one table with honest win/tie/loss verdicts,
-  written as `summary.md`/`summary.json`.
-- **`cavs test apply-recovery`** — interrupted-apply matrix: SIGKILLs
-  real `cavs apply` subprocesses at ramping delays, asserts no torn
-  files and mod survival after every kill, proves journaled resume, and
-  exercises corrupt-plan / corrupt-old / garbage-staging cases.
-- **Journal states** — directory applies journal from the first staged
-  byte: `staging → verified → committing → committed`, `failed` recorded
-  on aborts.
-- Error codes: `CAVS-E-PATCH-CORRUPT`, `CAVS-E-PATCH-INVALID`,
+- `.cavspatch` v2 (`CAVSPCH2`) for optimized pairwise sidecars over
+  whole directory builds ([PAIRWISE_SIDECARS.md](docs/PAIRWISE_SIDECARS.md)).
+- Per-file strategy selection across `copy-old`, streaming plan ops,
+  `bsdiff`, `xdelta3` and `full-data` — every applicable candidate is
+  generated and measured, the smallest payload wins;
+  `--explain-strategies` writes the per-file reasoning.
+- Auto compression selection between zstd-19 and brotli-9 per payload
+  section, each with its own BLAKE3.
+- `cavs route-plan` with device profiles (`default`, `low-memory`,
+  `slow-network`, `low-disk`) and memory-budget filtering
+  ([DELIVERY_PLANNER.md](docs/DELIVERY_PLANNER.md)).
+- Hot-pair patch policy (`cavs patch-policy`, TOML config) to avoid
+  O(N²) patch generation.
+- `cavs publish-dir` for one-pass release publishing (container +
+  signature + plan + sidecar + preview).
+- Rename/move detection by content: zero-payload metadata in sidecars,
+  reported in `cavs preview`.
+- Compressed/high-entropy blob detection
+  (`preview --detect-compressed-blobs`) and automatic byte-level-delta
+  routing for such files in the sidecar optimizer.
+- Full-pipeline benchmark suite (`cavs bench butler-full`,
+  `cavs bench full-pipeline`) covering benchmarks A–H, with raw outputs
+  under [docs/results/v0.8.0/](docs/results/v0.8.0/README.md).
+- Journaled staged sidecar apply (`staging → verified → committing →
+  committed`, `failed` on aborts) with recovery tests
+  (`cavs test apply-recovery`).
+- `--memory-budget` on `cavs apply-patch`; error codes
+  `CAVS-E-PATCH-CORRUPT`, `CAVS-E-PATCH-INVALID`,
   `CAVS-E-MEMORY-BUDGET-EXCEEDED`, `CAVS-E-BUTLER-REDIFF-FAILED`.
 
 ### Changed
 
-- `cavs optimize-patch` now produces v2 sidecars with `--algo auto` /
-  `--compression auto` defaults and accepts directories (v0.7.0's
-  whole-artifact v1 generation is superseded; applying v1 files still
-  works).
+- `cavs optimize-patch` defaults to `--algo auto` / `--compression auto`
+  and accepts directories; it now emits v2 sidecars (v1 files remain
+  applicable via `cavs apply-patch`).
 - Workspace version 0.8.0.
 
 ## [0.7.0]

@@ -1,0 +1,32 @@
+{
+  "old": "/private/tmp/claude-501/-Users-l41777-Documents-repositories-bitlakelab-code/e62c89dc-b5dd-4c8d-aad3-ba9fbd887de4/scratchpad/ds-dir/Build_v1",
+  "new": "/private/tmp/claude-501/-Users-l41777-Documents-repositories-bitlakelab-code/e62c89dc-b5dd-4c8d-aad3-ba9fbd887de4/scratchpad/ds-dir/Build_v2",
+  "plan_bytes": 2635358,
+  "cases": [
+    {
+      "case": "kill + resume",
+      "runs": 11,
+      "ok": true,
+      "detail": "10 interrupted runs recovered (kills from 2 ms up to 346 ms, then one uninterrupted run)"
+    },
+    {
+      "case": "corrupt plan",
+      "runs": 1,
+      "ok": true,
+      "detail": "rejected cleanly, install untouched"
+    },
+    {
+      "case": "corrupt old install",
+      "runs": 1,
+      "ok": true,
+      "detail": "self-healed: damaged range sourced from deduplicated content elsewhere; output verified byte-identical"
+    },
+    {
+      "case": "garbage in staging",
+      "runs": 1,
+      "ok": true,
+      "detail": "re-staged and committed correctly"
+    }
+  ],
+  "all_ok": true
+}

@@ -1,0 +1,152 @@
+{
+  "mode": "artifact",
+  "old": "/private/tmp/claude-501/-Users-l41777-Documents-repositories-bitlakelab-code/e62c89dc-b5dd-4c8d-aad3-ba9fbd887de4/scratchpad/ds-art/v1.bin",
+  "new": "/private/tmp/claude-501/-Users-l41777-Documents-repositories-bitlakelab-code/e62c89dc-b5dd-4c8d-aad3-ba9fbd887de4/scratchpad/ds-art/v2-shifted.bin",
+  "old_size_bytes": 134217728,
+  "new_size_bytes": 134221824,
+  "rows": [
+    {
+      "route": "full download (raw)",
+      "family": "baseline",
+      "network_bytes": 134221824,
+      "generate_ms": null,
+      "apply_ms": 0,
+      "generate_peak_rss_mib": null,
+      "apply_peak_rss_mib": null,
+      "output_ok": true,
+      "notes": "no reuse"
+    },
+    {
+      "route": "full zstd-19 (bootstrap)",
+      "family": "baseline",
+      "network_bytes": 67167335,
+      "generate_ms": 5719,
+      "apply_ms": null,
+      "generate_peak_rss_mib": null,
+      "apply_peak_rss_mib": null,
+      "output_ok": true,
+      "notes": "cache-less first install"
+    },
+    {
+      "route": "CAVS chunks / hybrid (wire)",
+      "family": "cavs",
+      "network_bytes": 11163,
+      "generate_ms": 283,
+      "apply_ms": null,
+      "generate_peak_rss_mib": null,
+      "apply_peak_rss_mib": null,
+      "output_ok": true,
+      "notes": "warm cache, or cold cache + previous install"
+    },
+    {
+      "route": "CAVS offline plan (.cavsplan)",
+      "family": "cavs",
+      "network_bytes": 4308,
+      "generate_ms": 324,
+      "apply_ms": 170,
+      "generate_peak_rss_mib": null,
+      "apply_peak_rss_mib": 11.390625,
+      "output_ok": true,
+      "notes": "streaming journaled apply"
+    },
+    {
+      "route": "CAVS optimized sidecar (.cavspatch)",
+      "family": "cavs",
+      "network_bytes": 4333,
+      "generate_ms": 44109,
+      "apply_ms": 551,
+      "generate_peak_rss_mib": null,
+      "apply_peak_rss_mib": 12.359375,
+      "output_ok": true,
+      "notes": "per-file: 0 copy-old / 1 plan / 0 bsdiff / 0 xdelta3 / 0 full"
+    },
+    {
+      "route": "CAVS auto-route",
+      "family": "cavs-auto",
+      "network_bytes": 4308,
+      "generate_ms": 324,
+      "apply_ms": 170,
+      "generate_peak_rss_mib": null,
+      "apply_peak_rss_mib": 11.390625,
+      "output_ok": true,
+      "notes": "planner picks: CAVS offline plan (.cavsplan)"
+    },
+    {
+      "route": "butler diff (default)",
+      "family": "butler",
+      "network_bytes": 69766,
+      "generate_ms": 807,
+      "apply_ms": 163,
+      "generate_peak_rss_mib": 26.1484375,
+      "apply_peak_rss_mib": 20.83203125,
+      "output_ok": true,
+      "notes": "+61.96 KiB signature"
+    },
+    {
+      "route": "butler rediff q9 (optimized)",
+      "family": "butler",
+      "network_bytes": 11664,
+      "generate_ms": 11259,
+      "apply_ms": 370,
+      "generate_peak_rss_mib": 1893.703125,
+      "apply_peak_rss_mib": 93.8828125,
+      "output_ok": true,
+      "notes": "bsdiff + high-quality recompression"
+    },
+    {
+      "route": "pairwise proxy: bsdiff+zstd-19",
+      "family": "proxy",
+      "network_bytes": 4704,
+      "generate_ms": 24783,
+      "apply_ms": 222,
+      "generate_peak_rss_mib": 2440.515625,
+      "apply_peak_rss_mib": null,
+      "output_ok": true,
+      "notes": "one exact pair only"
+    },
+    {
+      "route": "pairwise proxy: bsdiff+brotli-9",
+      "family": "proxy",
+      "network_bytes": 4725,
+      "generate_ms": 24783,
+      "apply_ms": 222,
+      "generate_peak_rss_mib": 2440.515625,
+      "apply_peak_rss_mib": null,
+      "output_ok": true,
+      "notes": "one exact pair only"
+    },
+    {
+      "route": "pairwise proxy: xdelta3+zstd-19",
+      "family": "proxy",
+      "network_bytes": 4442,
+      "generate_ms": 470,
+      "apply_ms": 364,
+      "generate_peak_rss_mib": 395.328125,
+      "apply_peak_rss_mib": null,
+      "output_ok": true,
+      "notes": "one exact pair only"
+    },
+    {
+      "route": "pairwise proxy: xdelta3+brotli-9",
+      "family": "proxy",
+      "network_bytes": 4525,
+      "generate_ms": 470,
+      "apply_ms": 364,
+      "generate_peak_rss_mib": 395.328125,
+      "apply_peak_rss_mib": null,
+      "output_ok": true,
+      "notes": "one exact pair only"
+    }
+  ],
+  "auto_route": "CAVS offline plan (.cavsplan)",
+  "verdicts": [
+    "network bytes: CAVS wins (37% of the optimized pipeline)",
+    "apply time: CAVS wins (46% of the optimized pipeline)",
+    "apply peak RAM: CAVS wins (12% of the optimized pipeline)",
+    "generate time: CAVS wins (3% of the optimized pipeline)",
+    "storage model: CAVS serves any version jump from one immutable store; pairwise patches serve exactly one pair each"
+  ],
+  "skipped": [
+    "pairwise patches serve exactly one old→new pair; storage and generation cost grow with every published pair"
+  ]
+}

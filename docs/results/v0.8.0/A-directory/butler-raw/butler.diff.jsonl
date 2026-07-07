@@ -1,0 +1,7 @@
+{"level":"info","message":"• Hashing /private/tmp/claude-501/-Users-l41777-Documents-repositories-bitlakelab-code/e62c89dc-b5dd-4c8d-aad3-ba9fbd887de4/scratchpad/ds-dir/Build_v1","time":1783425434,"type":"log"}
+{"level":"info","message":"✓ 125.83 MiB (43 files, 3 dirs, 0 symlinks) @ 428.09 MiB/s\n","time":1783425434,"type":"log"}
+{"level":"info","message":"• Diffing /private/tmp/claude-501/-Users-l41777-Documents-repositories-bitlakelab-code/e62c89dc-b5dd-4c8d-aad3-ba9fbd887de4/scratchpad/ds-dir/Build_v2","time":1783425434,"type":"log"}
+{"bps":0,"eta":0,"progress":0.33715877693913343,"time":1783425434,"type":"progress"}
+{"level":"info","message":"✓ 126.89 MiB (44 files, 3 dirs, 0 symlinks) @ 211.22 MiB/s\n","time":1783425434,"type":"log"}
+{"level":"info","message":"✓ Re-used 95.66% of old, added 5.51 MiB fresh data","time":1783425434,"type":"log"}
+{"level":"info","message":"✓ 2.52 MiB patch (1.98% of the full size) in 600.724ms","time":1783425434,"type":"log"}

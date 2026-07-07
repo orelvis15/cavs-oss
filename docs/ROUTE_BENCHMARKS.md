@@ -8,8 +8,12 @@ butler pipeline — default `diff` and optimized `rediff --rediff-quality
 [delivery planner](DELIVERY_PLANNER.md) would actually serve (smallest
 payload; near-ties broken by apply time). CAVS apply times and peak RSS
 are measured by running the real `cavs` binaries under `/usr/bin/time`,
-exactly like the external tools. butler v15.28.0, bsdiff, xdelta3 3.2.0,
-Apple M-series; every output verified byte-identical.
+exactly like the external tools. butler v15.28.0, bsdiff 4.3, xdelta3
+3.2.0, Apple M3 Pro; every output verified byte-identical.
+
+Raw outputs, the full environment, the **exact commands to reproduce
+A–H** and the **known-tradeoffs table** live in
+[results/v0.8.0/](results/v0.8.0/README.md).
 
 ### A — Directory build, typical release (125.8 → 126.9 MiB)
 

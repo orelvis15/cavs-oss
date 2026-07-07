@@ -1,0 +1,7 @@
+{"level":"info","message":"• Hashing /var/folders/py/yszxdqmj51552n0qcr9k2t2h0000gn/T/.tmpnUZFLZ/old","time":1783425696,"type":"log"}
+{"level":"info","message":"✓ 61.67 MiB (1 files, 0 dirs, 0 symlinks) @ 451.56 MiB/s\n","time":1783425696,"type":"log"}
+{"level":"info","message":"• Diffing /var/folders/py/yszxdqmj51552n0qcr9k2t2h0000gn/T/.tmpnUZFLZ/new","time":1783425696,"type":"log"}
+{"bps":0,"eta":0,"progress":0.8791513890998984,"time":1783425697,"type":"progress"}
+{"level":"info","message":"✓ 62.17 MiB (1 files, 0 dirs, 0 symlinks) @ 116.91 MiB/s\n","time":1783425697,"type":"log"}
+{"level":"info","message":"✓ Re-used 64.74% of old, added 21.92 MiB fresh data","time":1783425697,"type":"log"}
+{"level":"info","message":"✓ 21.92 MiB patch (35.26% of the full size) in 531.748667ms","time":1783425697,"type":"log"}
