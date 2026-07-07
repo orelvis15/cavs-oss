@@ -43,7 +43,7 @@ jobs:
       - name: Build binaries
         run: >
           cargo build --release --target ${{ matrix.target }}
-          --bin cavs --bin cavs-server --bin cavs-client --bin cavs-steam
+          --bin cavs --bin cavs-server --bin cavs-client
 
       - name: Package
         shell: bash
@@ -53,7 +53,7 @@ jobs:
           DIST="cavs-${VERSION}-${{ matrix.target }}"
           BINDIR="target/${{ matrix.target }}/release"
           mkdir "$DIST"
-          for b in cavs cavs-server cavs-client cavs-steam; do
+          for b in cavs cavs-server cavs-client; do
             if [ -f "$BINDIR/$b.exe" ]; then cp "$BINDIR/$b.exe" "$DIST/"; else cp "$BINDIR/$b" "$DIST/"; fi
           done
           cp README.md LICENSE NOTICE "$DIST/"
@@ -153,11 +153,13 @@ jobs:
           # cargo publish waits for each crate to appear in the index before
           # returning, so publishing in dependency order is enough.
           # cavs-signature (needs cavs-hash) and cavs-rebuild-plan are v0.6.0
-          # additions; cavs-plan (needs cavs-signature/cavs-proto) is the v0.7.0
-          # addition. All three must precede cavs-cli/cavs-client, which depend
-          # on them.
+          # additions; cavs-plan (needs cavs-signature/cavs-proto) is the
+          # v0.7.0 addition; cavs-analyzer and cavs-workspace are the v0.9.0
+          # additions (cavs-steam was removed in v0.9.0). All must precede
+          # cavs-cli/cavs-client, which depend on them.
           for crate in cavs-hash cavs-chunker cavs-store cavs-proto cavs-format \
                        cavs-manifest cavs-signature cavs-rebuild-plan cavs-plan \
-                       cavs-cli cavs-server cavs-client cavs-steam; do
+                       cavs-analyzer cavs-workspace \
+                       cavs-cli cavs-server cavs-client; do
             publish "$crate"
           done

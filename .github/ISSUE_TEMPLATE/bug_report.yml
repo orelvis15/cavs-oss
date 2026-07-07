@@ -32,7 +32,7 @@ body:
     attributes:
       label: Component
       description: Which part is affected?
-      placeholder: cavs (CLI) / cavs-server / cavs-client / cavs-steam / Godot plugin / format
+      placeholder: cavs (CLI) / cavs-server / cavs-client / Godot plugin / format
     validations:
       required: true
   - type: textarea
