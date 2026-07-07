@@ -72,6 +72,16 @@ a pixel codec.
   plans; `cavs serve` exposes it all to dev clients; and `cavs build
   sign/encrypt` adds release authenticity (not DRM). Estimates are
   SteamPipe-*style* — a public model, never Valve's implementation.
+- **Release certification (v1.0.0)**: `cavs certify` answers *"is this
+  update ready to publish?"* in one command — mandatory byte-identical
+  reconstruction, path safety and corruption smoke checks, route
+  selection certified per client state, a measured route matrix, a
+  regression guard against a recorded baseline, Godot PCK and
+  workspace/install-plan certification, and a deterministic
+  reproducibility bundle others can verify. Profiles from `quick` to
+  `strict`, stable exit codes and JSON schemas for CI. See
+  [docs/CERTIFICATION.md](docs/CERTIFICATION.md) and
+  [docs/TRY_CAVS.md](docs/TRY_CAVS.md).
 - **Complementary, not competitive**: use the best codec/compressor for the
   bytes; CAVS deduplicates and transports above them.
 
@@ -183,6 +193,16 @@ what changed on the second fetch:
 
 # Optional: measure which chunk profile is cheapest for YOUR builds
 ./target/release/cavs sweep game_v2.pck --prev game_v1.cavs
+```
+
+Before you ship an update, certify it (v1.0.0):
+
+```sh
+# Byte-identical reconstruction, route selection per client state,
+# regression guard, pack-layout analysis — one report, stable exit codes.
+./target/release/cavs certify --old ./Build_v1 --new ./Build_v2 \
+  --profile release --out ./certification
+cat certification/summary.md
 ```
 
 Signing (optional, recommended for distribution):
