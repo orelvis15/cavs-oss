@@ -27,7 +27,7 @@
   <div class="nav-inner">
     <a href="index.html" class="brand">
       <img src="assets/logo-transparent-128.png" alt="CAVS logo" />
-      CAVS <span class="tag">v0.8.0</span>
+      CAVS <span class="tag">v0.9.0</span>
     </a>
     <nav class="nav-links" id="navLinks">
       <a class="nav-page" href="index.html">Home</a>
@@ -216,6 +216,59 @@
   </div>
 </section>
 
+<!-- ============ STEAMPIPE-CLASS ANALYSIS (v0.9.0) ============ -->
+<section class="anchor" id="steampipe-class">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">SteamPipe-class analysis — v0.9.0</span>
+      <h2 class="section-title">Layout, not content,<br>decides update cost.</h2>
+      <p class="section-sub">The v0.9.0 analyzer estimates a build transition under a public fixed-1MiB chunk model (SteamPipe-<em>style</em> — never Valve's implementation) and diagnoses the layouts that bloat updates. Below: the same 64&nbsp;KiB of real change in a 32-asset pack, under different layouts. Deterministic datasets, reproducible with <span class="mono">cavs bench steampipe-cases</span>.</p>
+    </div>
+    <div class="table-wrap reveal">
+      <table>
+        <thead>
+          <tr><th>Pack layout</th><th class="num">SteamPipe-style estimate</th><th class="num">Fixed reuse</th><th class="num">CAVS .cavsplan</th><th class="num">Diagnosis</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Localized edit, stable layout</td><td class="num">1.00 MiB</td><td class="num">97.0%</td><td class="num blue">131 KiB</td><td class="num">OK</td></tr>
+          <tr><td>4 KiB inserted at the front</td><td class="num strike">32.88 MiB</td><td class="num">0.0%</td><td class="num blue">7.4 KiB</td><td class="num save">asset_shuffling</td></tr>
+          <tr><td>Same assets, shuffled order</td><td class="num strike">32.88 MiB</td><td class="num">0.0%</td><td class="num blue">67 KiB</td><td class="num save">asset_shuffling</td></tr>
+          <tr><td>Per-asset headers rewritten each build</td><td class="num strike">32.00 MiB</td><td class="num">2.7%</td><td class="num blue">2.13 MiB</td><td class="num save">toc_churn</td></tr>
+          <tr class="hl-row"><td><strong class="blue">Same edit, TOC centralized (the fix)</strong></td><td class="num">1.88 MiB</td><td class="num">94.3%</td><td class="num blue">132 KiB</td><td class="num">OK</td></tr>
+          <tr><td>Pack compressed as one stream</td><td class="num">whole blob, 0% reuse</td><td class="num">0.0%</td><td class="num blue">130 KiB</td><td class="num save">compressed blob</td></tr>
+          <tr class="hl-row"><td><strong class="blue">Per-asset compression, padded slots (the fix)</strong></td><td class="num">97 KiB</td><td class="num">75.0%</td><td class="num blue">68 KiB</td><td class="num">OK</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      A 4 KiB insert turns a 32.88 MiB pack into a full re-download under fixed chunks — the CAVS plan for the same change is <span class="big">7.4 KiB</span>. <span class="mono">cavs analyze steampipe</span> names the cause (<span class="mono">asset_shuffling</span>, <span class="mono">toc_churn</span>, …) and the fix; applying the fixes recovers <span class="big">94% reuse</span> under the same fixed-chunk model.
+    </div>
+
+    <h3 style="font-size:20px; margin:56px 0 16px;">Download size is not update time — local disk I/O</h3>
+    <div class="table-wrap reveal">
+      <table>
+        <thead>
+          <tr><th>~3-byte change in a 256 MiB pack</th><th class="num">Download</th><th class="num">Local read + write</th><th class="num">HDD est.</th><th class="num">NVMe est.</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>One monolithic pack</td><td class="num">2.00 MiB</td><td class="num strike">512 MiB</td><td class="num strike">4.7 s</td><td class="num">176 ms</td></tr>
+          <tr class="hl-row"><td><strong class="blue">Split into 8 × 32 MiB (the fix)</strong></td><td class="num">2.00 MiB</td><td class="num blue">128 MiB</td><td class="num blue">1.2 s</td><td class="num blue">45 ms</td></tr>
+          <tr><td>Raw full download (reference)</td><td class="num strike">256 MiB</td><td class="num">256 MiB</td><td class="num">2.6 s</td><td class="num">102 ms</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="table-note">On an HDD, the "smart" 2 MiB update of the monolithic pack is <strong>slower than the dumb 256 MiB full download</strong> — a fixed-chunk updater rebuilds every touched file in full. <span class="mono">cavs io-estimate</span> flags when local I/O dominates the network saving; splitting the pack fixes it at the same download size.</p>
+
+    <h3 style="font-size:20px; margin:56px 0 16px;">Depots, sharing and install plans</h3>
+    <div class="cards g3">
+      <div class="card reveal"><span class="idx">// depot analyze-sharing</span><h3>98.9% shared</h3><p>Windows ↔ Linux depots of the same build share 48.83 MiB of 49.11 MiB — the workspace prices exactly what a shared depot would save in storage and egress.</p></div>
+      <div class="card reveal" style="transition-delay:.05s"><span class="idx">// install-plan</span><h3>0 B for the demo owner</h3><p>Install plans filter depots by platform, language and ownership and reuse chunks across depots: a demo owner who already installed the full game downloads nothing.</p></div>
+      <div class="card reveal" style="transition-delay:.1s"><span class="idx">// plan-update</span><h3>Honest routing</h3><p>The policy planner picks the 129 KiB <span class="mono">.cavsplan</span> for every previous-install state — and honestly picks the raw full download for a cold install of incompressible data, because a bootstrap would save nothing.</p></div>
+    </div>
+    <p class="table-note" style="margin-top:18px;">Raw outputs and reproduction commands: <span class="mono">docs/results/v0.9.0/</span> in the repository. Every SteamPipe-style figure is an estimate from public documentation, not Valve's exact SteamPipe implementation.</p>
+  </div>
+</section>
+
 <!-- ============ HYBRID ============ -->
 <section class="anchor" id="hybrid">
   <div class="wrap">
@@ -354,7 +407,7 @@
     <pre class="code"><span class="prompt">$</span> cavs bench gen <span class="flag">--out</span> ds <span class="flag">--size</span> 1GiB
 <span class="prompt">$</span> cavs bench suite <span class="flag">--dataset</span> ds <span class="flag">--out</span> results
 <span class="comment"># → results/summary.md, results/summary.json</span></pre>
-    <p class="table-note">The real-game harnesses and their raw result data live in the full development repository; the measured summaries above are what those harnesses produced. Full write-ups: <span class="mono">docs/BENCHMARKS.md</span>, <span class="mono">docs/ROUTE_BENCHMARKS.md</span>, <span class="mono">docs/results/v0.8.0/</span>.</p>
+    <p class="table-note">The real-game harnesses and their raw result data live in the full development repository; the measured summaries above are what those harnesses produced. Full write-ups: <span class="mono">docs/BENCHMARKS.md</span>, <span class="mono">docs/ROUTE_BENCHMARKS.md</span>, <span class="mono">docs/STEAMPIPE_COMPARISON.md</span>, <span class="mono">docs/results/v0.8.0/</span>, <span class="mono">docs/results/v0.9.0/</span>.</p>
   </div>
 </section>
 

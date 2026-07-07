@@ -32,7 +32,7 @@
   <div class="nav-inner">
     <a href="index.html" class="brand">
       <img src="assets/logo-transparent-128.png" alt="CAVS logo" />
-      CAVS <span class="tag">v0.8.0</span>
+      CAVS <span class="tag">v0.9.0</span>
     </a>
     <nav class="nav-links" id="navLinks">
       <a class="nav-page active" href="index.html">Home</a>
@@ -210,7 +210,7 @@ cavs-client fetch http://localhost:8990 game_v2 --cache ./cache">copy</span>
     <div class="section-head">
       <span class="eyebrow">The toolkit</span>
       <h2 class="section-title">One engine. Many surfaces.</h2>
-      <p class="section-sub">A Rust core with a command-line toolkit, an HTTP origin and streaming client, a shipping Godot plugin, a Steam update analyzer — and engine plugins on the way.</p>
+      <p class="section-sub">A Rust core with a command-line toolkit, an HTTP origin and streaming client, a shipping Godot plugin, a SteamPipe-class build &amp; update analyzer built into the CLI — and engine plugins on the way.</p>
     </div>
     <div class="cards g3">
       <div class="card reveal">
@@ -229,9 +229,9 @@ cavs-client fetch http://localhost:8990 game_v2 --cache ./cache">copy</span>
         <p>A 100% GDScript client — no GDExtension, no native binaries. Reconstructs and mounts PCKs with <span class="mono">load_resource_pack()</span>.</p>
       </div>
       <div class="card reveal">
-        <span class="idx">// cavs-steam</span>
-        <h3>SteamPipe Analyzer <span class="badge available" style="font-size:9.5px;">stable</span></h3>
-        <p>Finds Steam update bloat before your players download it, and recommends packaging fixes per engine.</p>
+        <span class="idx">// cavs analyze · publish-preview</span>
+        <h3>Build &amp; Update Analyzer <span class="badge available" style="font-size:9.5px;">new in 0.9</span></h3>
+        <p>SteamPipe-style update estimates, pack-layout diagnosis (churn, shuffling, TOC, compression), publish previews across every route, disk I/O estimates and a local depot/branch workspace — all inside the <span class="mono">cavs</span> CLI.</p>
       </div>
       <div class="card reveal" style="transition-delay:.05s">
         <span class="idx">// unity</span>
@@ -291,6 +291,7 @@ cavs-client fetch http://localhost:8990 game_v2 --cache ./cache">copy</span>
       <div class="faq-item"><button class="faq-q">Can CAVS reuse the version already installed?</button><div class="faq-a"><p>Yes. Pass <span class="mono">--previous-artifact</span> and the client copies verified ranges straight from the old file, downloading only what changed — even with an empty chunk cache. Every copied range is BLAKE3-checked before it is written, and a corrupt old install safely falls back to the network.</p></div></div>
       <div class="faq-item"><button class="faq-q">Can I diff and apply updates without a server?</button><div class="faq-a"><p>Yes. <span class="mono">cavs diff-plan</span> produces a deterministic, BLAKE3-sealed <span class="mono">.cavsplan</span>, and <span class="mono">cavs apply</span> reconstructs it locally with the same verified staged model as the online client — byte-identical or it fails. <span class="mono">preview</span>, <span class="mono">verify-install</span>, <span class="mono">file</span> and <span class="mono">ls</span> complete the offline workflow.</p></div></div>
       <div class="faq-item"><button class="faq-q">Does CAVS preserve the original file?</button><div class="faq-a"><p>Yes. CAVS reconstructs the final artifact byte-for-byte and verifies it with SHA-256 before promotion. Reconstruction is byte-identical or it fails — never halfway.</p></div></div>
+      <div class="faq-item"><button class="faq-q">Is the SteamPipe analysis official Steam tooling?</button><div class="faq-a"><p>No. <span class="mono">cavs bench steampipe-style</span> and <span class="mono">cavs analyze steampipe</span> use a public fixed-1MiB model based on Valve's documentation — an estimate, never Valve's exact implementation, and every report says so. There is deliberately no separate "steam-analyzer" product: it is a CAVS command family for diagnosing update behavior before you publish.</p></div></div>
     </div>
   </div>
 </section>

@@ -4,12 +4,12 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>CAVS — Products</title>
-<meta name="description" content="The CAVS toolkit: the cavs CLI and its command reference, cavs-server and cavs-client, the Rust core engine, the Godot plugin, the SteamPipe analyzer, and the Unity / Unreal plugins on the way." />
+<meta name="description" content="The CAVS toolkit: the cavs CLI and its command reference, cavs-server and cavs-client, the Rust core engine, the Godot plugin, the SteamPipe-class build & update analyzer, and the Unity / Unreal plugins on the way." />
 <meta name="author" content="Orelvis" />
 <meta name="theme-color" content="#0A0E1A" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="CAVS Products" />
-<meta property="og:description" content="CLI, server, client, Rust core, Godot plugin and SteamPipe analyzer — with commands explained." />
+<meta property="og:description" content="CLI, server, client, Rust core, Godot plugin and the SteamPipe-class build analyzer — with commands explained." />
 <meta property="og:image" content="assets/og-thumb.webp" />
 <link rel="icon" type="image/png" href="assets/logo-transparent-128.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -27,7 +27,7 @@
   <div class="nav-inner">
     <a href="index.html" class="brand">
       <img src="assets/logo-transparent-128.png" alt="CAVS logo" />
-      CAVS <span class="tag">v0.8.0</span>
+      CAVS <span class="tag">v0.9.0</span>
     </a>
     <nav class="nav-links" id="navLinks">
       <a class="nav-page" href="index.html">Home</a>
@@ -54,7 +54,7 @@
   <div class="wrap">
     <span class="eyebrow">The toolkit</span>
     <h1>One engine.<br><span class="accent">Many surfaces.</span></h1>
-    <p class="section-sub">CAVS is a Rust core wrapped in a command-line toolkit, an HTTP origin and a streaming client — plus a shipping Godot plugin, a Steam update analyzer, and engine plugins on the way. Everything below is Apache-2.0 licensed and lives in one repository.</p>
+    <p class="section-sub">CAVS is a Rust core wrapped in a command-line toolkit, an HTTP origin and a streaming client — plus a shipping Godot plugin, a SteamPipe-class build &amp; update analyzer built into the CLI, and engine plugins on the way. Everything below is Apache-2.0 licensed and lives in one repository.</p>
   </div>
 </section>
 
@@ -94,13 +94,13 @@
         </div>
         <p>A 100% GDScript client — no GDExtension, no native binaries. Runs on every platform Godot exports to.</p>
       </a>
-      <a href="#steam" class="prod reveal" style="transition-delay:.05s">
+      <a href="#analyzer" class="prod reveal" style="transition-delay:.05s">
         <div class="prod-top">
           <span class="prod-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
-          <div><h3>SteamPipe Analyzer</h3><div class="prod-cmd">cavs-steam</div></div>
-          <div class="prod-badges"><span class="badge available">stable</span></div>
+          <div><h3>Build &amp; Update Analyzer</h3><div class="prod-cmd">cavs analyze · bench · publish-preview</div></div>
+          <div class="prod-badges"><span class="badge available">new in 0.9</span></div>
         </div>
-        <p>Finds Steam update bloat before your players download it, and recommends packaging fixes per engine.</p>
+        <p>SteamPipe-style update estimates, pack-layout diagnosis, publish previews, disk I/O estimates and a local depot/branch workspace — inside the CLI.</p>
       </a>
       <a href="#engines" class="prod reveal" style="transition-delay:.1s">
         <div class="prod-top">
@@ -150,6 +150,26 @@
       <div class="cmd-row"><code>cavs publish-dir &lt;new&gt; --previous &lt;old&gt; --out-dir &lt;dir&gt;</code><div class="cmd-desc">One-pass publishing: container + signature + plan + sidecar, preceded by a preview with rename detection and compressed-blob warnings.</div></div>
     </div>
 
+    <h3 style="font-size:18px; margin:36px 0 6px;" class="mono blue">// SteamPipe-class analysis — v0.9.0</h3>
+    <div class="cmd-list">
+      <div class="cmd-row"><code>cavs bench steampipe-style &lt;old&gt; &lt;new&gt;</code><div class="cmd-desc">Estimate the update under a public fixed-1MiB chunk model: changed chunks, estimated download, per-file ranking, local rebuild I/O. <span class="mono">--scope per-file|global</span>, <span class="mono">--compression</span>, <span class="mono">--json</span>. Always labeled as an estimate — never Valve's implementation.</div></div>
+      <div class="cmd-row"><code>cavs analyze steampipe &lt;old&gt; &lt;new&gt;</code><div class="cmd-desc">The diagnosis: scattered churn, asset shuffling, distributed-TOC/offset cascades, compressed blobs, metadata churn and oversized packs — each finding with severity, wasted bytes, cause, fix and expected improvement. Engine hints for Unreal / Unity / Godot.</div></div>
+      <div class="cmd-row"><code>cavs analyze-packs · cavs analyze godot-pck</code><div class="cmd-desc">Pack-file table (changed windows, scatteredness, entropy, main issue → one-line fix); the Godot variant parses the PCK directory and names the <span class="mono">res://</span> paths behind each changed region.</div></div>
+      <div class="cmd-row"><code>cavs publish-preview &lt;new&gt; --previous &lt;old&gt; --routes all</code><div class="cmd-desc">Release readiness: every route measured (full, CAVS chunk/hybrid/plan, butler and bsdiff/xdelta3 when installed — missing tools skipped, never fatal), the SteamPipe-style row, layout warnings, and a recommended route with the reason.</div></div>
+      <div class="cmd-row"><code>cavs io-estimate &lt;old&gt; &lt;new&gt;</code><div class="cmd-desc">Local disk I/O per route — reads, writes, temp disk, creates/renames/deletes — timed under configurable device profiles (HDD / SATA / NVMe), flagging when I/O dominates the network saving.</div></div>
+      <div class="cmd-row"><code>cavs plan-update --policy balanced --client-state …</code><div class="cmd-desc">Policy route planner: <span class="mono">network_min</span>, <span class="mono">cpu_min</span>, <span class="mono">ram_min</span>, <span class="mono">disk_io_min</span>, <span class="mono">balanced</span>, <span class="mono">hdd_friendly</span>, <span class="mono">developer_fast</span> — scored per client state; unavailable routes are never chosen.</div></div>
+      <div class="cmd-row"><code>cavs optimize-layout &lt;old&gt; &lt;new&gt; --write-plan plan.json</code><div class="cmd-desc">Advisory restructuring plan with the estimated impact of each fix. Never modifies files.</div></div>
+    </div>
+
+    <h3 style="font-size:18px; margin:36px 0 6px;" class="mono blue">// workspace — depots, branches, builds (v0.9.0)</h3>
+    <div class="cmd-list">
+      <div class="cmd-row"><code>cavs workspace init · depot add · branch add · build create</code><div class="cmd-desc">Model apps/depots/branches/builds as local metadata; <span class="mono">build create</span> indexes each depot's content for estimates. Depots carry platform / language / optional flags.</div></div>
+      <div class="cmd-row"><code>cavs branch promote / promote-preview / rollback</code><div class="cmd-desc">Atomic branch pointer changes with per-depot update cost previews; rollback only to builds the branch has served.</div></div>
+      <div class="cmd-row"><code>cavs depot analyze-sharing · cavs install-plan</code><div class="cmd-desc">Shared bytes across every depot pair, and per-player install/update simulation by platform, language and ownership with cross-depot chunk reuse.</div></div>
+      <div class="cmd-row"><code>cavs serve &lt;workspace&gt; --port 8990</code><div class="cmd-desc">Development-only content server: branches, builds, depot files (HTTP Range), chunks by hash, update previews. No auth by design; production stays on <span class="mono">cavs-server</span>.</div></div>
+      <div class="cmd-row"><code>cavs build sign / verify / encrypt / decrypt</code><div class="cmd-desc">Release authenticity (Ed25519 detached signatures, tamper ⇒ <span class="mono">CAVS-E-SIGNATURE-INVALID</span>) and optional local at-rest encryption (XChaCha20-Poly1305). Not DRM.</div></div>
+    </div>
+
     <h3 style="font-size:18px; margin:36px 0 6px;" class="mono blue">// store, verify &amp; diagnostics</h3>
     <div class="cmd-list">
       <div class="cmd-row"><code>cavs store add / rm / gc / stat / verify / export</code><div class="cmd-desc">Manage the global content-addressable store: dedup index with refcounting and GC, loose or <span class="mono">.cavspack</span> packfile layout, and a deterministic CDN-ready object export.</div></div>
@@ -163,6 +183,7 @@
       <div class="cmd-row"><code>cavs bench gen --size 1GiB --out ds</code><div class="cmd-desc">Emit a deterministic dataset (same seed ⇒ identical bytes on any machine): a base build plus the update shapes that matter for chunked delivery.</div></div>
       <div class="cmd-row"><code>cavs bench suite --dataset ds --out results</code><div class="cmd-desc">Pack and measure every version, writing <span class="mono">summary.md</span> and <span class="mono">summary.json</span>.</div></div>
       <div class="cmd-row"><code>cavs bench full-pipeline · butler-full · routes</code><div class="cmd-desc">Measure every CAVS route and butler's complete pipeline (default <span class="mono">diff</span> and optimized <span class="mono">rediff</span>) on the same transition, with byte-level proxies. <span class="mono">delta</span> and <span class="mono">compression</span> cross-checks included.</div></div>
+      <div class="cmd-row"><code>cavs bench steampipe-cases --out results</code><div class="cmd-desc">The v0.9.0 pack-pathology suite: 12 deterministic layouts (localized, shifted, shuffled, distributed TOC, global vs per-asset compression, new packs, directory builds, Godot PCKs) measured under the SteamPipe-style model, real <span class="mono">.cavsplan</span>s and external tools when installed.</div></div>
     </div>
 
     <p class="table-note" style="margin-top:22px;">Every subcommand has full <span class="mono">--help</span>. Without <span class="mono">--raw</span>, <span class="mono">cavs pack</span> treats inputs as video and segments them into CMAF/fMP4 via ffmpeg before packaging.</p>
@@ -248,30 +269,41 @@
   </div>
 </section>
 
-<!-- ============ STEAM ============ -->
-<section class="anchor" id="steam">
+<!-- ============ ANALYZER ============ -->
+<section class="anchor" id="analyzer">
   <div class="wrap">
     <div class="section-head">
-      <span class="eyebrow">SteamPipe Analyzer <span class="badge available" style="margin-left:8px;">stable</span></span>
-      <h2 class="section-title">Catch Steam update bloat<br>before your players do.</h2>
-      <p class="section-sub"><span class="mono">cavs-steam</span> compares two builds, estimates the update SteamPipe will generate, detects the pack files that cause oversized updates (reordering, offset cascades, huge packs) and recommends packaging fixes — entirely locally, uploading nothing. Estimates are a predictive model of SteamPipe's ~1&nbsp;MiB-chunk pipeline, not official Steam output.</p>
+      <span class="eyebrow">Build &amp; Update Analyzer <span class="badge available" style="margin-left:8px;">new in 0.9</span></span>
+      <h2 class="section-title">Measure and fix update behavior<br>before you publish.</h2>
+      <p class="section-sub">v0.9.0 makes CAVS a SteamPipe-class local build-update lab. Estimate a build transition under a public fixed-1MiB chunk model, diagnose the pack layouts that bloat updates (scattered churn, asset shuffling, distributed-TOC/offset cascades, global compression, metadata churn), preview every delivery route before release, and price the local disk I/O per device — entirely locally, uploading nothing. Every estimate is SteamPipe-<em>style</em>: a model from public documentation, never Valve's implementation. There is deliberately no separate steam-analyzer product.</p>
     </div>
-    <pre class="code"><span class="prompt">$</span> cavs-steam compare ./build_v1 ./build_v2 <span class="flag">--out</span> report
-<span class="prompt">$</span> open report/index.html   <span class="comment"># + summary.md, results.json, files.csv</span>
-
-<span class="comment"># CI gate — block a PR that would ship a disproportionate update</span>
-<span class="prompt">$</span> cavs-steam ci ./prev ./current \
-    <span class="flag">--max-estimated-update</span> 500MiB <span class="flag">--max-risk</span> high</pre>
+    <pre class="code"><span class="comment"># the numbers — fixed-1MiB model estimate</span>
+<span class="prompt">$</span> cavs bench steampipe-style ./build_v1 ./build_v2 <span class="flag">--out</span> results/
+<span class="comment"># the diagnosis — findings with causes and fixes</span>
+<span class="prompt">$</span> cavs analyze steampipe ./build_v1 ./build_v2 <span class="flag">--out</span> analysis.md
+<span class="prompt">$</span> cavs analyze-packs ./build_v1 ./build_v2
+<span class="prompt">$</span> cavs analyze godot-pck old.pck new.pck   <span class="comment"># names the res:// paths behind the churn</span>
+<span class="comment"># the decision — every route measured, one recommended</span>
+<span class="prompt">$</span> cavs publish-preview ./build_v2 <span class="flag">--previous</span> ./build_v1 <span class="flag">--routes</span> all
+<span class="prompt">$</span> cavs io-estimate ./build_v1 ./build_v2</pre>
     <div class="table-wrap reveal" style="margin-top:24px;">
       <table>
-        <thead><tr><th>Change on a 20 MiB pack</th><th class="num">SteamPipe update</th><th class="num">CAVS (FastCDC)</th><th class="num">Risk</th></tr></thead>
+        <thead><tr><th>Same 64 KiB edit, different pack layout</th><th class="num">SteamPipe-style estimate</th><th class="num">CAVS .cavsplan</th><th class="num">Diagnosis</th></tr></thead>
         <tbody>
-          <tr><td>Localized 200 KiB edit</td><td class="num">1.00 MiB <span class="dim">(95% reuse)</span></td><td class="num blue">257 KiB</td><td class="num">NONE</td></tr>
-          <tr><td>Insert 100 KiB at the start (reorder)</td><td class="num strike">20.10 MiB <span class="dim">(0% reuse)</span></td><td class="num blue">179 KiB</td><td class="num save">HIGH</td></tr>
+          <tr><td>Localized edit, stable layout</td><td class="num">1.00 MiB <span class="dim">(97% reuse)</span></td><td class="num blue">131 KiB</td><td class="num">OK</td></tr>
+          <tr><td>4 KiB inserted at the front (everything shifts)</td><td class="num strike">32.88 MiB <span class="dim">(0% reuse)</span></td><td class="num blue">7.4 KiB</td><td class="num save">asset_shuffling</td></tr>
+          <tr><td>Per-asset headers rewritten each build</td><td class="num strike">32.00 MiB <span class="dim">(3% reuse)</span></td><td class="num blue">2.13 MiB</td><td class="num save">toc_churn</td></tr>
+          <tr><td>Same edit, TOC centralized (the fix)</td><td class="num">1.88 MiB <span class="dim">(94% reuse)</span></td><td class="num blue">132 KiB</td><td class="num">OK</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="table-note">The second case is what the tool exists to catch: a real 100&nbsp;KiB change that, by shifting every offset, forces Steam to re-download the whole pack — flagged with the exact cause. Exit codes: <span class="mono">0</span> ok, <span class="mono">2</span> budget/risk exceeded, <span class="mono">3</span> tool error.</p>
+    <p class="table-note">Deterministic 32-asset packs, reproducible with <span class="mono">cavs bench steampipe-cases</span>. Layout — not content — decides fixed-chunk update cost; the analyzer names the cause and the fix, and content-defined CAVS routes absorb the pathology either way. A ~3-byte edit in a 256 MiB pack still costs <strong>512 MiB of local I/O</strong> unless the pack is split — <span class="mono">cavs io-estimate</span> flags exactly that.</p>
+
+    <div class="cards g3" style="margin-top:30px;">
+      <div class="card reveal"><span class="idx">// workspace</span><h3>Depots &amp; branches, locally</h3><p><span class="mono">cavs workspace init</span> · <span class="mono">depot add</span> · <span class="mono">branch add</span> · <span class="mono">build create</span> — SteamPipe-like apps/depots/branches/builds as local metadata, with atomic <span class="mono">branch promote / rollback</span> and per-depot promotion previews. No accounts, no platform.</p></div>
+      <div class="card reveal" style="transition-delay:.05s"><span class="idx">// sharing &amp; install plans</span><h3>Content reuse, priced</h3><p><span class="mono">depot analyze-sharing</span> reports shared bytes across depots (measured: windows ↔ linux 98.9%); <span class="mono">cavs install-plan</span> simulates what a player downloads by platform, language and ownership — with cross-depot chunk reuse (a demo owner with the full game: 0 B).</p></div>
+      <div class="card reveal" style="transition-delay:.1s"><span class="idx">// serve &amp; sign</span><h3>Dev server &amp; authenticity</h3><p><span class="mono">cavs serve</span> exposes the workspace over local HTTP (branches, depot files with Range, chunks by hash, update previews) for plugin testing — dev-only by design. <span class="mono">cavs build sign / verify / encrypt</span> add release authenticity and optional at-rest encryption — not DRM.</p></div>
+    </div>
   </div>
 </section>
 
