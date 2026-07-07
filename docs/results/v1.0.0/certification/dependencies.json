@@ -1,0 +1,30 @@
+[
+  {
+    "name": "butler",
+    "binary": "butler",
+    "available": false,
+    "version": null,
+    "required": false
+  },
+  {
+    "name": "xdelta3",
+    "binary": "xdelta3",
+    "available": true,
+    "version": "Xdelta version 3.2.0, Copyright (C) Joshua MacDonald",
+    "required": false
+  },
+  {
+    "name": "bsdiff",
+    "binary": "bsdiff",
+    "available": true,
+    "version": "bsdiff: usage: bsdiff oldfile newfile patchfile",
+    "required": false
+  },
+  {
+    "name": "godot",
+    "binary": "godot",
+    "available": true,
+    "version": "4.7.stable.official.5b4e0cb0f",
+    "required": false
+  }
+]

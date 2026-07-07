@@ -1,0 +1,90 @@
+{
+  "schema": "cavs-certify-regressions/1",
+  "result": "pass",
+  "deltas": [
+    {
+      "metric": "apply_ms",
+      "baseline": 214.0,
+      "current": 251.0,
+      "change_pct": 17.289719626168225,
+      "threshold_pct": 10.0,
+      "status": "pass"
+    },
+    {
+      "metric": "diff_ms",
+      "baseline": 506.0,
+      "current": 566.0,
+      "change_pct": 11.857707509881422,
+      "threshold_pct": 10.0,
+      "status": "pass"
+    },
+    {
+      "metric": "full_download_bytes",
+      "baseline": 133051236.0,
+      "current": 133051236.0,
+      "change_pct": 0.0,
+      "threshold_pct": 5.0,
+      "status": "pass"
+    },
+    {
+      "metric": "network_bytes",
+      "baseline": 2373505.0,
+      "current": 2373505.0,
+      "change_pct": 0.0,
+      "threshold_pct": 5.0,
+      "status": "pass"
+    },
+    {
+      "metric": "plan_bytes",
+      "baseline": 2373513.0,
+      "current": 2373513.0,
+      "change_pct": 0.0,
+      "threshold_pct": 5.0,
+      "status": "pass"
+    },
+    {
+      "metric": "plan_inline_bytes",
+      "baseline": 5780324.0,
+      "current": 5780324.0,
+      "change_pct": 0.0,
+      "threshold_pct": 5.0,
+      "status": "pass"
+    },
+    {
+      "metric": "plan_ops_total",
+      "baseline": 111.0,
+      "current": 111.0,
+      "change_pct": 0.0,
+      "threshold_pct": 5.0,
+      "status": "pass"
+    },
+    {
+      "metric": "signature_new_bytes",
+      "baseline": 89859.0,
+      "current": 89859.0,
+      "change_pct": 0.0,
+      "threshold_pct": 5.0,
+      "status": "pass"
+    },
+    {
+      "metric": "signature_old_bytes",
+      "baseline": 89095.0,
+      "current": 89095.0,
+      "change_pct": 0.0,
+      "threshold_pct": 5.0,
+      "status": "pass"
+    }
+  ],
+  "checks": [
+    {
+      "name": "byte-identical status",
+      "result": "pass",
+      "details": "current: true"
+    },
+    {
+      "name": "comparable metrics",
+      "result": "pass",
+      "details": "9 metrics compared"
+    }
+  ]
+}

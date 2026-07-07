@@ -1,0 +1,53 @@
+{
+  "schema": "cavs-certify-godot/1",
+  "result": "pass",
+  "byte_identical": true,
+  "checks": [
+    {
+      "name": "old PCK parse",
+      "result": "pass",
+      "details": "PCK v4.2.0 (pack format 2), 2 resources"
+    },
+    {
+      "name": "new PCK parse",
+      "result": "pass",
+      "details": "PCK v4.2.0 (pack format 2), 2 resources"
+    },
+    {
+      "name": ".cavsplan output byte-identical",
+      "result": "pass",
+      "details": "integrity checks: PASS"
+    },
+    {
+      "name": "chunk/hybrid route byte-identical",
+      "result": "pass",
+      "details": "CAVS chunk / hybrid (wire) — 72.63 KiB"
+    },
+    {
+      "name": "bootstrap route byte-identical",
+      "result": "pass",
+      "details": "full zstd-19 (CAVS bootstrap) — 2.50 MiB"
+    },
+    {
+      "name": "unverified PCKs never mounted",
+      "result": "pass",
+      "details": "every route verifies the reconstructed PCK hash before it is promoted/mounted"
+    },
+    {
+      "name": "Godot PCK analyzer report",
+      "result": "pass",
+      "details": "godot-pck-analysis.md (actionable layout recommendations)"
+    },
+    {
+      "name": "plugin API surface",
+      "result": "pass",
+      "details": "fetch, fetch_async and ensure_pack exported — the documented flow stays valid"
+    },
+    {
+      "name": "Godot engine smoke test",
+      "result": "skipped",
+      "details": "pass --godot-bin and --test-project to run it (optional)"
+    }
+  ],
+  "plugin_flow": "var cavs := CavsClient.new(\"http://127.0.0.1:8990\")\nvar result := cavs.fetch(\"main_pack\")   # blocking: run in a Thread\nif result.ok:\n    ProjectSettings.load_resource_pack(result.files[0])\n\n# or, in one line (fetch + mount the first .pck):\nCavsClient.new(\"http://127.0.0.1:8990\").ensure_pack(\"main_pack\")"
+}

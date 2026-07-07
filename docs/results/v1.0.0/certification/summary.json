@@ -1,0 +1,181 @@
+{
+  "schema": "cavs-certify-summary/1",
+  "cavs_version": "1.0.0",
+  "result": "warn",
+  "profile": "strict",
+  "mode": "directory",
+  "old": "dataset/Build_v1",
+  "new": "dataset/Build_v2",
+  "recommended_route": "CAVS offline plan (.cavsplan)",
+  "reason": [
+    "2.26 MiB network — the smallest verified payload",
+    "214 ms apply",
+    "streaming memory (no full old copy in RAM)",
+    "byte-identical output"
+  ],
+  "sections": [
+    {
+      "name": "Integrity",
+      "result": "pass",
+      "rows": [
+        {
+          "name": "old signature export+decode",
+          "result": "pass",
+          "details": "46 entries, 87.01 KiB"
+        },
+        {
+          "name": "new signature export+decode",
+          "result": "pass",
+          "details": "47 entries, 87.75 KiB"
+        },
+        {
+          "name": "old signature verify",
+          "result": "pass",
+          "details": "every block hash matches the source"
+        },
+        {
+          "name": "plan build+decode",
+          "result": "pass",
+          "details": "CAVSPLAN1, 111 ops, payload 5.51 MiB (2.26 MiB on the wire)"
+        },
+        {
+          "name": "no path traversal",
+          "result": "pass",
+          "details": "0 unsafe paths in 47 entries + 2 deletions"
+        },
+        {
+          "name": "apply output byte-identical",
+          "result": "pass",
+          "details": "verified against new signature in 213 ms (121.38 MiB from old, 5.51 MiB fresh)"
+        },
+        {
+          "name": "no-op reapply",
+          "result": "pass",
+          "details": "0 files rewritten (44 detected as no-op); output byte-identical"
+        },
+        {
+          "name": "corrupt signature rejected",
+          "result": "pass",
+          "details": "decoder refused a bit-flipped .cavssig"
+        },
+        {
+          "name": "corrupt plan rejected",
+          "result": "pass",
+          "details": "decoder refused a bit-flipped .cavsplan"
+        },
+        {
+          "name": "corrupted old input fails safely",
+          "result": "pass",
+          "details": "a bit flipped inside a reused old range never produced a verified output"
+        }
+      ],
+      "report": "integrity.md"
+    },
+    {
+      "name": "Routes",
+      "result": "pass",
+      "rows": [
+        {
+          "name": "state: cold-install",
+          "result": "pass",
+          "details": "bootstrap — 62.14 MiB network, 253 ms apply (62.14 MiB (estimated) over the wire · ~32.00 MiB peak RAM · 126.89 MiB temp disk · policy balanced)"
+        },
+        {
+          "name": "state: cold-cache-previous",
+          "result": "pass",
+          "details": ".cavsplan — 2.26 MiB network, 253 ms apply (2.26 MiB over the wire · ~40.00 MiB peak RAM · 31.72 MiB temp disk · policy balanced)"
+        },
+        {
+          "name": "state: warm-cache",
+          "result": "pass",
+          "details": ".cavsplan — 2.26 MiB network, 253 ms apply (2.26 MiB over the wire · ~40.00 MiB peak RAM · 31.72 MiB temp disk · policy balanced)"
+        },
+        {
+          "name": "state: exact-previous-version",
+          "result": "pass",
+          "details": ".cavsplan — 2.26 MiB network, 253 ms apply (2.26 MiB over the wire · ~40.00 MiB peak RAM · 31.72 MiB temp disk · policy balanced)"
+        },
+        {
+          "name": "state: low-ram",
+          "result": "pass",
+          "details": ".cavsplan — 2.26 MiB network, 253 ms apply (2.26 MiB over the wire · ~40.00 MiB peak RAM · 31.72 MiB temp disk · policy balanced)"
+        },
+        {
+          "name": "state: slow-hdd",
+          "result": "pass",
+          "details": ".cavsplan — 2.26 MiB network, 253 ms apply (2.26 MiB over the wire · ~40.00 MiB peak RAM · 31.72 MiB temp disk · policy balanced)"
+        },
+        {
+          "name": "state: limited-disk",
+          "result": "pass",
+          "details": ".cavsplan — 2.26 MiB network, 253 ms apply (2.26 MiB over the wire · ~40.00 MiB peak RAM · 31.72 MiB temp disk · policy balanced)"
+        },
+        {
+          "name": "measured routes verified",
+          "result": "pass",
+          "details": "8 routes measured, 2 skipped (missing tools)"
+        },
+        {
+          "name": "skipped: butler offline: no --butler-bin given",
+          "result": "skipped",
+          "details": "optional dependency not installed — skipped, never selected"
+        },
+        {
+          "name": "skipped: pairwise patches serve exactly one old→new pair; storage and generation cost grow with every published pair",
+          "result": "skipped",
+          "details": "optional dependency not installed — skipped, never selected"
+        }
+      ],
+      "report": "routes.md"
+    },
+    {
+      "name": "SteamPipe-style analysis",
+      "result": "warn",
+      "rows": [
+        {
+          "name": "steampipe-style analysis",
+          "result": "warn",
+          "details": "2 findings (2 non-info); est. download 16.90 MiB"
+        },
+        {
+          "name": "pack analysis",
+          "result": "pass",
+          "details": "pack-analysis.md"
+        },
+        {
+          "name": "disk I/O estimate",
+          "result": "pass",
+          "details": "4 routes estimated"
+        }
+      ],
+      "report": "steampipe-style.md"
+    },
+    {
+      "name": "Regression",
+      "result": "skipped",
+      "rows": [
+        {
+          "name": "baseline",
+          "result": "skipped",
+          "details": "no --baseline provided"
+        }
+      ],
+      "report": null
+    }
+  ],
+  "metrics": {
+    "apply_ms": 214.0,
+    "byte_identical": 1.0,
+    "diff_ms": 506.0,
+    "full_download_bytes": 133051236.0,
+    "network_bytes": 2373505.0,
+    "plan_bytes": 2373513.0,
+    "plan_inline_bytes": 5780324.0,
+    "plan_ops_total": 111.0,
+    "signature_new_bytes": 89859.0,
+    "signature_old_bytes": 89095.0
+  },
+  "byte_identical": true,
+  "exit_code": 2,
+  "note": "CAVS certifies game updates locally before release. CAVS is not a CDN, marketplace, SaaS, DRM system or game store; SteamPipe-style figures are estimates from a public model, never Valve's implementation."
+}

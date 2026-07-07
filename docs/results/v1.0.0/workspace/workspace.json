@@ -1,0 +1,108 @@
+{
+  "schema": "cavs-certify-workspace/1",
+  "result": "pass",
+  "checks": [
+    {
+      "name": "metadata parse",
+      "result": "pass",
+      "details": "workspace.toml valid"
+    },
+    {
+      "name": "app exists",
+      "result": "pass",
+      "details": "app 'my-game'"
+    },
+    {
+      "name": "depots exist",
+      "result": "pass",
+      "details": "5: base, dlc1, windows, linux, lang-es"
+    },
+    {
+      "name": "branches valid",
+      "result": "pass",
+      "details": "1 branches, every reference resolves"
+    },
+    {
+      "name": "from build",
+      "result": "pass",
+      "details": "'build_1001' → build_1001 (5 depots)"
+    },
+    {
+      "name": "to build",
+      "result": "pass",
+      "details": "'build_1002' → build_1002 (5 depots)"
+    },
+    {
+      "name": "build depot indices",
+      "result": "pass",
+      "details": "5 indices load"
+    },
+    {
+      "name": "branch promote preview",
+      "result": "pass",
+      "details": "branch 'beta' → build build_1002"
+    },
+    {
+      "name": "rollback preview",
+      "result": "pass",
+      "details": "branch 'beta' can roll back to previously-served build 'build_1001'"
+    },
+    {
+      "name": "depot sharing",
+      "result": "pass",
+      "details": "10 pairs, deterministic; depot-sharing.md"
+    },
+    {
+      "name": "per-depot update cost",
+      "result": "pass",
+      "details": "base: 9.25 MiB, windows: 0 B, linux: 0 B, lang-es: 0 B, dlc1: 0 B"
+    },
+    {
+      "name": "install-plan linux + base",
+      "result": "pass",
+      "details": "install-plans/linux--base.md"
+    },
+    {
+      "name": "install-plan windows + base",
+      "result": "pass",
+      "details": "install-plans/windows--base.md"
+    },
+    {
+      "name": "install-plan linux + es + lang-es",
+      "result": "pass",
+      "details": "install-plans/linux--es--lang-es.md"
+    },
+    {
+      "name": "install-plan linux + base + dlc1",
+      "result": "pass",
+      "details": "install-plans/linux--base--dlc1.md"
+    }
+  ],
+  "depot_costs": [
+    {
+      "depot": "base",
+      "total_bytes": 133051236,
+      "update_bytes": 9699954
+    },
+    {
+      "depot": "windows",
+      "total_bytes": 4000000,
+      "update_bytes": 0
+    },
+    {
+      "depot": "linux",
+      "total_bytes": 4000000,
+      "update_bytes": 0
+    },
+    {
+      "depot": "lang-es",
+      "total_bytes": 300000,
+      "update_bytes": 0
+    },
+    {
+      "depot": "dlc1",
+      "total_bytes": 8000000,
+      "update_bytes": 0
+    }
+  ]
+}

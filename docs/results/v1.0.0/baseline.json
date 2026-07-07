@@ -1,0 +1,17 @@
+{
+  "schema": "cavs-certify-baseline/1",
+  "cavs_version": "1.0.0",
+  "byte_identical": true,
+  "metrics": {
+    "apply_ms": 214.0,
+    "byte_identical": 1.0,
+    "diff_ms": 506.0,
+    "full_download_bytes": 133051236.0,
+    "network_bytes": 2373505.0,
+    "plan_bytes": 2373513.0,
+    "plan_inline_bytes": 5780324.0,
+    "plan_ops_total": 111.0,
+    "signature_new_bytes": 89859.0,
+    "signature_old_bytes": 89095.0
+  }
+}

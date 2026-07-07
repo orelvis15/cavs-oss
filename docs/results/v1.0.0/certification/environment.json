@@ -1,0 +1,24 @@
+{
+  "os": "macOS 26.5.1 (Darwin 25.5.0)",
+  "arch": "aarch64",
+  "cpu": "Apple M3 Pro",
+  "ram_gib": 36.0,
+  "disk": "APFS (internal NVMe SSD)",
+  "cavs_version": "cavs 1.0.0",
+  "tool_versions": [
+    [
+      "bsdiff",
+      "present: bsdiff oldfile newfile patchfile"
+    ],
+    [
+      "xdelta3",
+      "Xdelta version 3.2.0, Copyright (C) Joshua MacDonald"
+    ],
+    [
+      "zstd (linked library)",
+      "1.5.7"
+    ]
+  ],
+  "command": "/Users/l41777/Documents/repositories/bitlakelab/cavs-oss/target/release/cavs certify --old dataset/Build_v1 --new dataset/Build_v2 --profile strict --save-baseline baseline.json --out ./certification",
+  "seed": 0
+}

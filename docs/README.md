@@ -56,4 +56,25 @@
   the development-only workspace server (branches, depots, chunks, ranges).
 - [GODOT_PCK_ANALYZER.md](GODOT_PCK_ANALYZER.md) — v0.9.0: PCK-aware
   analysis that maps changed bytes back to `res://` paths.
+- [CERTIFICATION.md](CERTIFICATION.md) — v1.0.0: `cavs certify` — the
+  release-readiness suite: integrity, routes, regressions, Godot,
+  workspace, profiles, exit codes and report schemas.
+- [TRY_CAVS.md](TRY_CAVS.md) — v1.0.0: try CAVS on your own game build in
+  minutes — install, preview, certify, use cases, troubleshooting, FAQ.
+- [ROUTE_SELECTION.md](ROUTE_SELECTION.md) — v1.0.0: the certified route
+  selection rules across client states, and how decisions are scored and
+  explained.
+- [CI.md](CI.md) — v1.0.0: certification in GitHub Actions / GitLab CI —
+  the ci profile, JSON output, exit-code gates and baselines.
+- [REPRODUCIBILITY.md](REPRODUCIBILITY.md) — v1.0.0: deterministic
+  certification bundles others can verify — contents and guarantees.
+- [COMPATIBILITY.md](COMPATIBILITY.md) — v1.0.0: what "stable" means for
+  v1.x — frozen CLI families, formats, schemas, exit codes and the
+  deprecation rules.
+- [FILE_FORMATS.md](FILE_FORMATS.md) — v1.0.0: index of every on-disk
+  format and JSON schema with its stability status.
+- [GODOT_PLUGIN.md](GODOT_PLUGIN.md) — v1.0.0: the stable Godot runtime
+  API (`fetch`/`fetch_async`/`ensure_pack`) and PCK certification.
+- [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) — v1.0.0: the gate every
+  release runs before tagging.
 - [PAPER.md](PAPER.md) — the technical paper: design, rationale, and results.

@@ -1,0 +1,85 @@
+{
+  "mode": "directory",
+  "old": "dataset/Build_v1",
+  "new": "dataset/Build_v2",
+  "old_size_bytes": 131937085,
+  "new_size_bytes": 133051236,
+  "routes": [
+    {
+      "route": "full download (raw)",
+      "network_bytes": 133051236,
+      "diff_ms": null,
+      "apply_ms": 0,
+      "peak_rss_mib": null,
+      "output_ok": true,
+      "notes": "no old-version reuse"
+    },
+    {
+      "route": "full zstd-19 (CAVS bootstrap)",
+      "network_bytes": 65134584,
+      "diff_ms": 4074,
+      "apply_ms": 10,
+      "peak_rss_mib": null,
+      "output_ok": true,
+      "notes": "cache-less first install"
+    },
+    {
+      "route": "CAVS chunk / hybrid (wire)",
+      "network_bytes": 4625634,
+      "diff_ms": 258,
+      "apply_ms": null,
+      "peak_rss_mib": null,
+      "output_ok": true,
+      "notes": "80 of 1093 chunks new; same bytes for warm cache or cold cache + previous install (hybrid)"
+    },
+    {
+      "route": "CAVS offline plan (.cavsplan)",
+      "network_bytes": 2373505,
+      "diff_ms": 506,
+      "apply_ms": 214,
+      "peak_rss_mib": null,
+      "output_ok": true,
+      "notes": "portable patch: signature diff + zstd-19 payload, journaled apply"
+    },
+    {
+      "route": "pairwise proxy: bsdiff+zstd-19",
+      "network_bytes": 2907091,
+      "diff_ms": 25065,
+      "apply_ms": 3516,
+      "peak_rss_mib": 1467.90625,
+      "output_ok": true,
+      "notes": "one exact old→new pair only (proxy)"
+    },
+    {
+      "route": "pairwise proxy: bsdiff+brotli-9",
+      "network_bytes": 2907215,
+      "diff_ms": 25065,
+      "apply_ms": 3516,
+      "peak_rss_mib": 1467.90625,
+      "output_ok": true,
+      "notes": "one exact old→new pair only (proxy)"
+    },
+    {
+      "route": "pairwise proxy: xdelta3+zstd-19",
+      "network_bytes": 2891816,
+      "diff_ms": 4013,
+      "apply_ms": 3510,
+      "peak_rss_mib": 396.5,
+      "output_ok": true,
+      "notes": "one exact old→new pair only (proxy)"
+    },
+    {
+      "route": "pairwise proxy: xdelta3+brotli-9",
+      "network_bytes": 2891290,
+      "diff_ms": 4013,
+      "apply_ms": 3510,
+      "peak_rss_mib": 396.5,
+      "output_ok": true,
+      "notes": "one exact old→new pair only (proxy)"
+    }
+  ],
+  "skipped": [
+    "butler offline: no --butler-bin given",
+    "pairwise patches serve exactly one old→new pair; storage and generation cost grow with every published pair"
+  ]
+}

@@ -27,10 +27,11 @@
   <div class="nav-inner">
     <a href="index.html" class="brand">
       <img src="assets/logo-transparent-128.png" alt="CAVS logo" />
-      CAVS <span class="tag">v0.9.0</span>
+      CAVS <span class="tag">v1.0.0</span>
     </a>
     <nav class="nav-links" id="navLinks">
       <a class="nav-page" href="index.html">Home</a>
+      <a class="nav-page" href="try.html">Try CAVS</a>
       <a class="nav-page" href="benchmarks.html">Benchmarks</a>
       <a class="nav-page active" href="products.html">Products</a>
       <a class="nav-page" href="changelog.html">Changelog</a>
@@ -376,7 +377,14 @@
 <span class="comment"># bytes : 20.58 MiB — 19.00 from the old install, 1.58 from the plan</span></pre>
       </div>
       <div style="grid-column:1 / -1;">
-        <p class="mono" style="color:var(--green); font-size:13px; margin-bottom:10px;">6 — Auto-route delivery (publish · policy · route-plan)</p>
+        <p class="mono" style="color:var(--green); font-size:13px; margin-bottom:10px;">6 — Certify before release (v1.0.0)</p>
+        <pre class="code"><span class="prompt">$</span> cavs certify <span class="flag">--old</span> ./Build_v1 <span class="flag">--new</span> ./Build_v2 <span class="flag">--profile</span> release <span class="flag">--out</span> ./certification
+<span class="comment"># Result: PASS — integrity, routes, regression, SteamPipe-style analysis</span>
+<span class="comment"># byte-identical output · recommended route: .cavsplan (2.26 MiB vs 126.89 MiB full)</span>
+<span class="comment"># exit codes: 0 pass · 1 fail · 2 warnings · 3 missing dep · 4 bad input · 5 internal</span></pre>
+      </div>
+      <div style="grid-column:1 / -1;">
+        <p class="mono" style="color:var(--green); font-size:13px; margin-bottom:10px;">7 — Auto-route delivery (publish · policy · route-plan)</p>
         <pre class="code"><span class="prompt">$</span> cavs publish-dir ./Build_v2 <span class="flag">--previous</span> ./Build_v1 <span class="flag">--out-dir</span> releases/
 <span class="prompt">$</span> cavs patch-policy <span class="flag">--versions</span> v1,...,v10 <span class="flag">--distribution</span> shares.json
 <span class="prompt">$</span> cavs route-plan <span class="flag">--installed</span> ./InstalledGame <span class="flag">--new</span> ./Build_v2 \

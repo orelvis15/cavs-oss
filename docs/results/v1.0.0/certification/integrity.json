@@ -1,0 +1,67 @@
+{
+  "schema": "cavs-certify-integrity/1",
+  "result": "pass",
+  "byte_identical": true,
+  "checks": [
+    {
+      "name": "old signature export+decode",
+      "result": "pass",
+      "details": "46 entries, 87.01 KiB"
+    },
+    {
+      "name": "new signature export+decode",
+      "result": "pass",
+      "details": "47 entries, 87.75 KiB"
+    },
+    {
+      "name": "old signature verify",
+      "result": "pass",
+      "details": "every block hash matches the source"
+    },
+    {
+      "name": "plan build+decode",
+      "result": "pass",
+      "details": "CAVSPLAN1, 111 ops, payload 5.51 MiB (2.26 MiB on the wire)"
+    },
+    {
+      "name": "no path traversal",
+      "result": "pass",
+      "details": "0 unsafe paths in 47 entries + 2 deletions"
+    },
+    {
+      "name": "apply output byte-identical",
+      "result": "pass",
+      "details": "verified against new signature in 213 ms (121.38 MiB from old, 5.51 MiB fresh)"
+    },
+    {
+      "name": "no-op reapply",
+      "result": "pass",
+      "details": "0 files rewritten (44 detected as no-op); output byte-identical"
+    },
+    {
+      "name": "corrupt signature rejected",
+      "result": "pass",
+      "details": "decoder refused a bit-flipped .cavssig"
+    },
+    {
+      "name": "corrupt plan rejected",
+      "result": "pass",
+      "details": "decoder refused a bit-flipped .cavsplan"
+    },
+    {
+      "name": "corrupted old input fails safely",
+      "result": "pass",
+      "details": "a bit flipped inside a reused old range never produced a verified output"
+    }
+  ],
+  "metrics": {
+    "apply_ms": 213.0,
+    "byte_identical": 1.0,
+    "network_bytes": 2373513.0,
+    "plan_bytes": 2373513.0,
+    "plan_inline_bytes": 5780324.0,
+    "plan_ops_total": 111.0,
+    "signature_new_bytes": 89859.0,
+    "signature_old_bytes": 89095.0
+  }
+}

@@ -6,6 +6,101 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.0] — The release certification suite
+
+Highlights:
+
+- New `cavs certify` release-readiness suite.
+- Certification profiles: quick, standard, release, strict, ci.
+- Deterministic reproducibility bundles.
+- Route certification across cold install, warm cache, previous
+  install, low RAM and slow HDD states.
+- Godot PCK certification using the real plugin API
+  (`CavsClient.fetch` / `fetch_async` / `ensure_pack`).
+- Regression guard with absolute noise floor for timing/RAM metrics.
+- v1.0.0 public trial guide at `/try`.
+
+CAVS v1.0.0 adds `cavs certify`, a full release-readiness workflow for
+game updates. Certification verifies integrity, byte-identical
+reconstruction, route selection, regression safety, Godot PCK
+compatibility, workspace/depot install plans, SteamPipe-style analysis,
+butler comparisons when available, disk I/O estimates and reproducible
+reports — one command, stable exit codes, Markdown and JSON output.
+
+### Results
+
+Measured on the deterministic v1.0.0 suite (`docs/results/v1.0.0/`,
+reproducible with `docs/results/v1.0.0/scripts/run-all.sh`):
+
+- A 125.83 MiB directory build with ~2% drift certifies end-to-end in
+  ~73 s under the strict profile: 2.26 MiB `.cavsplan` network
+  (−98.2% vs full download), 214 ms verified byte-identical apply,
+  0 files rewritten on no-op reapply, and every corruption smoke case
+  (bit-flipped signature, plan and old input) rejected cleanly.
+- The Godot case reconstructs the PCK byte-identically on every route
+  (72.63 KiB chunk/hybrid wire for a one-resource edit vs a 2.50 MiB
+  bootstrap) and the plugin API surface is verified unchanged.
+- A 5-depot workspace (base/windows/linux/lang-es/dlc1) certifies
+  promote/rollback previews, deterministic depot sharing and install
+  plans per platform/language/ownership; only the changed base depot
+  costs anything to update (9.25 MiB of 126.89 MiB).
+- Re-certifying the same pair against its own baseline passes the
+  regression guard with byte counts exact.
+
+### Added
+
+- `cavs certify` — the release-readiness orchestrator (artifact,
+  directory, Godot PCK and workspace modes).
+- `cavs certify integrity` — signatures, plans, path safety, mandatory
+  byte-identical apply, no-op reapply, corruption smoke checks.
+- `cavs certify routes` — planner decisions certified across the
+  documented client-state matrix plus the measured route matrix with
+  per-route output verification.
+- `cavs certify regressions` — baseline comparison with configurable
+  thresholds (5%/10%/20% defaults), absolute noise floors for timing
+  and RAM metrics, and `--allow-regression metric=reason` exceptions;
+  `--save-baseline` records baselines.
+- `cavs certify godot` — byte-identical PCK on every route, PCK
+  analyzer report, plugin API surface check, optional headless engine
+  smoke test.
+- `cavs certify workspace` — metadata, branches, promote/rollback
+  previews, deterministic depot sharing, per-depot update cost and
+  install-plan states.
+- `cavs certify export-repro` — deterministic reproducibility bundle
+  (tar.zst) with commands, environment, tool versions, reports and
+  hashes; never private inputs unless `--include-inputs`.
+- Certification profiles: quick, standard, release, strict and ci.
+- CI-friendly exit codes (0 pass / 1 fail / 2 warnings / 3 missing
+  dependency / 4 invalid input / 5 internal error), `--json-out`,
+  `--fail-on-warning`.
+- Certification report bundle: Markdown + JSON per section, plus
+  `dependencies.json`, `environment.json`, `commands.sh` and hashed
+  artifacts.
+- Landing page "Try CAVS" guide (`/try`) with real commands and use
+  cases; docs: CERTIFICATION, TRY_CAVS, CI, COMPATIBILITY,
+  FILE_FORMATS, GODOT_PLUGIN, REPRODUCIBILITY, ROUTE_SELECTION,
+  RELEASE_CHECKLIST.
+
+### Stabilized
+
+- Core CLI command families (pack, pack-dir, signature, preview,
+  diff-plan, apply, verify-install, bench, analyze, publish-preview,
+  plan-update, workspace/depot/branch/build, install-plan, certify).
+- `.cavs`, `.cavsmf2`, `.cavssig`, `.cavsplan` and `.cavspatch` format
+  documentation, with the v1.x compatibility policy
+  (docs/COMPATIBILITY.md).
+- Godot plugin runtime flow (`CavsClient.fetch` / `fetch_async` /
+  `ensure_pack`).
+- Route planner reports and certification JSON schemas
+  (`cavs-certify-*/1`).
+- Benchmark report structure (docs/results/v1.0.0).
+
+### Notes
+
+CAVS v1.0.0 remains a local build-update engine and analysis toolkit.
+It is not a CDN, marketplace, DRM system, SteamPipe clone or itch.io
+replacement.
+
 ## [0.9.0] — SteamPipe-style local analysis
 
 CAVS now includes a SteamPipe-style update analyzer and build

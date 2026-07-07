@@ -32,10 +32,11 @@
   <div class="nav-inner">
     <a href="index.html" class="brand">
       <img src="assets/logo-transparent-128.png" alt="CAVS logo" />
-      CAVS <span class="tag">v0.9.0</span>
+      CAVS <span class="tag">v1.0.0</span>
     </a>
     <nav class="nav-links" id="navLinks">
       <a class="nav-page active" href="index.html">Home</a>
+      <a class="nav-page" href="try.html">Try CAVS</a>
       <a class="nav-page" href="benchmarks.html">Benchmarks</a>
       <a class="nav-page" href="products.html">Products</a>
       <a class="nav-page" href="changelog.html">Changelog</a>
@@ -234,6 +235,11 @@ cavs-client fetch http://localhost:8990 game_v2 --cache ./cache">copy</span>
         <p>SteamPipe-style update estimates, pack-layout diagnosis (churn, shuffling, TOC, compression), publish previews across every route, disk I/O estimates and a local depot/branch workspace — all inside the <span class="mono">cavs</span> CLI.</p>
       </div>
       <div class="card reveal" style="transition-delay:.05s">
+        <span class="idx">// cavs certify</span>
+        <h3>Release Certification <span class="badge available" style="font-size:9.5px;">new in 1.0</span></h3>
+        <p>One command answers "is this update ready to publish?" — byte-identical verification, route selection per client state, regression guard, Godot PCK checks and reproducible reports with CI-stable exit codes.</p>
+      </div>
+      <div class="card reveal" style="transition-delay:.1s">
         <span class="idx">// unity</span>
         <h3>Unity plugin <span class="badge soon" style="font-size:9.5px;">soon</span></h3>
         <p>CAVS delivery for AssetBundles and Addressables, backed by the Rust core over a stable C ABI.</p>
@@ -302,9 +308,10 @@ cavs-client fetch http://localhost:8990 game_v2 --cache ./cache">copy</span>
     <div class="cta-final reveal">
       <span class="eyebrow" style="justify-content:center;">Get started</span>
       <h2>Try CAVS on your own build.</h2>
-      <p>Run CAVS against two versions of your game build and compare full download vs update payload, manifest overhead, cache reuse and reconstruction integrity.</p>
+      <p>Run CAVS against two versions of your game build: compare update routes, inspect why updates are large, certify byte-identical reconstruction and export a reproducible report — all locally, in minutes.</p>
       <div class="hero-cta">
-        <a class="btn btn-primary" href="https://github.com/orelvis15/cavs" target="_blank" rel="noopener">
+        <a class="btn btn-primary" href="try.html">Try CAVS →</a>
+        <a class="btn btn-ghost" href="https://github.com/orelvis15/cavs" target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49l-.01-1.9c-2.78.62-3.37-1.22-3.37-1.22-.46-1.18-1.11-1.5-1.11-1.5-.91-.63.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.79-4.57 5.05.36.32.68.94.68 1.9l-.01 2.82c0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/></svg>
           View on GitHub
         </a>
@@ -325,6 +332,7 @@ cavs-client fetch http://localhost:8990 game_v2 --cache ./cache">copy</span>
       </div>
       <div class="foot-links">
         <a href="https://github.com/orelvis15/cavs" target="_blank" rel="noopener">GitHub</a>
+        <a href="try.html">Try CAVS</a>
         <a href="benchmarks.html">Benchmarks</a>
         <a href="products.html">Products</a>
         <a href="changelog.html">Changelog</a>

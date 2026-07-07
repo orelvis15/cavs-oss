@@ -1,0 +1,8 @@
+{
+  "old_blake3": "891d6dcda530cec96eb2ffbc46c123568ce12b42c69d0d5ebf92f294423f3a8c",
+  "new_blake3": "fcca9b20dd549f4b0a4dc643e7aaa39a6f02e62f26dfcfaa5731aa24cad9023e",
+  "output_verified_against": "new.cavssig",
+  "old_merkle_root": "741c15fa237961ac51d03b2ac11e1e7a65cfd733406a3967429fb50e5310e3bc",
+  "new_merkle_root": "78cada5aeb58a09f0e49e6b5e86682a46e2fe16983519feb9a481703bcc2af20",
+  "plan_file_blake3": "32a6bd4b1c986255354aeca6aa84247523b2a7dc8bb0ad8491ee0a3895211a3a"
+}

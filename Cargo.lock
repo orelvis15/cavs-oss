@@ -295,7 +295,7 @@ checksum = "8ae3f5d315924270530207e2a68396c3cc547f6dca3fbdca317cfb1a51edb593"
 
 [[package]]
 name = "cavs-analyzer"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "cavs-chunker",
@@ -309,14 +309,14 @@ dependencies = [
 
 [[package]]
 name = "cavs-chunker"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "fastcdc",
 ]
 
 [[package]]
 name = "cavs-cli"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -338,6 +338,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tar",
  "tempfile",
  "tokio",
  "toml",
@@ -347,7 +348,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-client"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "cavs-chunker",
@@ -370,7 +371,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-format"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "cavs-hash",
  "cavs-store",
@@ -382,14 +383,14 @@ dependencies = [
 
 [[package]]
 name = "cavs-hash"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "blake3",
 ]
 
 [[package]]
 name = "cavs-manifest"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "cavs-format",
  "cavs-hash",
@@ -401,7 +402,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-plan"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "cavs-hash",
  "cavs-proto",
@@ -415,7 +416,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-proto"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "cavs-hash",
  "serde",
@@ -425,7 +426,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-rebuild-plan"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -433,7 +434,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-server"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -456,7 +457,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-signature"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "cavs-hash",
  "tempfile",
@@ -465,7 +466,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-store"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "cavs-hash",
  "serde",
@@ -477,7 +478,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-workspace"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "cavs-chunker",
@@ -774,6 +775,16 @@ name = "fiat-crypto"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
+
+[[package]]
+name = "filetime"
+version = "0.2.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c287a33c7f0a620c38e641e7f60827713987b3c0f26e8ddc9462cc69cf75759"
+dependencies = [
+ "cfg-if",
+ "libc",
+]
 
 [[package]]
 name = "find-msvc-tools"
@@ -1680,6 +1691,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tar"
+version = "0.4.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
+dependencies = [
+ "filetime",
+ "libc",
+ "xattr",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2151,6 +2173,16 @@ name = "writeable"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
+
+[[package]]
+name = "xattr"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
+dependencies = [
+ "libc",
+ "rustix",
+]
 
 [[package]]
 name = "yasna"
