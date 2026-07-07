@@ -220,7 +220,7 @@ pub fn bench(args: &RoutesArgs) -> Result<()> {
                 peak_rss_mib: b.peak_rss_mib,
                 output_ok: Some(b.output_matches),
                 notes: format!(
-                    "+{} signature; not itch.io's backend-optimized patch",
+                    "+{} signature; default patch (bench butler-full measures the optimized one)",
                     human_bytes(b.signature_pwr_sig_bytes)
                 ),
             }),
@@ -244,7 +244,7 @@ pub fn bench(args: &RoutesArgs) -> Result<()> {
                         apply_ms: Some(res.apply_ms),
                         peak_rss_mib: res.peak_rss_mib,
                         output_ok: Some(res.output_matches),
-                        notes: "one exact old→new pair only (proxy, not itch.io backend)".into(),
+                        notes: "one exact old→new pair only (proxy)".into(),
                     });
                 }
                 for n in p.notes {

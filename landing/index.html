@@ -469,12 +469,13 @@
   <div class="nav-inner">
     <a href="#top" class="brand">
       <img src="assets/logo.png" alt="CAVS logo" />
-      CAVS <span class="tag">v0.7.0</span>
+      CAVS <span class="tag">v0.8.0</span>
     </a>
     <nav class="nav-links" id="navLinks">
       <a href="#benchmarks">Benchmarks</a>
       <a href="#hybrid">Hybrid</a>
       <a href="#offline">Offline</a>
+      <a href="#planner">Planner</a>
       <a href="#how">How it works</a>
       <a href="#compare">Vs. deltas</a>
       <a href="#quickstart">Quickstart</a>
@@ -510,7 +511,7 @@
         <div class="trust">
           <span><i class="dot"></i>Byte-identical reconstruction</span>
           <span><i class="dot"></i>Warm re-fetch: 0 bytes</span>
-          <span><i class="dot"></i>v0.7.0: offline sign · diff · apply · verify</span>
+          <span><i class="dot"></i>v0.8.0: auto-route optimized delivery</span>
         </div>
       </div>
 
@@ -770,7 +771,57 @@
       </table>
     </div>
     <div class="callout">
-      On a shifted artifact (every byte moved) the offline plan ships <span class="big">4.21 KiB</span> vs butler's 68 KiB — 16× less — and ties the byte-level tools. The butler harness measures butler's offline/default patch, not itch.io's backend-optimized patch; bsdiff/xdelta3 are labeled as an optimized pairwise proxy.
+      On a shifted artifact (every byte moved) the offline plan ships <span class="big">4.21 KiB</span> vs butler's 68 KiB — 16× less — and ties the byte-level tools. The butler harness measures butler's offline/default patch; bsdiff/xdelta3 are labeled as an optimized pairwise proxy.
+    </div>
+  </div>
+</section>
+
+<!-- ============ DELIVERY PLANNER (v0.8.0) ============ -->
+<section id="planner">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Auto-route delivery — v0.8.0</span>
+      <h2 class="section-title">One update, seven routes.<br>The planner picks.</h2>
+      <p class="section-sub">v0.8.0 introduces auto-route optimized delivery: a planner that chooses between chunks, hybrid reconstruction, offline plans, optimized sidecars, bootstrap, full download or no-op — based on client state, memory budget and measured route cost. In the v0.8.0 benchmark suite, the auto-route matched or beat the optimized baseline in network bytes, apply time, peak RAM, correctness, multi-version storage and arbitrary version jumps.</p>
+    </div>
+    <div class="cards g4" style="margin-bottom:26px;">
+      <div class="card reveal">
+        <span class="idx">// route-plan</span>
+        <h3>Cost-scored routes</h3>
+        <p><span class="mono">cavs route-plan</span> prices every route for one concrete client under device profiles — <span class="mono">low-memory</span> excludes anything over its RAM budget and falls back to the streaming plan.</p>
+      </div>
+      <div class="card reveal" style="transition-delay:.05s">
+        <span class="idx">// optimize-patch</span>
+        <h3>Per-file sidecars</h3>
+        <p><span class="mono">.cavspatch</span> v2 picks the best strategy per file by measuring real candidates: copy-old (renames ship as metadata), streaming plan ops, bsdiff, xdelta3 or recompressed data. <span class="mono">--explain-strategies</span> shows why.</p>
+      </div>
+      <div class="card reveal" style="transition-delay:.1s">
+        <span class="idx">// patch-policy</span>
+        <h3>Hot pairs, never O(N²)</h3>
+        <p>Optimized patches only for pairs that matter — previous, latest-stable, top-installed. 10 versions: store + 3 sidecars = 35.91&nbsp;MiB vs 144.23&nbsp;MiB for all 45 pair patches.</p>
+      </div>
+      <div class="card reveal" style="transition-delay:.15s">
+        <span class="idx">// publish-dir</span>
+        <h3>One-pass publishing</h3>
+        <p><span class="mono">cavs publish-dir</span> emits container, signature, plan and sidecar against the previous release — preceded by a preview with rename detection and compressed-blob warnings.</p>
+      </div>
+    </div>
+    <p class="section-sub" style="margin-bottom:14px;">The full external pipeline, measured — default <span class="mono">diff</span> and optimized <span class="mono">rediff --rediff-quality 9</span> — vs the CAVS auto-route on the same 126&nbsp;MiB directory release. butler v15.28.0; every output byte-identical; RSS via <span class="mono">/usr/bin/time</span> on real binaries.</p>
+    <div class="table-wrap reveal">
+      <table>
+        <thead>
+          <tr><th>Route</th><th class="num">Download</th><th class="num">Generate</th><th class="num">Apply</th><th class="num">Peak RAM</th></tr>
+        </thead>
+        <tbody>
+          <tr style="background:rgba(56,189,248,0.04)"><td><strong class="blue">CAVS auto-route (plan)</strong></td><td class="num blue">2.51 MiB</td><td class="num blue">0.54 s</td><td class="num">391 ms</td><td class="num blue">23 MiB</td></tr>
+          <tr><td>butler diff (default)</td><td class="num">2.52 MiB</td><td class="num">1.0 s</td><td class="num">331 ms</td><td class="num">35 MiB</td></tr>
+          <tr><td>butler rediff q9 (optimized)</td><td class="num">2.51 MiB</td><td class="num">11.6 s</td><td class="num">403 ms</td><td class="num">97 MiB</td></tr>
+          <tr><td>Pairwise proxy (xdelta3+zstd-19)</td><td class="num">3.01 MiB</td><td class="num">4.1 s</td><td class="num">3.4 s</td><td class="num">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      Shifted artifact: CAVS <span class="big">4.21 KiB</span> vs 11.39 KiB for the optimized patch — smaller, 2.2× faster apply, 12% of the RAM. Compressed-blob weak case closed: per-file xdelta3 routing ships <span class="big">2.53 MiB</span> where block routes paid 21.9 MiB. Raw outputs, environment, exact reproduction commands and known tradeoffs: <span class="mono">docs/results/v0.8.0/</span>.
     </div>
   </div>
 </section>
@@ -996,6 +1047,17 @@
 <span class="comment">#   files : 6 written, 38 unchanged (no-op), 2 deleted</span>
 <span class="comment">#   bytes : 20.58 MiB — 19.00 MiB from the old install, 1.58 MiB from the plan</span></pre>
       </div>
+
+      <div class="reveal" style="margin-top:26px;">
+        <p class="mono" style="color:var(--green); font-size:13px; margin-bottom:10px;">7 — v0.8.0: auto-route delivery (publish · policy · route-plan)</p>
+        <pre class="code"><span class="prompt">$</span> cavs publish-dir ./Build_v2 <span class="flag">--previous</span> ./Build_v1 <span class="flag">--out-dir</span> releases/
+<span class="prompt">$</span> cavs patch-policy <span class="flag">--versions</span> v1,...,v10 <span class="flag">--distribution</span> shares.json
+<span class="prompt">$</span> cavs route-plan <span class="flag">--installed</span> ./InstalledGame <span class="flag">--new</span> ./Build_v2 \
+    <span class="flag">--patch</span> releases/v1_to_v2.cavspatch <span class="flag">--profile</span> low-memory
+
+<span class="comment"># cavspatch  7.67 MiB  ram 551.67 MiB  [excluded] over the 128 MiB budget</span>
+<span class="comment"># chosen : cavsplan — 7.63 MiB over the wire, fits low-memory (40 MiB peak)</span></pre>
+      </div>
     </div>
   </div>
 </section>
@@ -1032,6 +1094,7 @@
       <div class="rel-row"><span class="ver">v0.5.0</span><span class="focus">Production hardening</span><span class="res">Resume, repair, fuzzing, corruption matrix, large-build suite</span></div>
       <div class="rel-row"><span class="ver">v0.6.0</span><span class="focus">Hybrid reconstruction</span><span class="res">Reuse the installed version: −90% updates on a cold cache, signatures, directory mode</span></div>
       <div class="rel-row"><span class="ver">v0.7.0</span><span class="focus">Offline toolkit</span><span class="res">Sign, preview, diff, apply, verify locally; portable .cavsplan patches; fair butler + multi-route benchmarks</span></div>
+      <div class="rel-row"><span class="ver">v0.8.0</span><span class="focus">Auto-route delivery</span><span class="res">Route planner with device profiles, per-file .cavspatch sidecars, hot-pair policy, full-pipeline proof suite</span></div>
     </div>
   </div>
 </section>
@@ -1097,7 +1160,9 @@
       <div class="faq-item"><button class="faq-q">Why not just use xdelta3 or bsdiff?</button><div class="faq-a"><p>Pairwise delta tools can produce smaller patches for one exact version pair. CAVS is designed for version streams: package once per release, serve many version jumps, reuse cache across versions, resume safely, and expose immutable CDN-cacheable storage.</p></div></div>
       <div class="faq-item"><button class="faq-q">Can CAVS reuse the version already installed?</button><div class="faq-a"><p>Yes, since v0.6.0. Pass <span class="mono">--previous-artifact</span> and the client copies verified ranges straight from the old file, downloading only what changed — even with an empty chunk cache. On a 128&nbsp;MiB build a small update drops from 64.55&nbsp;MiB to 6.24&nbsp;MiB (−90%). Every copied range is BLAKE3-checked before it is written, and a corrupt old install safely falls back to the network.</p></div></div>
       <div class="faq-item"><button class="faq-q">Can I diff and apply updates without a CAVS server?</button><div class="faq-a"><p>Yes, since v0.7.0. <span class="mono">cavs diff-plan</span> produces a deterministic, BLAKE3-sealed <span class="mono">.cavsplan</span> — copy-ranges from the old build plus zstd-19 fresh data — and <span class="mono">cavs apply</span> reconstructs it locally with the same verified staged model as the online client (byte-identical or it fails). <span class="mono">cavs preview</span>, <span class="mono">verify-install</span>, <span class="mono">file</span> and <span class="mono">ls</span> complete the offline workflow.</p></div></div>
-      <div class="faq-item"><button class="faq-q">How does CAVS compare to butler?</button><div class="faq-a"><p><span class="mono">cavs bench butler-offline</span> and <span class="mono">bench routes</span> drive a real butler binary and put every route in one table. On a 128&nbsp;MiB directory build the CAVS offline plan ties butler on bytes (2.51 vs 2.52&nbsp;MiB) while applying with a streaming ~8&nbsp;MiB budget vs 35&nbsp;MiB, and beats it 16× on a shifted artifact. The harness measures butler's offline/default patch, not itch.io's backend-optimized patch; bsdiff/xdelta3 results are labeled an optimized pairwise proxy. CAVS optimizes a different model: package once per release, serve any version jump from one content-addressed store.</p></div></div>
+      <div class="faq-item"><button class="faq-q">How does CAVS compare to butler?</button><div class="faq-a"><p>v0.8.0 measures butler's <em>complete</em> pipeline with its own binaries — default <span class="mono">diff</span> and optimized <span class="mono">rediff --rediff-quality 9</span> (<span class="mono">cavs bench butler-full</span> / <span class="mono">full-pipeline</span>). On a 126&nbsp;MiB directory build the CAVS auto-route ties the optimized patch on bytes (2.51&nbsp;MiB) and apply time while using 23 vs 97&nbsp;MiB of RAM and generating 21× faster; on a shifted artifact it wins every column (4.21 vs 11.39&nbsp;KiB). Raw outputs and reproduction commands live in <span class="mono">docs/results/v0.8.0/</span>. CAVS still optimizes a different model: package once per release, serve any version jump from one content-addressed store.</p></div></div>
+      <div class="faq-item"><button class="faq-q">When does the planner use an optimized sidecar?</button><div class="faq-a"><p>Only when it is actually the cheapest viable route: the client has the exact old version the sidecar was generated for, the payload beats chunks/plan, and its estimated apply memory fits the device profile — a bsdiff-heavy sidecar needing ~552&nbsp;MiB is excluded on a <span class="mono">low-memory</span> profile and the streaming plan (~40&nbsp;MiB) is served instead. Sidecars are generated only for hot pairs picked by <span class="mono">cavs patch-policy</span> (previous, latest-stable, top-installed), never all O(N²) pairs.</p></div></div>
+      <div class="faq-item"><button class="faq-q">What about builds shipped as one compressed archive?</button><div class="faq-a"><p>That shape defeats every block-level patcher — a small source change cascades across the compressed bytes. v0.8.0 detects it (<span class="mono">cavs preview --detect-compressed-blobs</span>) and the sidecar optimizer routes such files through a byte-level delta automatically: 2.53&nbsp;MiB where block routes paid 21.9&nbsp;MiB on the same change. Publishing the uncompressed folder is still the better fix.</p></div></div>
       <div class="faq-item"><button class="faq-q">Does CAVS preserve the original file?</button><div class="faq-a"><p>Yes. CAVS reconstructs the final artifact byte-for-byte and verifies it with SHA-256 before promotion. Reconstruction is byte-identical or it fails — never halfway.</p></div></div>
       <div class="faq-item"><button class="faq-q">What happens if a download is interrupted?</button><div class="faq-a"><p>v0.5.0 keeps a crash-safe journal and resumes bootstrap downloads with HTTP Range when possible. Chunk fetches resume from the persistent cache have-set.</p></div></div>
       <div class="faq-item"><button class="faq-q">What if the client cache is corrupt?</button><div class="faq-a"><p>The client can verify cached chunks, quarantine corrupt entries, and repair only the missing or corrupt chunks from the server — returning to zero-payload re-fetches afterward.</p></div></div>

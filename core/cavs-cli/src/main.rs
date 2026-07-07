@@ -5,11 +5,14 @@
 
 mod apply_cmd;
 mod bench_butler;
+mod bench_butler_full;
 mod bench_compression;
 mod bench_delta;
 mod bench_pairwise;
+mod bench_pipeline;
 mod bench_routes;
 mod bench_versions;
+mod blob_detect;
 mod classify;
 mod compare;
 mod corrupt;
@@ -22,13 +25,18 @@ mod manifest_cmd;
 mod optimize_patch;
 mod pack;
 mod pack_dir;
+mod patch_policy;
+mod patch_v2;
 mod preview;
 mod profile;
+mod publish_dir;
 mod report;
+mod route_plan;
 mod signature_cmd;
 mod store;
 mod sweep;
 mod synth;
+mod test_recovery;
 mod tool_metrics;
 mod unpack;
 mod verify_install;
@@ -198,6 +206,10 @@ enum Command {
         /// Only print entries that changed.
         #[arg(long)]
         changes_only: bool,
+        /// Flag archive/high-entropy files (zip, gzip, zstd, 7z, …) whose
+        /// shape defeats block-level patching, with cost estimates.
+        #[arg(long)]
+        detect_compressed_blobs: bool,
         /// Machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
@@ -293,38 +305,129 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Generate an optimized pairwise sidecar (`.cavspatch`, experimental):
-    /// an external byte-level delta (bsdiff/xdelta3) wrapped with CAVS
-    /// verification metadata. Serves exactly one old→new pair — generate
-    /// only for hot pairs; the pair count grows O(N²).
+    /// Generate an optimized pairwise sidecar (`.cavspatch` v2): per-file
+    /// strategy selection (copy-old/renames, CAVS plan ops, bsdiff,
+    /// xdelta3, recompressed full data), every candidate measured, the
+    /// smallest kept. Serves exactly one old→new pair — generate only for
+    /// hot pairs (`cavs patch-policy`); the pair count grows O(N²).
     OptimizePatch {
-        /// Old artifact.
+        /// Old build (file or directory).
         #[arg(long)]
         old: PathBuf,
-        /// New artifact.
+        /// New build (same kind as --old).
         #[arg(long)]
         new: PathBuf,
-        /// bsdiff or xdelta3 (external tool required).
-        #[arg(long, default_value = "bsdiff")]
+        /// auto (measure candidates per file) | plan | bsdiff | xdelta3 | full.
+        #[arg(long, default_value = "auto")]
         algo: String,
-        /// zstd-N, brotli-N or none.
-        #[arg(long, default_value = "zstd-19")]
+        /// auto (best of zstd-19/brotli-9 per section) | zstd-N | brotli-N | none.
+        #[arg(long, default_value = "auto")]
         compression: String,
+        /// Write a per-file strategy report (Markdown) to this path.
+        #[arg(long)]
+        explain_strategies: Option<PathBuf>,
         /// Output `.cavspatch` path.
         #[arg(short, long)]
         out: PathBuf,
     },
-    /// Apply a `.cavspatch` sidecar (verifies both ends, atomic rename).
+    /// Apply a `.cavspatch` sidecar (v1 or v2): staged, journaled,
+    /// hash-verified; nothing is committed on any mismatch.
     ApplyPatch {
-        /// Old artifact (must match the patch's recorded hash).
+        /// Old build (must match what the patch was generated against).
         #[arg(long)]
         old: PathBuf,
         /// The `.cavspatch` file.
         #[arg(long)]
         patch: PathBuf,
-        /// Output path.
+        /// Output path (file for artifact patches, directory for directory
+        /// patches; may equal --old for in-place).
         #[arg(short, long)]
         out: PathBuf,
+        /// Refuse strategies whose estimated peak memory exceeds this
+        /// budget (e.g. 128MiB); the .cavsplan route always fits small
+        /// budgets.
+        #[arg(long)]
+        memory_budget: Option<String>,
+        /// Delete files the patch marks as removed (managed deletions).
+        #[arg(long)]
+        delete_removed_files: bool,
+        /// Verify old files against their recorded hashes before use.
+        #[arg(long)]
+        check_old: bool,
+    },
+    /// Choose the best delivery route for one client state: no-op,
+    /// chunks/hybrid, offline plan, optimized sidecar, bootstrap or full
+    /// download — scored under a device profile.
+    RoutePlan {
+        /// The installed old version (omit for a fresh install).
+        #[arg(long)]
+        installed: Option<PathBuf>,
+        /// The target build (file or directory).
+        #[arg(long)]
+        new: PathBuf,
+        /// A pre-generated `.cavsplan` for this pair (exact size).
+        #[arg(long)]
+        plan: Option<PathBuf>,
+        /// A pre-generated `.cavspatch` for this pair (exact size).
+        #[arg(long)]
+        patch: Option<PathBuf>,
+        /// A bootstrap artifact for the target (exact size).
+        #[arg(long)]
+        bootstrap: Option<PathBuf>,
+        /// Device profile the routes are scored under.
+        #[arg(long, value_enum, default_value_t = route_plan::ClientProfile::Default)]
+        profile: route_plan::ClientProfile,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Decide which old→new pairs deserve an optimized sidecar under a
+    /// hot-pair policy (previous, latest-stable, top-installed, pins) —
+    /// never all O(N²) pairs.
+    PatchPolicy {
+        /// Ordered, comma-separated version list; the last one is the
+        /// release target (e.g. v1,v2,v3-beta,v4).
+        #[arg(long)]
+        versions: String,
+        /// JSON map of installed shares, e.g. {"v1":0.12,"v3":0.55}.
+        #[arg(long)]
+        distribution: Option<PathBuf>,
+        /// TOML policy file ([optimized_patches] table); defaults apply
+        /// without one.
+        #[arg(long)]
+        config: Option<PathBuf>,
+        /// Machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Publish a directory build in one pass: container + signature +
+    /// offline plan + optimized sidecar vs the previous release, with a
+    /// preview (renames, compressed-blob warnings) first.
+    PublishDir {
+        /// The exported build folder.
+        build: PathBuf,
+        /// The previous build directory or its `.cavssig`.
+        #[arg(long)]
+        previous: Option<PathBuf>,
+        /// Where the release files are written.
+        #[arg(long)]
+        out_dir: PathBuf,
+        /// auto (generate the previous→this sidecar) | off.
+        #[arg(long, default_value = "auto")]
+        optimize_patches: String,
+        /// Exclude entries matching this glob (repeatable; merged with
+        /// `.cavsignore`).
+        #[arg(long)]
+        ignore: Vec<String>,
+        /// zstd level for the container's stored chunks.
+        #[arg(long, default_value_t = 3)]
+        zstd_level: i32,
+        /// Sign the packed content with this Ed25519 secret key file.
+        #[arg(long)]
+        sign_key: Option<PathBuf>,
+        /// Only print the preview; write nothing.
+        #[arg(long)]
+        preview: bool,
     },
     /// Measure candidate chunk profiles on a payload (optionally against its
     /// previous version) and report the cheapest per cost model.
@@ -473,6 +576,20 @@ enum TestAction {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Interrupted-apply matrix (v0.8.0): SIGKILL real `cavs apply` runs
+    /// at ramping delays, assert no torn files, prove journaled resume;
+    /// plus corrupt-plan / corrupt-old / garbage-staging cases.
+    ApplyRecovery {
+        /// Old build directory.
+        #[arg(long)]
+        old: PathBuf,
+        /// New build directory.
+        #[arg(long)]
+        new: PathBuf,
+        /// Write apply-recovery.json here.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -527,9 +644,50 @@ enum BenchAction {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Benchmark the external `butler` binary's *complete* patch pipeline
+    /// (v0.8.0): diff, rediff --rediff-quality 9, apply and verify for
+    /// both the default and the optimized patch, with times and peak RSS.
+    ButlerFull {
+        /// Old build (file or directory).
+        #[arg(long)]
+        old: PathBuf,
+        /// New build (same kind as --old).
+        #[arg(long)]
+        new: PathBuf,
+        /// Path to the butler binary (default: `butler` on PATH).
+        #[arg(long, default_value = "butler")]
+        butler_bin: String,
+        /// Results directory.
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// The proof report (v0.8.0): every CAVS route (chunks, plan, sidecar,
+    /// auto-route) and the full external butler pipeline on one pair, one
+    /// table, honest win/loss verdicts. CAVS apply times/RSS measured via
+    /// real subprocesses, all outputs verified byte-identical.
+    FullPipeline {
+        /// Old build (file or directory).
+        #[arg(long)]
+        old: PathBuf,
+        /// New build (same kind as --old).
+        #[arg(long)]
+        new: PathBuf,
+        /// Also run the external butler harness with this binary.
+        #[arg(long)]
+        butler_bin: Option<String>,
+        /// Include butler rediff (optimized patch) in the butler run.
+        #[arg(long, default_value_t = true)]
+        include_rediff: bool,
+        /// Include bsdiff/xdelta3 pairwise proxies.
+        #[arg(long)]
+        include_pairwise: bool,
+        /// Results directory.
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Benchmark the external `butler` binary's offline diff/apply/verify
-    /// pipeline on a real old/new pair (v0.7.0). Results are labeled as
-    /// butler's offline/default patch, not itch.io's backend-optimized one.
+    /// pipeline on a real old/new pair (v0.7.0). Measures the default
+    /// patch only; `bench butler-full` also measures the optimized one.
     ButlerOffline {
         /// Old build (file or directory).
         #[arg(long)]
@@ -546,7 +704,7 @@ enum BenchAction {
     },
     /// Approximate the optimized pairwise patch class (bsdiff/xdelta3 +
     /// recompression) with transparent local tools (v0.7.0). Results are
-    /// labeled as a proxy, never as official itch.io backend numbers.
+    /// always labeled as a proxy.
     PairwiseProxy {
         /// Old build (file or directory).
         #[arg(long)]
@@ -756,8 +914,15 @@ fn main() -> Result<()> {
             new_build,
             against,
             changes_only,
+            detect_compressed_blobs,
             json,
-        } => preview::preview(&new_build, &against, changes_only, json),
+        } => preview::preview(
+            &new_build,
+            &against,
+            changes_only,
+            detect_compressed_blobs,
+            json,
+        ),
         Command::DiffPlan {
             old,
             new,
@@ -818,9 +983,134 @@ fn main() -> Result<()> {
             new,
             algo,
             compression,
+            explain_strategies,
             out,
-        } => optimize_patch::generate(&old, &new, &algo, &compression, &out),
-        Command::ApplyPatch { old, patch, out } => optimize_patch::apply(&old, &patch, &out),
+        } => {
+            let report = patch_v2::generate(
+                &old,
+                &new,
+                &patch_v2::GenerateOptions { algo, compression },
+                &out,
+            )?;
+            println!(
+                "sidecar : {} ({} for {} → {}, {} ms)",
+                out.display(),
+                report::human_bytes(report.patch_bytes),
+                report::human_bytes(report.old_total_size),
+                report::human_bytes(report.new_total_size),
+                report.gen_ms,
+            );
+            println!(
+                "files   : {} copy-old ({} renames) · {} plan-ops · {} bsdiff · {} xdelta3 · {} full-data · {} deletions",
+                report.files_copy_old,
+                report.renames_detected,
+                report.files_plan_ops,
+                report.files_bsdiff,
+                report.files_xdelta3,
+                report.files_full_data,
+                report.deleted,
+            );
+            if !report.skipped_tools.is_empty() {
+                println!(
+                    "note    : candidates not measured (tool missing): {}",
+                    report.skipped_tools.join(", ")
+                );
+            }
+            println!(
+                "note    : sidecars serve exactly this old→new pair; generate them only \
+                 for hot pairs (cavs patch-policy)"
+            );
+            if let Some(path) = explain_strategies {
+                std::fs::write(&path, patch_v2::explain_markdown(&report))?;
+                println!("report  : {}", path.display());
+            }
+            Ok(())
+        }
+        Command::ApplyPatch {
+            old,
+            patch,
+            out,
+            memory_budget,
+            delete_removed_files,
+            check_old,
+        } => {
+            let magic = {
+                let mut f = std::fs::File::open(&patch)?;
+                let mut m = [0u8; 8];
+                use std::io::Read as _;
+                let _ = f.read(&mut m)?;
+                m
+            };
+            if magic == *b"CAVSPCH1" {
+                optimize_patch::apply(&old, &patch, &out)
+            } else {
+                let budget = memory_budget
+                    .as_deref()
+                    .map(synth::parse_size_pub)
+                    .transpose()?;
+                let stats = patch_v2::apply(
+                    &patch,
+                    &old,
+                    &out,
+                    &patch_v2::ApplyV2Options {
+                        delete_removed: delete_removed_files,
+                        memory_budget_bytes: budget,
+                        check_old,
+                    },
+                )?;
+                println!(
+                    "apply   : OK — {} ({} written, {} no-op, {} deleted, {} ms)",
+                    out.display(),
+                    stats.files_written,
+                    stats.files_noop,
+                    stats.deleted,
+                    stats.elapsed_ms,
+                );
+                Ok(())
+            }
+        }
+        Command::RoutePlan {
+            installed,
+            new,
+            plan,
+            patch,
+            bootstrap,
+            profile,
+            json,
+        } => route_plan::route_plan(&route_plan::RoutePlanArgs {
+            installed: installed.as_deref(),
+            new: &new,
+            plan: plan.as_deref(),
+            patch: patch.as_deref(),
+            bootstrap: bootstrap.as_deref(),
+            profile,
+            json,
+        }),
+        Command::PatchPolicy {
+            versions,
+            distribution,
+            config,
+            json,
+        } => patch_policy::run(&versions, distribution.as_deref(), config.as_deref(), json),
+        Command::PublishDir {
+            build,
+            previous,
+            out_dir,
+            optimize_patches,
+            ignore,
+            zstd_level,
+            sign_key,
+            preview,
+        } => publish_dir::publish_dir(&publish_dir::PublishArgs {
+            build: &build,
+            previous: previous.as_deref(),
+            out_dir: &out_dir,
+            optimize_patches,
+            ignore,
+            zstd_level,
+            sign_key: sign_key.as_deref(),
+            preview_only: preview,
+        }),
         Command::Sweep {
             input,
             prev,
@@ -870,6 +1160,9 @@ fn main() -> Result<()> {
         } => doctor::doctor(input.as_deref(), store.as_deref(), cache.as_deref()),
         Command::Test { action } => match action {
             TestAction::Corrupt { input, out } => corrupt::corrupt(&input, out.as_deref()),
+            TestAction::ApplyRecovery { old, new, out } => {
+                test_recovery::run(&old, &new, out.as_deref())
+            }
         },
         Command::Bench { action } => match action {
             BenchAction::Gen { out, size, seed } => synth::generate(&out, &size, seed),
@@ -885,6 +1178,27 @@ fn main() -> Result<()> {
                 butler_bin,
                 out,
             } => bench_butler::bench(&old, &new, &butler_bin, &out),
+            BenchAction::ButlerFull {
+                old,
+                new,
+                butler_bin,
+                out,
+            } => bench_butler_full::bench(&old, &new, &butler_bin, &out),
+            BenchAction::FullPipeline {
+                old,
+                new,
+                butler_bin,
+                include_rediff,
+                include_pairwise,
+                out,
+            } => bench_pipeline::bench(&bench_pipeline::PipelineArgs {
+                old: &old,
+                new: &new,
+                butler_bin: butler_bin.as_deref(),
+                include_rediff,
+                include_pairwise,
+                out: &out,
+            }),
             BenchAction::PairwiseProxy {
                 old,
                 new,

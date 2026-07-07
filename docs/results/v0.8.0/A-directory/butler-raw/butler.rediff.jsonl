@@ -1,0 +1,7 @@
+{"level":"info","message":"• Writing with compression algorithm:BROTLI quality:9","time":1783425435,"type":"log"}
+{"level":"info","message":"✓ Analyzed.","time":1783425435,"type":"log"}
+{"level":"info","message":"Before: 125.83 MiB (43 files, 3 dirs, 0 symlinks)","time":1783425435,"type":"log"}
+{"level":"info","message":" After: 126.89 MiB (44 files, 3 dirs, 0 symlinks)","time":1783425435,"type":"log"}
+{"level":"info","message":"• Optimizing...","time":1783425435,"type":"log"}
+{"bps":0,"eta":0,"progress":1,"time":1783425444,"type":"progress"}
+{"level":"info","message":"✓ Wrote 2.51 MiB patch, processed at 13.55 MiB/s / s (9s total)","time":1783425444,"type":"log"}

@@ -1,9 +1,11 @@
-# Offline Toolkit (v0.7.0)
+# Offline Toolkit (v0.7.0, extended in v0.8.0)
 
 CAVS v0.7.0 turns the delivery system into a complete **local toolkit**:
 sign, preview, diff, apply, verify and benchmark game-build updates with
 no CAVS server involved. The same reconstruction model the online client
 uses (verified copy-ranges + fresh data) drives every offline command.
+v0.8.0 adds the route planner, per-file optimized sidecars, the hot-pair
+policy and one-command publishing on top of it.
 
 ```bash
 # 1. Describe the released version (once, at release time):
@@ -24,6 +26,17 @@ cavs verify-install ./InstalledGame --signature build_v2.cavssig --allow-extra-f
 # 6. Identify and inspect any CAVS file:
 cavs file update.cavsplan
 cavs ls build_v1.cavssig
+
+# 7. v0.8.0 — publish a release in one pass (container + signature +
+#    plan + optimized sidecar + preview with rename detection):
+cavs publish-dir ./Build_v2 --previous ./Build_v1 --out-dir releases/
+
+# 8. v0.8.0 — pick the delivery route for one client state:
+cavs route-plan --installed ./InstalledGame --new ./Build_v2 \
+  --profile low-memory
+
+# 9. v0.8.0 — prove interrupted applies never break an install:
+cavs test apply-recovery --old ./Build_v1 --new ./Build_v2
 ```
 
 Every command supports `--json` where output is meant to be consumed
@@ -36,6 +49,12 @@ Classifies every entry of the new build against the old `.cavssig` as
 route, and warns when a large modified file looks compressed/high-entropy
 (small source changes cascade across compressed output — publish the
 uncompressed folder instead).
+
+v0.8.0: renamed/moved files are detected from the signature alone (same
+size + block hash sequence) and reported as `renamed from … — no
+payload`; `--detect-compressed-blobs` additionally flags archives by
+magic bytes (zip, gzip, zstd, 7z, xz, bzip2, rar) and quantifies what an
+update through the blob costs.
 
 ```text
 MODIFIED    19.25 MiB  game.pck
@@ -107,16 +126,29 @@ Full route comparisons (including butler and bsdiff/xdelta3):
 [ROUTE_BENCHMARKS.md](ROUTE_BENCHMARKS.md) and
 [BUTLER_COMPARISON.md](BUTLER_COMPARISON.md).
 
-## Error taxonomy additions (v0.7.0)
+## Apply safety (v0.8.0 additions)
+
+The directory apply journals its state from the first byte staged —
+`staging → verified → committing → committed`, with `failed` recorded on
+any aborted run — and `cavs test apply-recovery` proves the model on a
+real pair: it SIGKILLs live `cavs apply` subprocesses at ramping delays,
+asserts that no managed file is ever a torn mix of old and new bytes,
+that user files (mods) survive, and that re-running finishes the update;
+plus corrupt-plan, corrupt-old-install and garbage-staging cases.
+
+## Error taxonomy additions (v0.7.0 / v0.8.0)
 
 | Code | Meaning |
 |---|---|
 | `CAVS-E-PLAN-CORRUPT` | `.cavsplan` unparseable / integrity failure |
 | `CAVS-E-PLAN-INVALID` | plan parsed but is internally inconsistent |
+| `CAVS-E-PATCH-CORRUPT` | `.cavspatch` unparseable / integrity failure |
+| `CAVS-E-PATCH-INVALID` | sidecar parsed but is internally inconsistent |
 | `CAVS-E-APPLY-HASH-MISMATCH` | output hash wrong; nothing committed |
+| `CAVS-E-MEMORY-BUDGET-EXCEEDED` | apply would exceed `--memory-budget` |
 | `CAVS-E-JOURNAL-CORRUPT` | apply journal unreadable |
 | `CAVS-E-JOURNAL-RESUME-FAILED` | journal belongs to a different apply |
 | `CAVS-E-PATH-TRAVERSAL` | container path escapes its root |
 | `CAVS-E-UNSUPPORTED-SYMLINK` | symlink not representable on this platform |
 | `CAVS-E-PAIRWISE-TOOL-MISSING` | bsdiff/xdelta3/brotli not available |
-| `CAVS-E-BUTLER-NOT-FOUND` / `-DIFF-FAILED` / `-APPLY-FAILED` / `-VERIFY-FAILED` | external butler benchmark harness |
+| `CAVS-E-BUTLER-NOT-FOUND` / `-DIFF-FAILED` / `-REDIFF-FAILED` / `-APPLY-FAILED` / `-VERIFY-FAILED` | external butler benchmark harness |

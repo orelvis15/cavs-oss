@@ -212,6 +212,76 @@ fn file_matches_blocks(
     Ok(true)
 }
 
+/// Detect renames/moves: a NEW file whose size and full block-hash
+/// sequence match an old entry that is gone from the build. Works from
+/// the signature alone — the old bytes are not needed. Returns
+/// `new path → old path`.
+pub fn detect_renames(
+    sig: &CavsSignature,
+    root: &Path,
+    entries: &[EntryReport],
+) -> Result<HashMap<String, String>> {
+    if sig.kind != SignatureKind::DirectoryContainer {
+        return Ok(HashMap::new());
+    }
+    let deleted: std::collections::HashSet<&str> = entries
+        .iter()
+        .filter(|e| e.state == FileState::Deleted)
+        .map(|e| e.path.as_str())
+        .collect();
+    if deleted.is_empty() {
+        return Ok(HashMap::new());
+    }
+    // Fingerprint the disappeared old entries by (size, block hashes).
+    let blocks_by_entry = index_blocks(sig);
+    let mut by_fingerprint: HashMap<(u64, Vec<[u8; 32]>), &str> = HashMap::new();
+    for e in &sig.entries {
+        if e.kind != EntryKind::File || !deleted.contains(e.path.as_str()) {
+            continue;
+        }
+        let hashes: Vec<[u8; 32]> = blocks_by_entry
+            .get(&e.entry_id)
+            .map(|bs| bs.iter().map(|b| b.strong_blake3).collect())
+            .unwrap_or_default();
+        by_fingerprint.insert((e.size, hashes), &e.path);
+    }
+
+    let mut renames = HashMap::new();
+    for e in entries {
+        if e.state != FileState::New || e.size == 0 {
+            continue;
+        }
+        let full = root.join(&e.path);
+        if !full.is_file() {
+            continue;
+        }
+        let mut hashes = Vec::new();
+        let mut file = std::io::BufReader::new(std::fs::File::open(&full)?);
+        let mut buf = vec![0u8; sig.block_size as usize];
+        loop {
+            let mut got = 0;
+            while got < buf.len() {
+                let n = file.read(&mut buf[got..])?;
+                if n == 0 {
+                    break;
+                }
+                got += n;
+            }
+            if got == 0 {
+                break;
+            }
+            hashes.push(cavs_hash::hash_chunk(&buf[..got]));
+            if got < buf.len() {
+                break;
+            }
+        }
+        if let Some(old_path) = by_fingerprint.get(&(e.size, hashes)) {
+            renames.insert(e.path.clone(), old_path.to_string());
+        }
+    }
+    Ok(renames)
+}
+
 pub fn walk_sorted(root: &Path) -> Result<Vec<PathBuf>> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];

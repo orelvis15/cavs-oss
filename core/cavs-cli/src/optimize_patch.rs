@@ -32,14 +32,6 @@ pub struct PatchHeader {
     pub new_blake3: ChunkHash,
 }
 
-fn write_var(mut value: u64, out: &mut Vec<u8>) {
-    while value >= 0x80 {
-        out.push((value as u8) | 0x80);
-        value >>= 7;
-    }
-    out.push(value as u8);
-}
-
 fn read_var(input: &mut &[u8]) -> Result<u64> {
     let mut value = 0u64;
     let mut shift = 0u32;
@@ -55,11 +47,6 @@ fn read_var(input: &mut &[u8]) -> Result<u64> {
         shift += 7;
     }
     bail!("overlong varint")
-}
-
-fn write_str(s: &str, out: &mut Vec<u8>) {
-    write_var(s.len() as u64, out);
-    out.extend_from_slice(s.as_bytes());
 }
 
 fn read_str(input: &mut &[u8]) -> Result<String> {
@@ -81,47 +68,8 @@ fn take<'a>(input: &mut &'a [u8], n: usize) -> Result<&'a [u8]> {
     Ok(head)
 }
 
-pub fn generate(old: &Path, new: &Path, algo: &str, compression: &str, out: &Path) -> Result<()> {
-    if !matches!(algo, "bsdiff" | "xdelta3") {
-        bail!("--algo must be bsdiff or xdelta3");
-    }
-    let started = std::time::Instant::now();
-    let old_bytes = std::fs::read(old).with_context(|| format!("reading {}", old.display()))?;
-    let new_bytes = std::fs::read(new).with_context(|| format!("reading {}", new.display()))?;
-
-    let raw_patch = run_diff_tool(algo, old, new)?;
-    let payload = compress(&raw_patch, compression)?;
-
-    let mut buf = Vec::with_capacity(payload.len() + 128);
-    buf.extend_from_slice(&PATCH_MAGIC);
-    buf.extend_from_slice(&PATCH_VERSION.to_le_bytes());
-    write_str(algo, &mut buf);
-    write_str(compression, &mut buf);
-    write_var(old_bytes.len() as u64, &mut buf);
-    buf.extend_from_slice(&hash_chunk(&old_bytes));
-    write_var(new_bytes.len() as u64, &mut buf);
-    buf.extend_from_slice(&hash_chunk(&new_bytes));
-    write_var(payload.len() as u64, &mut buf);
-    buf.extend_from_slice(&payload);
-    let trailer = hash_chunk(&buf);
-    buf.extend_from_slice(&trailer);
-    std::fs::write(out, &buf).with_context(|| format!("cannot write {}", out.display()))?;
-
-    println!(
-        "sidecar : {} ({algo}+{compression}, {} for {} → {}, {} ms)",
-        out.display(),
-        human_bytes(buf.len() as u64),
-        human_bytes(old_bytes.len() as u64),
-        human_bytes(new_bytes.len() as u64),
-        started.elapsed().as_millis(),
-    );
-    println!(
-        "note    : sidecars serve exactly this old→new pair; generate them only \
-         for hot pairs (pair count grows O(N²) with versions)"
-    );
-    Ok(())
-}
-
+/// Apply a legacy v1 sidecar (v2 generation replaced v1's in v0.8.0; v1
+/// files remain applicable).
 pub fn apply(old: &Path, patch: &Path, out: &Path) -> Result<()> {
     let bytes = std::fs::read(patch).with_context(|| format!("cannot read {}", patch.display()))?;
     let (header, payload) = decode(&bytes)?;
@@ -210,11 +158,11 @@ pub fn decode(bytes: &[u8]) -> Result<(PatchHeader, &[u8])> {
 // External tools
 // ---------------------------------------------------------------------------
 
-fn missing(tool: &str) -> anyhow::Error {
+pub(crate) fn missing(tool: &str) -> anyhow::Error {
     anyhow::anyhow!(ErrorCode::PairwiseToolMissing.msg(format!("{tool} not found on PATH")))
 }
 
-fn run_diff_tool(algo: &str, old: &Path, new: &Path) -> Result<Vec<u8>> {
+pub(crate) fn run_diff_tool(algo: &str, old: &Path, new: &Path) -> Result<Vec<u8>> {
     let dir = tempfile::tempdir()?;
     let patch = dir.path().join("raw.patch");
     let status = match algo {
@@ -238,7 +186,7 @@ fn run_diff_tool(algo: &str, old: &Path, new: &Path) -> Result<Vec<u8>> {
     Ok(std::fs::read(&patch)?)
 }
 
-fn run_apply_tool(algo: &str, old: &Path, patch: &Path, out: &Path) -> Result<()> {
+pub(crate) fn run_apply_tool(algo: &str, old: &Path, patch: &Path, out: &Path) -> Result<()> {
     let status = match algo {
         "bsdiff" => Command::new("bspatch")
             .args([old.as_os_str(), out.as_os_str(), patch.as_os_str()])
@@ -272,7 +220,7 @@ pub fn compress(data: &[u8], compression: &str) -> Result<Vec<u8>> {
     }
 }
 
-fn decompress(data: &[u8], compression: &str) -> Result<Vec<u8>> {
+pub(crate) fn decompress(data: &[u8], compression: &str) -> Result<Vec<u8>> {
     match compression {
         "none" => Ok(data.to_vec()),
         _ if compression.starts_with("zstd-") => {

@@ -18,6 +18,8 @@ struct PreviewReport {
     entries: Vec<EntryReport>,
     summary: Summary,
     warnings: Vec<String>,
+    /// new path → old path (same content, different location).
+    renames: std::collections::HashMap<String, String>,
 }
 
 #[derive(Default, serde::Serialize)]
@@ -40,7 +42,13 @@ struct Summary {
     reused_bytes: u64,
 }
 
-pub fn preview(new_build: &Path, against: &Path, changes_only: bool, json: bool) -> Result<()> {
+pub fn preview(
+    new_build: &Path,
+    against: &Path,
+    changes_only: bool,
+    detect_blobs: bool,
+    json: bool,
+) -> Result<()> {
     let sig = crate::signature_cmd::load(against)?;
     let entries = classify(&sig, new_build)?;
     let index = WeakHashIndex::build(&sig);
@@ -51,6 +59,7 @@ pub fn preview(new_build: &Path, against: &Path, changes_only: bool, json: bool)
         entries: Vec::new(),
         summary: Summary::default(),
         warnings: Vec::new(),
+        renames: crate::compare::detect_renames(&sig, new_build, &entries)?,
     };
 
     let mut inline_total: Vec<u8> = Vec::new();
@@ -97,6 +106,15 @@ pub fn preview(new_build: &Path, against: &Path, changes_only: bool, json: bool)
                     }
                 }
                 warn_if_patch_hostile(&mut report.warnings, e, &bytes, diff.reused_bytes);
+                if detect_blobs {
+                    warn_if_compressed_blob(
+                        &mut report.warnings,
+                        e,
+                        &bytes,
+                        diff.inline_bytes,
+                        report.renames.contains_key(&e.path),
+                    );
+                }
             }
             FileState::Deleted => unreachable!(),
         }
@@ -119,11 +137,17 @@ pub fn preview(new_build: &Path, against: &Path, changes_only: bool, json: bool)
         if changes_only && e.state == FileState::Same {
             continue;
         }
+        let rename_note = report
+            .renames
+            .get(&e.path)
+            .map(|from| format!("  (renamed from {from} — no payload)"))
+            .unwrap_or_default();
         println!(
-            "{:<9} {:>12}  {}",
+            "{:<9} {:>12}  {}{}",
             e.state.label(),
             human_bytes(e.size),
-            e.path
+            e.path,
+            rename_note
         );
     }
     let s = &report.summary;
@@ -147,6 +171,38 @@ pub fn preview(new_build: &Path, against: &Path, changes_only: bool, json: bool)
         println!("\nWARNING:\n  {w}");
     }
     Ok(())
+}
+
+/// Explicit archive/high-entropy detection (`--detect-compressed-blobs`):
+/// magic bytes catch archives even before they change much, and the
+/// warning quantifies what an update through the blob costs.
+fn warn_if_compressed_blob(
+    warnings: &mut Vec<String>,
+    e: &EntryReport,
+    bytes: &[u8],
+    fresh_bytes: u64,
+    renamed: bool,
+) {
+    const MIN_SIZE: u64 = 256 * 1024;
+    if e.size < MIN_SIZE || renamed {
+        return;
+    }
+    let (shape, magic) = crate::blob_detect::classify_blob(bytes);
+    if shape == crate::blob_detect::BlobShape::Plain {
+        return;
+    }
+    // High-entropy fresh bytes barely compress: the inline size *is* the cost.
+    warnings.push(format!(
+        "{} is a {} blob ({}). Estimated update cost through the blob: ~{} \
+         (block-level reuse found only {}). Publish the uncompressed folder \
+         (directory mode), or route this pair through an optimized sidecar \
+         (cavs optimize-patch picks a byte-level delta for it).",
+        e.path,
+        magic.unwrap_or(shape.label()),
+        human_bytes(e.size),
+        human_bytes(fresh_bytes),
+        human_bytes(e.size.saturating_sub(fresh_bytes)),
+    ));
 }
 
 /// A large file that changed almost everywhere and does not compress is a

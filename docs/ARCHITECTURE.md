@@ -26,7 +26,8 @@ store each unique chunk once, and transmit only the chunks a client lacks.
 | `cavs-manifest` | Manifest wire formats: the compact binary v2 codec (`CAVSMF2`: chunk dictionary + varint plan, ~76% smaller than JSON) and `read_manifest`, which detects JSON v1 vs binary v2 from the bytes and normalizes both |
 | `cavs-signature` | v0.6.0: the compact `.cavssig` old-version signature (fixed-block layout + weak rolling hash + BLAKE3 strong hashes) and the rsync-style hybrid diff scanner that finds reusable ranges against a signature alone |
 | `cavs-rebuild-plan` | v0.6.0: the unified reconstruction plan (`CopyPreviousRange` / `CopyCacheChunk` / `FetchNetworkChunk`), cost-based source scoring, and adjacent-range coalescing; the v0.5 cache+network flow is a special case |
-| `cavs-cli` | The `cavs` binary: pack / pack-dir / unpack / info / verify / keygen / store / play / sweep / signature / doctor / test corrupt / bench (suite / delta / compression), plus the payload classifier and chunk-profile cost model |
+| `cavs-plan` | v0.7.0: the `.cavsplan` offline reconstruction plan — deterministic BLAKE3-sealed COPY/INLINE format, the builder that diffs a new build against an old `.cavssig`, and the staged, journaled, mod-friendly apply (artifact and directory modes) |
+| `cavs-cli` | The `cavs` binary: pack / pack-dir / unpack / info / verify / keygen / store / play / sweep / signature / doctor / bench, the payload classifier and chunk-profile cost model; v0.7.0 adds the offline toolkit (preview / diff-plan / apply / verify-install / file / ls) and v0.8.0 the delivery planner (route-plan), per-file optimized sidecars (optimize-patch / apply-patch), patch-policy, publish-dir and the full-pipeline + apply-recovery harnesses |
 | `cavs-server` | Stateful HTTP/HTTPS origin: sessions, inline/ref planning, `--store` mode, HLS passthrough, HTTP Range on the bootstrap endpoint, metrics |
 | `cavs-client` | Native streaming client: persistent cache with verify/repair/gc, `.part`→verify→rename reconstruction, resume journal, retry with backoff, and (v0.6.0) hybrid reconstruction from a `--previous-artifact` with no-op detection and directory-mode staged applies |
 
@@ -58,7 +59,11 @@ that reuses `cavs-hash` and `cavs-chunker`.
    (<5% of chunks cached) whose estimate is beaten by ≥2% by the bootstrap
    artifact is routed to it: one immutable, CDN-cacheable download at
    full-artifact price. Everyone else gets the chunk path. The routing is
-   advisory and the chunk path always remains valid.
+   advisory and the chunk path always remains valid. v0.8.0 generalizes
+   this idea into a full client-state planner (`cavs route-plan`): no-op,
+   chunks, hybrid, offline plan, optimized sidecar, bootstrap or full
+   download, scored under device profiles with memory budgets
+   ([DELIVERY_PLANNER.md](DELIVERY_PLANNER.md)).
 
 4. **Only the new bytes travel.** Binary CVSP batches carry chunks exactly as
    stored (already compressed — zero recompression), decoded incrementally from

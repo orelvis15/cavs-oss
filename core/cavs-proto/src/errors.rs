@@ -87,6 +87,16 @@ pub enum ErrorCode {
     /// `cavs optimize-patch` / pairwise benchmarks need an external tool
     /// (bsdiff, xdelta3, brotli) that is not available.
     PairwiseToolMissing,
+    /// A `.cavspatch` file is unparseable or fails integrity checks.
+    PatchCorrupt,
+    /// A `.cavspatch` parsed but is internally inconsistent (unknown
+    /// entries, bad sections, unsafe paths).
+    PatchInvalid,
+    /// Applying this patch would exceed the configured memory budget;
+    /// use a lower-memory route (offline plan) or raise the budget.
+    MemoryBudgetExceeded,
+    /// The external `butler rediff` step exited with an error.
+    ButlerRediffFailed,
 }
 
 impl ErrorCode {
@@ -127,6 +137,10 @@ impl ErrorCode {
             ErrorCode::PathTraversal => "CAVS-E-PATH-TRAVERSAL",
             ErrorCode::UnsupportedSymlink => "CAVS-E-UNSUPPORTED-SYMLINK",
             ErrorCode::PairwiseToolMissing => "CAVS-E-PAIRWISE-TOOL-MISSING",
+            ErrorCode::PatchCorrupt => "CAVS-E-PATCH-CORRUPT",
+            ErrorCode::PatchInvalid => "CAVS-E-PATCH-INVALID",
+            ErrorCode::MemoryBudgetExceeded => "CAVS-E-MEMORY-BUDGET-EXCEEDED",
+            ErrorCode::ButlerRediffFailed => "CAVS-E-BUTLER-REDIFF-FAILED",
         }
     }
 
@@ -162,7 +176,7 @@ impl std::fmt::Display for ErrorCode {
 }
 
 /// All codes, for docs/tests.
-pub const ALL_ERROR_CODES: [ErrorCode; 34] = [
+pub const ALL_ERROR_CODES: [ErrorCode; 38] = [
     ErrorCode::ManifestCorrupt,
     ErrorCode::UnsupportedManifestVersion,
     ErrorCode::ContainerCorrupt,
@@ -197,6 +211,10 @@ pub const ALL_ERROR_CODES: [ErrorCode; 34] = [
     ErrorCode::PathTraversal,
     ErrorCode::UnsupportedSymlink,
     ErrorCode::PairwiseToolMissing,
+    ErrorCode::PatchCorrupt,
+    ErrorCode::PatchInvalid,
+    ErrorCode::MemoryBudgetExceeded,
+    ErrorCode::ButlerRediffFailed,
 ];
 
 /// Recover the first `CAVS-E-*` code embedded in a rendered error message

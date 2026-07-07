@@ -304,10 +304,54 @@ the operational axis: ten versions fit in less space than one raw build, and
 *any* jump (v1→v10, v3→v10, reinstall) is served from the same immutable
 objects with zero per-pair generation.
 
-butler numbers are its **offline/default** patch, not itch.io's
-backend-optimized patch; bsdiff/xdelta3 are labeled optimized pairwise
-**proxies**. Full framing: [BUTLER_COMPARISON.md](BUTLER_COMPARISON.md),
+The v0.7.0 butler numbers are its **default** patch; bsdiff/xdelta3 are
+labeled optimized pairwise **proxies**. v0.8.0 measures butler's
+optimized patch directly — see the next section. Full framing:
+[BUTLER_COMPARISON.md](BUTLER_COMPARISON.md),
 [ROUTE_BENCHMARKS.md](ROUTE_BENCHMARKS.md).
+
+## Full-pipeline & delivery planner (v0.8.0)
+
+v0.8.0 adds the delivery planner (`cavs route-plan`), per-file optimized
+sidecars (`.cavspatch` v2) and `cavs bench full-pipeline`, which measures
+every CAVS route and butler's **complete** pipeline — default `diff` and
+optimized `rediff --rediff-quality 9` — on the same transition (butler
+v15.28.0; CAVS apply times/RSS measured via real subprocesses under
+`/usr/bin/time`; all outputs byte-identical).
+
+**A — typical directory release (126 MiB):** CAVS auto-route (plan)
+2.51 MiB / gen 0.54 s / apply 391 ms / 23 MiB RSS — vs butler optimized
+2.51 MiB / 11.6 s / 403 ms / 97 MiB. Bytes and apply tie; **4.2× less
+memory, 21× faster generation**.
+
+**B — shifted artifact (128 MiB, 4 KiB head insert):** CAVS 4.21 KiB /
+170 ms / 11 MiB vs butler optimized 11.39 KiB / 370 ms / 94 MiB — CAVS
+wins every column, and beats raw bsdiff (4.59 KiB) and xdelta3
+(4.34 KiB) on bytes.
+
+**C — compressed blob (62 MiB .tar.zst):** the v0.7.0 weak case is
+closed. The per-file strategy optimizer routes the high-entropy blob
+through xdelta3: CAVS auto-route **2.53 MiB** (was 21.9 MiB through
+block routes), 13% below butler optimized (2.90 MiB).
+
+**D — many-version storage (10 × 32 MiB):** CAVS store + 3 policy-chosen
+hot-pair sidecars = **35.91 MiB** serving any jump; all-pairs bsdiff
+coverage = 144.23 MiB in 45 patches — **75% less storage**, no O(N²).
+
+**E — low-memory apply (256 MiB build):** a bsdiff sidecar applies with
+**517 MiB real RSS**; under `--memory-budget 128MiB` CAVS refuses it up
+front (`CAVS-E-MEMORY-BUDGET-EXCEEDED`) and the planner serves the plan
+route instead: 7.63 MiB (0.5% *smaller* than the sidecar) at **27 MiB
+real RSS**.
+
+**F — interrupted apply:** `cavs test apply-recovery` — 10 SIGKILLed
+applies recovered, corrupt plan rejected untouched, corrupted old
+install self-healed via deduplicated content (output verified), garbage
+staging re-staged. Mods and mtimes survive every case.
+
+Full tables: [ROUTE_BENCHMARKS.md](ROUTE_BENCHMARKS.md); planner:
+[DELIVERY_PLANNER.md](DELIVERY_PLANNER.md); sidecar format and policy:
+[PAIRWISE_SIDECARS.md](PAIRWISE_SIDECARS.md).
 
 ## Honest negatives (video suite)
 

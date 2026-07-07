@@ -62,7 +62,7 @@ pub struct ApplyJournal {
     pub plan_path: Option<PathBuf>,
     pub old_root: PathBuf,
     pub out_root: PathBuf,
-    /// staging | verified | committing | committed
+    /// staging | verified | committing | committed | failed
     pub state: String,
     pub files_staged: Vec<String>,
     pub files_moved: Vec<String>,
@@ -260,6 +260,20 @@ pub fn apply_dir(
     std::fs::create_dir_all(&staging)?;
     std::fs::create_dir_all(out_root)?;
 
+    // Journal from the first moment staging touches disk: an interrupted or
+    // failed run always leaves a machine-readable record of how far it got.
+    let mut journal = ApplyJournal {
+        version: 1,
+        plan_blake3: identity.clone(),
+        plan_path: opts.plan_path.clone(),
+        old_root: old_root.to_path_buf(),
+        out_root: out_root.to_path_buf(),
+        state: "staging".into(),
+        files_staged: Vec::new(),
+        files_moved: Vec::new(),
+    };
+    journal.save(out_root)?;
+
     let mut stats = ApplyStats::default();
     let old_paths: HashMap<u32, PathBuf> = plan
         .old_entries
@@ -310,23 +324,18 @@ pub fn apply_dir(
         drop(writer);
         if hash_file(&staged_path)? != expected {
             // Abort before anything is committed; the old install and any
-            // already-staged files stay intact for a corrected retry.
+            // already-staged files stay intact for a corrected retry. The
+            // journal records the failure so tooling can see what happened.
+            journal.state = "failed".into();
+            let _ = journal.save(out_root);
             return Err(PlanError::ApplyHashMismatch(entry.path.clone()));
         }
         staged.push((entry, staged_path));
     }
 
     // ---- Journal intent, then commit -------------------------------------
-    let mut journal = ApplyJournal {
-        version: 1,
-        plan_blake3: identity,
-        plan_path: opts.plan_path.clone(),
-        old_root: old_root.to_path_buf(),
-        out_root: out_root.to_path_buf(),
-        state: "verified".into(),
-        files_staged: staged.iter().map(|(e, _)| e.path.clone()).collect(),
-        files_moved: Vec::new(),
-    };
+    journal.state = "verified".into();
+    journal.files_staged = staged.iter().map(|(e, _)| e.path.clone()).collect();
     journal.save(out_root)?;
 
     // Directories first (both explicit entries and file parents).

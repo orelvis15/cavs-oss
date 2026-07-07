@@ -33,6 +33,7 @@ sha2 = { workspace = true }
 zstd = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+toml = { workspace = true }
 brotli = { version = "7", optional = true }
 
 [features]
