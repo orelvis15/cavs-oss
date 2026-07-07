@@ -72,7 +72,6 @@ and a maintainer review to be merged.
 
 - `core/` — the engine crates and the `cavs` / `cavs-server` / `cavs-client`
   tools. Each crate has its own README describing its role.
-- `steam-analyzer/` — the SteamPipe analyzer (`cavs-steam`).
 - `godot-plugin/` — the Godot 4 runtime client.
 - `docs/` — format spec, architecture, benchmarks, and the paper. If you change
   the on-disk format, update [`docs/FORMAT.md`](docs/FORMAT.md) **and** the

@@ -32,8 +32,11 @@ store each unique chunk once, and transmit only the chunks a client lacks.
 | `cavs-client` | Native streaming client: persistent cache with verify/repair/gc, `.part`→verify→rename reconstruction, resume journal, retry with backoff, and (v0.6.0) hybrid reconstruction from a `--previous-artifact` with no-op detection and directory-mode staged applies |
 
 The Godot plugin (`godot-plugin/`) is a pure-GDScript client — no native
-binary — and the SteamPipe analyzer (`steam-analyzer/`) is a standalone tool
-that reuses `cavs-hash` and `cavs-chunker`.
+binary. The SteamPipe-style analysis (v0.9.0) lives inside the `cavs` CLI,
+backed by two library crates: `cavs-analyzer` (fixed-1MiB model, pack
+diagnostics, recommendations) and `cavs-workspace` (local
+app/depot/branch/build metadata). There is no separate steam-analyzer
+product (see `WHY_NO_STEAM_ANALYZER_PRODUCT.md`).
 
 ## How an update flows
 

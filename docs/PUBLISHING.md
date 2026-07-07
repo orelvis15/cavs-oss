@@ -33,9 +33,9 @@ debugging a failed release.
    ```
 3. Crate names are **first-come, first-served and permanent**. All ten crate
    names (`cavs-hash`, `cavs-chunker`, `cavs-store`, `cavs-format`,
-   `cavs-proto`, `cavs-manifest`, `cavs-cli`, `cavs-server`, `cavs-client`,
-   `cavs-steam`) must be available. Publishing `cavs-hash` first also lets you
-   claim the namespace.
+   `cavs-proto`, `cavs-manifest`, `cavs-analyzer`, `cavs-workspace`,
+   `cavs-cli`, `cavs-server`, `cavs-client`) must be available. Publishing
+   `cavs-hash` first also lets you claim the namespace.
 
 ## How versioning works here
 
@@ -79,7 +79,8 @@ cargo publish -p cavs-manifest   # → cavs-hash, cavs-proto, cavs-format
 cargo publish -p cavs-cli        # → cavs-hash, cavs-chunker, cavs-format, cavs-manifest, cavs-proto, cavs-store
 cargo publish -p cavs-server     # → cavs-hash, cavs-format, cavs-manifest, cavs-proto, cavs-store
 cargo publish -p cavs-client     # → cavs-hash, cavs-manifest, cavs-proto
-cargo publish -p cavs-steam      # → cavs-hash, cavs-chunker
+cargo publish -p cavs-analyzer   # → cavs-hash, cavs-chunker
+cargo publish -p cavs-workspace  # → cavs-hash, cavs-chunker
 ```
 
 After this, users can:
@@ -88,7 +89,6 @@ After this, users can:
 cargo install cavs-cli      # the `cavs` CLI
 cargo install cavs-server
 cargo install cavs-client
-cargo install cavs-steam    # the `cavs-steam` analyzer
 ```
 
 and depend on the libraries (`cavs-hash`, `cavs-chunker`, `cavs-store`,

@@ -347,7 +347,7 @@ CAVS is a content-addressable verified update and delivery layer.
 
 The first product candidate is **CAVS for Godot**, because the PCK workflow is simple, demonstrable, and the plugin already mounts reconstructed packs at runtime.
 
-The second product candidate is **CAVS SteamPipe Analyzer**, which does not replace SteamPipe. Instead, it diagnoses pack-file update bloat before a developer uploads or publishes a Steam build.
+The second capability is **SteamPipe-style analysis inside the CAVS CLI** (shipped in v0.9.0 as `cavs analyze steampipe`, `cavs bench steampipe-style`, `cavs publish-preview` and related commands). It does not replace SteamPipe and is deliberately not a separate product: it diagnoses pack-file update bloat under a public fixed-1MiB model before a developer publishes a build.
 
 The third candidate is **CAVS Delivery SDK** for launchers, Unity, Unreal, and enterprise asset distribution.
 

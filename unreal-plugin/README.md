@@ -9,9 +9,9 @@ Planned:
 - Runtime client (C++) over the CVSP protocol, reusing the Rust core via a
   stable C ABI.
 - Build hook to package cooked PAK/IoStore output into `.cavs`.
-- Alignment-aware packaging guidance (see the SteamPipe analyzer,
-  `../steam-analyzer`, which already flags Unreal pack update bloat).
+- Alignment-aware packaging guidance (`cavs analyze steampipe` and
+  `cavs analyze-packs` already flag Unreal pack update bloat).
 
 Status: **not available yet.** The Godot plugin (`../godot-plugin`) is the
-reference client today; the core engine, server, CLI and SteamPipe analyzer
-are already usable.
+reference client today; the core engine, server and CLI (including the
+SteamPipe-style analysis commands) are already usable.
