@@ -1,5 +1,5 @@
-// Generate the per-platform npm packages (@cavs/sdk-<os>-<arch>) that carry
-// the native library, from the release's native artifacts.
+// Generate the per-platform npm packages (@orelvis15/cavs-sdk-<os>-<arch>)
+// that carry the native library, from the release's native artifacts.
 //
 // Usage: node scripts/build-npm-platform-packages.mjs <artifacts-dir> <version>
 //
@@ -35,7 +35,7 @@ for (const [target, info] of Object.entries(TARGETS)) {
     console.warn(`skip ${target}: ${libPath} not found`);
     continue;
   }
-  const pkgName = `@cavs/sdk-${info.os}-${info.cpu}`;
+  const pkgName = `@orelvis15/cavs-sdk-${info.os}-${info.cpu}`;
   const pkgDir = join(outRoot, `${info.os}-${info.cpu}`);
   const nativeDir = join(pkgDir, "native");
   mkdirSync(nativeDir, { recursive: true });

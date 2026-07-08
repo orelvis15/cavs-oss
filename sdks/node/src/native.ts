@@ -34,7 +34,7 @@ function resolveLibraryPath(): string {
   }
   const name = libraryFileName();
   const candidates = [
-    // Published per-platform package: @cavs/sdk-<os>-<arch>.
+    // Published per-platform package: @orelvis15/cavs-sdk-<os>-<arch>.
     tryResolvePlatformPackage(name),
     // Local dev staging (npm run native).
     path.join(__dirname, "..", "native", name),
@@ -52,7 +52,7 @@ function resolveLibraryPath(): string {
 
 function tryResolvePlatformPackage(name: string): string | undefined {
   try {
-    const pkg = `@cavs/sdk-${osArch()}`;
+    const pkg = `@orelvis15/cavs-sdk-${osArch()}`;
     const dir = path.dirname(require.resolve(`${pkg}/package.json`));
     return path.join(dir, name);
   } catch {

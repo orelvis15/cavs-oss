@@ -1,4 +1,4 @@
-# @cavs/sdk
+# @orelvis15/cavs-sdk
 
 Node.js / TypeScript SDK for CAVS. It loads the same compiled Rust core the
 CAVS CLI uses through a stable C ABI (via [koffi](https://koffi.dev)) — it
@@ -7,11 +7,11 @@ does not shell out to the CLI.
 ## Install
 
 ```sh
-npm install @cavs/sdk
+npm install @orelvis15/cavs-sdk
 ```
 
 Released builds ship the native library in per-platform packages
-(`@cavs/sdk-linux-x64`, `@cavs/sdk-darwin-arm64`, `@cavs/sdk-win32-x64`, …),
+(`@orelvis15/cavs-sdk-linux-x64`, `@orelvis15/cavs-sdk-darwin-arm64`, `@orelvis15/cavs-sdk-win32-x64`, …),
 resolved automatically. For local development against a source checkout:
 
 ```sh
@@ -24,7 +24,7 @@ npm test
 ## Quickstart
 
 ```ts
-import { CavsClient } from "@cavs/sdk";
+import { CavsClient } from "@orelvis15/cavs-sdk";
 
 const cavs = new CavsClient();
 try {
