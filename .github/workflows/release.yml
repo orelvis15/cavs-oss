@@ -206,12 +206,28 @@ jobs:
           for a in "$GITHUB_WORKSPACE"/native-artifacts/*.zip; do [ -f "$a" ] && unzip -o "$a" -d "$EX" >/dev/null; done
           npm ci
           npm run build
+          # Publish one package, tolerating only "already published" (so a
+          # re-run is idempotent) and failing the job on any real error —
+          # e.g. a token without 2FA-bypass returns E403, which must not be
+          # silently swallowed. NPM_TOKEN must be an Automation token.
+          npm_pub() {
+            local target="$1" label="${1:-main package}" out
+            if out=$(npm publish "$target" --access public 2>&1); then
+              echo "$out"; echo "published $label"
+            else
+              echo "$out"
+              if echo "$out" | grep -qiE "cannot publish over|previously published|already published|EPUBLISHCONFLICT"; then
+                echo "skip $label (this version is already on npm)"
+              else
+                echo "::error::npm publish failed for $label"
+                return 1
+              fi
+            fi
+          }
           # Per-platform native packages, then the main package.
           node scripts/build-npm-platform-packages.mjs "$EX" "$VERSION"
-          for dir in npm/*/; do
-            npm publish "$dir" --access public || echo "warn: publish $dir failed (may already exist)"
-          done
-          npm publish --access public || echo "warn: main package publish failed (may already exist)"
+          for dir in npm/*/; do npm_pub "$dir"; done
+          npm_pub .
 
   publish-maven:
     name: publish to maven central
