@@ -5,7 +5,7 @@ plugins {
     `maven-publish`
 }
 
-group = "com.cavs"
+group = "io.github.orelvis15"
 version = "1.1.0"
 
 kotlin {

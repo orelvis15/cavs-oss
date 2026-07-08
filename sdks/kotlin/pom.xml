@@ -4,14 +4,14 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>com.cavs</groupId>
+  <groupId>io.github.orelvis15</groupId>
   <artifactId>cavs-sdk</artifactId>
   <version>1.1.0</version>
   <packaging>jar</packaging>
 
   <name>CAVS SDK</name>
   <description>Kotlin/JVM SDK for CAVS, over the native Rust core via the C ABI</description>
-  <url>https://github.com/orelvis15/cavs-oss</url>
+  <url>https://github.com/orelvis15/cavs</url>
 
   <licenses>
     <license>
@@ -19,6 +19,20 @@
       <url>https://www.apache.org/licenses/LICENSE-2.0</url>
     </license>
   </licenses>
+
+  <developers>
+    <developer>
+      <id>orelvis15</id>
+      <name>Orelvis Lago Vasallo</name>
+      <url>https://github.com/orelvis15</url>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/orelvis15/cavs.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/orelvis15/cavs.git</developerConnection>
+    <url>https://github.com/orelvis15/cavs</url>
+  </scm>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -98,6 +112,76 @@
             -Dcavs.sdk.library=${env.CAVS_SDK_LIBRARY}</argLine>
         </configuration>
       </plugin>
+      <!-- Publishes to the Maven Central Portal. Credentials come from the
+           `central` server in settings.xml (see the release workflow).
+           autoPublish=true releases the version once validation passes —
+           this is irreversible; set it to false to stage for manual review
+           in the Portal UI instead. -->
+      <plugin>
+        <groupId>org.sonatype.central</groupId>
+        <artifactId>central-publishing-maven-plugin</artifactId>
+        <version>0.7.0</version>
+        <extensions>true</extensions>
+        <configuration>
+          <publishingServerId>central</publishingServerId>
+          <autoPublish>true</autoPublish>
+          <waitUntil>published</waitUntil>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- Activated by the release workflow (`mvn -Prelease deploy`): builds
+         the sources + javadoc jars and GPG-signs everything, as Maven
+         Central requires. Kept out of the default build so `mvn verify`
+         (tests) needs no GPG key. -->
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>3.3.1</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <goals><goal>jar-no-fork</goal></goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <version>3.6.3</version>
+            <executions>
+              <execution>
+                <id>attach-javadoc</id>
+                <goals><goal>jar</goal></goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.4</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals><goal>sign</goal></goals>
+                <configuration>
+                  <gpgArguments>
+                    <arg>--pinentry-mode</arg>
+                    <arg>loopback</arg>
+                  </gpgArguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

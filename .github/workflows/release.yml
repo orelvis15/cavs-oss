@@ -214,14 +214,15 @@ jobs:
           npm publish --access public || echo "warn: main package publish failed (may already exist)"
 
   publish-maven:
-    name: publish maven artifact
+    name: publish to maven central
     needs: sdk-native
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     env:
-      MAVEN_REPO_URL: ${{ secrets.MAVEN_REPO_URL }}
-      MAVEN_REPO_USER: ${{ secrets.MAVEN_REPO_USER }}
-      MAVEN_REPO_PASSWORD: ${{ secrets.MAVEN_REPO_PASSWORD }}
+      CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+      CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
     steps:
       - uses: actions/checkout@v4
 
@@ -230,10 +231,6 @@ jobs:
           distribution: temurin
           java-version: '22'
 
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.13'
-
       - name: Download native artifacts
         uses: actions/download-artifact@v4
         with:
@@ -241,12 +238,19 @@ jobs:
           pattern: sdk-native-*
           merge-multiple: true
 
-      - name: Bundle native libraries into resources and publish
+      - name: Bundle native libraries into resources and deploy to Maven Central
         working-directory: sdks/kotlin
         run: |
           set -euo pipefail
-          if [ -z "${MAVEN_REPO_URL:-}" ]; then
-            echo "MAVEN_REPO_URL not set; skipping Maven publish."
+          # Maven Central requires signed artifacts, so both the Portal token
+          # (CENTRAL_USERNAME/PASSWORD) and a GPG key are needed. Skip cleanly
+          # when either is absent so the release doesn't fail.
+          if [ -z "${CENTRAL_USERNAME:-}" ]; then
+            echo "CENTRAL_USERNAME not set; skipping Maven Central publish."
+            exit 0
+          fi
+          if [ -z "${GPG_PRIVATE_KEY:-}" ]; then
+            echo "GPG_PRIVATE_KEY not set; Maven Central rejects unsigned artifacts. Skipping."
             exit 0
           fi
           VERSION="${{ github.event.inputs.tag || github.ref_name }}"; VERSION="${VERSION#v}"
@@ -269,7 +273,23 @@ jobs:
             dst="$RES/${MAP[$target]}"; mkdir -p "$dst"
             cp "$src"/libcavs_sdk.* "$src"/cavs_sdk.dll "$dst/" 2>/dev/null || true
           done
-          gradle -Pversion="$VERSION" publish --no-daemon
+          # settings.xml providing the `central` server credentials (the
+          # Portal token) that central-publishing-maven-plugin reads.
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<EOF
+          <settings>
+            <servers>
+              <server>
+                <id>central</id>
+                <username>\${env.CENTRAL_USERNAME}</username>
+                <password>\${env.CENTRAL_PASSWORD}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          mvn -B -q versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+          mvn -B -Prelease -DskipTests -Dgpg.passphrase="${GPG_PASSPHRASE:-}" deploy
 
   publish-go-tag:
     name: tag go submodule
