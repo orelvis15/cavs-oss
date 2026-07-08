@@ -151,14 +151,23 @@
               </execution>
             </executions>
           </plugin>
+          <!-- Kotlin has no Javadoc, but Maven Central requires a
+               -javadoc.jar to be present. Attach an empty one (manifest
+               only) to satisfy the presence check. -->
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-javadoc-plugin</artifactId>
-            <version>3.6.3</version>
+            <artifactId>maven-jar-plugin</artifactId>
+            <version>3.4.1</version>
             <executions>
               <execution>
-                <id>attach-javadoc</id>
+                <id>empty-javadoc-jar</id>
+                <phase>package</phase>
                 <goals><goal>jar</goal></goals>
+                <configuration>
+                  <classifier>javadoc</classifier>
+                  <classesDirectory>${project.build.directory}/empty-javadoc</classesDirectory>
+                  <forceCreation>true</forceCreation>
+                </configuration>
               </execution>
             </executions>
           </plugin>

@@ -29,10 +29,15 @@ mkdirSync(outRoot, { recursive: true });
 
 let built = 0;
 for (const [target, info] of Object.entries(TARGETS)) {
-  const srcDir = join(artifactsDir, `cavs-sdk-native-${version}-${target}`);
+  // The release's sdk-native job names artifact dirs from the raw tag, which
+  // may carry a leading "v" (cavs-sdk-native-v1.2.0-<target>); accept both.
+  let srcDir = join(artifactsDir, `cavs-sdk-native-${version}-${target}`);
+  if (!existsSync(join(srcDir, info.lib))) {
+    srcDir = join(artifactsDir, `cavs-sdk-native-v${version}-${target}`);
+  }
   const libPath = join(srcDir, info.lib);
   if (!existsSync(libPath)) {
-    console.warn(`skip ${target}: ${libPath} not found`);
+    console.warn(`skip ${target}: ${info.lib} not found for ${target}`);
     continue;
   }
   const pkgName = `@orelvis15/cavs-sdk-${info.os}-${info.cpu}`;
