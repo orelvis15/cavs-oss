@@ -370,6 +370,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cavs-ffi"
+version = "1.1.0"
+dependencies = [
+ "cavs-sdk-core",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "cavs-format"
 version = "1.1.0"
 dependencies = [
@@ -430,6 +439,28 @@ version = "1.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "cavs-sdk-core"
+version = "1.1.0"
+dependencies = [
+ "anyhow",
+ "cavs-analyzer",
+ "cavs-chunker",
+ "cavs-format",
+ "cavs-hash",
+ "cavs-manifest",
+ "cavs-plan",
+ "cavs-proto",
+ "cavs-signature",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "uuid",
+ "zstd",
 ]
 
 [[package]]

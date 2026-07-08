@@ -12,6 +12,8 @@ members = [
     "core/cavs-plan",
     "core/cavs-analyzer",
     "core/cavs-workspace",
+    "core/cavs-sdk-core",
+    "core/cavs-ffi",
     "core/cavs-cli",
     "core/cavs-server",
     "core/cavs-client",
@@ -40,6 +42,7 @@ cavs-rebuild-plan = { path = "core/cavs-rebuild-plan", version = "1.1.0" }
 cavs-plan = { path = "core/cavs-plan", version = "1.1.0" }
 cavs-analyzer = { path = "core/cavs-analyzer", version = "1.1.0" }
 cavs-workspace = { path = "core/cavs-workspace", version = "1.1.0" }
+cavs-sdk-core = { path = "core/cavs-sdk-core", version = "1.1.0" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
 axum = "0.8"
