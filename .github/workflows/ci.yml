@@ -65,8 +65,8 @@ jobs:
         working-directory: sdks/go
         run: go test ./...
 
-  sdk-java:
-    name: sdk · java
+  sdk-kotlin:
+    name: sdk · kotlin
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -76,14 +76,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '22'
-          cache: maven
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
       - name: Build native library
         run: cargo build --release -p cavs-ffi
-      - name: Test (Maven)
-        working-directory: sdks/java
+      - name: Test (Gradle)
+        working-directory: sdks/kotlin
         env:
           CAVS_SDK_LIBRARY: ${{ github.workspace }}/target/release/libcavs_sdk.so
-        run: mvn -B verify
+        run: gradle test --no-daemon
 
   sdk-node:
     name: sdk · node

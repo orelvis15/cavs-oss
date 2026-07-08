@@ -15,7 +15,8 @@ node/dist/
 node/*.node
 node/prebuilds/
 
-# Java
-java/.gradle/
-java/build/
-java/**/build/
+# Kotlin / JVM
+kotlin/.gradle/
+kotlin/build/
+kotlin/**/build/
+kotlin/.kotlin/

@@ -230,6 +230,10 @@ jobs:
           distribution: temurin
           java-version: '22'
 
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
       - name: Download native artifacts
         uses: actions/download-artifact@v4
         with:
@@ -238,7 +242,7 @@ jobs:
           merge-multiple: true
 
       - name: Bundle native libraries into resources and publish
-        working-directory: sdks/java
+        working-directory: sdks/kotlin
         run: |
           set -euo pipefail
           if [ -z "${MAVEN_REPO_URL:-}" ]; then
