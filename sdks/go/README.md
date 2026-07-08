@@ -64,6 +64,19 @@ job) and accepts `cavs.WithProgress(fn)` to stream `ProgressEvent`s.
 Errors are `*cavs.Error` carrying a stable `Code` (e.g.
 `cavs.CodePathNotFound`); use `cavs.IsCode(err, code)` to branch.
 
+## Examples
+
+Runnable examples live in [`examples/`](examples/). `examples/quickstart`
+generates two synthetic builds and walks the full lifecycle (analyze → preview
+→ createPlan → applyPlan → estimateSavings) with zero setup:
+
+```sh
+make native
+go run ./examples/quickstart
+```
+
+See [`examples/README.md`](examples/README.md) for the full list.
+
 ## CI/CD example
 
 ```yaml

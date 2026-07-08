@@ -57,6 +57,19 @@ and `applyPlanAsync` return `CompletableFuture`. Failures throw
 Requests and responses are Kotlin `data class`es serialized with
 kotlinx.serialization; property names map directly to the engine's JSON.
 
+## Examples
+
+Runnable examples live in [`examples/`](examples/). `runQuickstart` generates
+two synthetic builds and walks the full lifecycle (analyze → preview →
+createPlan → applyPlan → estimateSavings) with zero setup:
+
+```sh
+export CAVS_SDK_LIBRARY="/path/to/libcavs_sdk.dylib"   # or .so / .dll
+gradle runQuickstart
+```
+
+See [`examples/README.md`](examples/README.md) for the full list.
+
 ## Build & test
 
 Gradle (primary):

@@ -54,6 +54,19 @@ returns a `Promise` and accepts an options object:
 Failures reject with a `CavsError` carrying a stable `.code` (see
 `ErrorCode`).
 
+## Examples
+
+Runnable examples live in [`examples/`](examples/). `examples/endToEnd`
+generates two synthetic builds and walks the full lifecycle (analyze → preview
+→ createPlan → applyPlan → estimateSavings) with zero setup:
+
+```sh
+npm run build
+node dist/examples/endToEnd.js
+```
+
+See [`examples/README.md`](examples/README.md) for the full list.
+
 ## CI example
 
 ```ts
