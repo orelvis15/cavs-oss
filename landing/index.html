@@ -32,7 +32,7 @@
   <div class="nav-inner">
     <a href="index.html" class="brand">
       <img src="assets/logo-transparent-128.png" alt="CAVS logo" />
-      CAVS <span class="tag">v1.1.0</span>
+      CAVS <span class="tag">v1.2.0</span>
     </a>
     <nav class="nav-links" id="navLinks">
       <a class="nav-page active" href="index.html">Home</a>
@@ -130,6 +130,65 @@ cavs-client fetch http://localhost:8990 game_v2 --cache ./cache">copy</span>
         <div class="num blue">SHA-256</div>
         <div class="label">Verified output</div>
         <div class="desc">byte-identical or it fails</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ QUICK START ============ -->
+<section class="anchor" id="quickstart">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Quick start</span>
+      <h2 class="section-title">Integrate CAVS into<br>your pipeline in minutes.</h2>
+      <p class="section-sub">Point CAVS at two builds and it tells you what the update will cost, produces a verifiable patch, and applies it byte-identically. Use the CLI in a shell step, or the Go / Kotlin / Node SDKs to drive the same Rust core from your release service — no shelling out.</p>
+    </div>
+
+    <div style="display:grid; grid-template-columns: 1.05fr .95fr; gap:32px; align-items:start;" class="what-grid">
+      <div>
+        <div class="term">
+          <div class="term-bar">
+            <span class="dots"><i></i><i></i><i></i></span>
+            <span class="title">bash — in CI, gate every release</span>
+            <span class="term-copy" data-copy="cavs preview Build_v2 --against Build_v1.cavssig --json
+cavs diff-plan Build_v1 Build_v2 -o update.cavsplan
+cavs apply --old Build_v1 --plan update.cavsplan --out Build_v2_out --verify">copy</span>
+          </div>
+          <div class="term-body">
+<div class="cmd"><span class="comment"># 1 · preview the update cost (fail the job if it's too big)</span></div>
+<div class="cmd"><span class="prompt">$</span> cavs preview Build_v2 <span class="flag">--against</span> Build_v1.cavssig <span class="flag">--json</span></div>
+<div class="cmd"> </div>
+<div class="cmd"><span class="comment"># 2 · build a portable, BLAKE3-sealed patch</span></div>
+<div class="cmd"><span class="prompt">$</span> cavs diff-plan Build_v1 Build_v2 <span class="flag">-o</span> update.cavsplan</div>
+<div class="cmd"> </div>
+<div class="cmd"><span class="comment"># 3 · apply &amp; verify (byte-identical or it fails)</span></div>
+<div class="cmd"><span class="prompt">$</span> cavs apply <span class="flag">--old</span> Build_v1 <span class="flag">--plan</span> update.cavsplan <span class="flag">--out</span> Build_v2_out <span class="flag">--verify</span></div>
+            <div class="term-out">
+              <span class="k">Recommended</span><span class="v big">cavsPlan</span>
+              <span class="k">Update</span><span class="v big">2.63 MiB</span>
+              <span class="k">Output</span><span class="v big">verified</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <p class="lead" style="margin-top:0;">Prefer code? The same check from your backend:</p>
+        <pre class="code">import { CavsClient } from "@orelvis15/cavs-sdk";
+
+const cavs = new CavsClient();
+const preview = await cavs.preview({
+  oldPath: "Build_v1",
+  newPath: "Build_v2",
+});
+if (preview.routes[0].networkBytes &gt; budget) {
+  throw new Error("update too large");
+}
+cavs.close();</pre>
+        <div class="hero-cta" style="margin-top:20px;">
+          <a class="btn btn-ghost btn-sm" href="sdk-go.html">Go SDK</a>
+          <a class="btn btn-ghost btn-sm" href="sdk-kotlin.html">Kotlin SDK</a>
+          <a class="btn btn-ghost btn-sm" href="sdk-node.html">Node SDK</a>
+        </div>
       </div>
     </div>
   </div>

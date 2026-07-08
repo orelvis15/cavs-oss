@@ -71,6 +71,65 @@ jobs:
             *.tar.gz
             *.zip
 
+  sdk-native:
+    name: sdk native ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu,  lib: libcavs_sdk.so }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, lib: libcavs_sdk.so }
+          - { os: macos-14,       target: aarch64-apple-darwin,       lib: libcavs_sdk.dylib }
+          - { os: macos-14,       target: x86_64-apple-darwin,        lib: libcavs_sdk.dylib }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc,     lib: cavs_sdk.dll }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build native library
+        run: cargo build --release --target ${{ matrix.target }} -p cavs-ffi
+
+      - name: Package native library + header + checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.inputs.tag || github.ref_name }}"
+          DIST="cavs-sdk-native-${VERSION}-${{ matrix.target }}"
+          mkdir "$DIST"
+          cp "target/${{ matrix.target }}/release/${{ matrix.lib }}" "$DIST/"
+          cp core/cavs-ffi/include/cavs_sdk.h "$DIST/"
+          cp LICENSE NOTICE "$DIST/"
+          # Windows also emits an import library for cgo/link consumers.
+          if [ -f "target/${{ matrix.target }}/release/cavs_sdk.dll.lib" ]; then
+            cp "target/${{ matrix.target }}/release/cavs_sdk.dll.lib" "$DIST/"
+          fi
+          # SHA-256 sidecar (verified by the Java/Node loaders).
+          ( cd "$DIST"
+            if command -v sha256sum >/dev/null; then
+              sha256sum "${{ matrix.lib }}" > "${{ matrix.lib }}.sha256"
+            else
+              shasum -a 256 "${{ matrix.lib }}" > "${{ matrix.lib }}.sha256"
+            fi
+          )
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "$DIST.zip" "$DIST" >/dev/null
+          else
+            tar czf "$DIST.tar.gz" "$DIST"
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-native-${{ matrix.target }}
+          path: |
+            *.tar.gz
+            *.zip
+
   godot-plugin:
     name: package godot plugin
     runs-on: ubuntu-latest
@@ -92,7 +151,7 @@ jobs:
 
   release:
     name: publish release
-    needs: [build, godot-plugin]
+    needs: [build, sdk-native, godot-plugin]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -110,6 +169,153 @@ jobs:
           files: dist/*
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+  publish-npm:
+    name: publish npm packages
+    needs: sdk-native
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: native-artifacts
+          pattern: sdk-native-*
+          merge-multiple: true
+
+      - name: Publish
+        working-directory: sdks/node
+        run: |
+          set -euo pipefail
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "NPM_TOKEN not set; skipping npm publish."
+            exit 0
+          fi
+          VERSION="${{ github.event.inputs.tag || github.ref_name }}"; VERSION="${VERSION#v}"
+          EX="$GITHUB_WORKSPACE/native-extracted"; mkdir -p "$EX"
+          for a in "$GITHUB_WORKSPACE"/native-artifacts/*.tar.gz; do [ -f "$a" ] && tar xzf "$a" -C "$EX"; done
+          for a in "$GITHUB_WORKSPACE"/native-artifacts/*.zip; do [ -f "$a" ] && unzip -o "$a" -d "$EX" >/dev/null; done
+          npm ci
+          npm run build
+          # Per-platform native packages, then the main package.
+          node scripts/build-npm-platform-packages.mjs "$EX" "$VERSION"
+          for dir in npm/*/; do
+            npm publish "$dir" --access public || echo "warn: publish $dir failed (may already exist)"
+          done
+          npm publish --access public || echo "warn: main package publish failed (may already exist)"
+
+  publish-maven:
+    name: publish to maven central
+    needs: sdk-native
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    env:
+      CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+      CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '22'
+
+      - name: Download native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: native-artifacts
+          pattern: sdk-native-*
+          merge-multiple: true
+
+      - name: Bundle native libraries into resources and deploy to Maven Central
+        working-directory: sdks/kotlin
+        run: |
+          set -euo pipefail
+          # Maven Central requires signed artifacts, so both the Portal token
+          # (CENTRAL_USERNAME/PASSWORD) and a GPG key are needed. Skip cleanly
+          # when either is absent so the release doesn't fail.
+          if [ -z "${CENTRAL_USERNAME:-}" ]; then
+            echo "CENTRAL_USERNAME not set; skipping Maven Central publish."
+            exit 0
+          fi
+          if [ -z "${GPG_PRIVATE_KEY:-}" ]; then
+            echo "GPG_PRIVATE_KEY not set; Maven Central rejects unsigned artifacts. Skipping."
+            exit 0
+          fi
+          VERSION="${{ github.event.inputs.tag || github.ref_name }}"; VERSION="${VERSION#v}"
+          EX="$GITHUB_WORKSPACE/native-extracted"; mkdir -p "$EX"
+          for a in "$GITHUB_WORKSPACE"/native-artifacts/*.tar.gz; do [ -f "$a" ] && tar xzf "$a" -C "$EX"; done
+          for a in "$GITHUB_WORKSPACE"/native-artifacts/*.zip; do [ -f "$a" ] && unzip -o "$a" -d "$EX" >/dev/null; done
+          # Lay out libs as /native/<os>-<arch>/<lib>(.sha256) for the loader.
+          declare -A MAP=(
+            [x86_64-unknown-linux-gnu]=linux-x86_64
+            [aarch64-unknown-linux-gnu]=linux-aarch64
+            [x86_64-apple-darwin]=macos-x86_64
+            [aarch64-apple-darwin]=macos-aarch64
+            [x86_64-pc-windows-msvc]=windows-x86_64
+          )
+          RES=src/main/resources/native
+          for target in "${!MAP[@]}"; do
+            src="$EX/cavs-sdk-native-${VERSION}-${target}"
+            [ -d "$src" ] || src="$EX/cavs-sdk-native-v${VERSION}-${target}"
+            [ -d "$src" ] || continue
+            dst="$RES/${MAP[$target]}"; mkdir -p "$dst"
+            cp "$src"/libcavs_sdk.* "$src"/cavs_sdk.dll "$dst/" 2>/dev/null || true
+          done
+          # settings.xml providing the `central` server credentials (the
+          # Portal token) that central-publishing-maven-plugin reads.
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<EOF
+          <settings>
+            <servers>
+              <server>
+                <id>central</id>
+                <username>\${env.CENTRAL_USERNAME}</username>
+                <password>\${env.CENTRAL_PASSWORD}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          mvn -B -q versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+          mvn -B -Prelease -DskipTests -Dgpg.passphrase="${GPG_PASSPHRASE:-}" deploy
+
+  publish-go-tag:
+    name: tag go submodule
+    needs: [release, sdk-native]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push sdks/go submodule tag
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.ref_name }}"
+          TAG="sdks/go/${VERSION}"
+          # `go get github.com/orelvis15/cavs-oss/sdks/go@<VERSION>` resolves
+          # this submodule tag on the tagged commit.
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "tag ${TAG} already exists"
+          else
+            git tag "${TAG}" "${GITHUB_SHA}"
+            git push origin "${TAG}"
+          fi
 
   publish-crates:
     name: publish to crates.io
@@ -157,9 +363,12 @@ jobs:
           # v0.7.0 addition; cavs-analyzer and cavs-workspace are the v0.9.0
           # additions (cavs-steam was removed in v0.9.0). All must precede
           # cavs-cli/cavs-client, which depend on them.
+          # cavs-sdk-core (the SDK operation engine) and cavs-ffi (its C ABI)
+          # are the v1.1.0 SDK additions; both depend on the core crates above
+          # and must precede cavs-cli/server/client.
           for crate in cavs-hash cavs-chunker cavs-store cavs-proto cavs-format \
                        cavs-manifest cavs-signature cavs-rebuild-plan cavs-plan \
-                       cavs-analyzer cavs-workspace \
+                       cavs-analyzer cavs-workspace cavs-sdk-core cavs-ffi \
                        cavs-cli cavs-server cavs-client; do
             publish "$crate"
           done

@@ -141,7 +141,8 @@ the paper, [`docs/PAPER.md`](docs/PAPER.md).
 
 | Folder | What |
 |---|---|
-| [`core/`](core) | The delivery engine (Rust): chunking, hashing, the `.cavs` format, the global content-addressable store, the CVSP protocol, the SteamPipe-style analyzer (`cavs-analyzer`), the local workspace model (`cavs-workspace`), and the `cavs` / `cavs-server` / `cavs-client` binaries |
+| [`core/`](core) | The delivery engine (Rust): chunking, hashing, the `.cavs` format, the global content-addressable store, the CVSP protocol, the SteamPipe-style analyzer (`cavs-analyzer`), the local workspace model (`cavs-workspace`), the SDK operation engine (`cavs-sdk-core`) and its C ABI (`cavs-ffi`), and the `cavs` / `cavs-server` / `cavs-client` binaries |
+| [`sdks/`](sdks) | Language SDKs over the shared Rust core via the C ABI: [Go](sdks/go), [Kotlin/JVM](sdks/kotlin) and [Node/TypeScript](sdks/node) |
 | [`godot-plugin/`](godot-plugin) | Godot 4 runtime client in pure GDScript: downloads, verifies and mounts packs with `load_resource_pack()` |
 | [`unity-plugin/`](unity-plugin) | Unity package — **coming soon** |
 | [`unreal-plugin/`](unreal-plugin) | Unreal Engine plugin — **coming soon** |
@@ -472,6 +473,44 @@ content-addressed, cache-aware update routes. Full docs:
 [docs/PATCH_POLICY_BENCHMARK.md](docs/PATCH_POLICY_BENCHMARK.md),
 [docs/PATCH_GRAPH_POLICIES.md](docs/PATCH_GRAPH_POLICIES.md),
 [docs/TRAFFIC_MODELS.md](docs/TRAFFIC_MODELS.md).
+
+### SDKs — Go, Kotlin, Node (v1.2.0)
+
+Integrate CAVS into backend services and CI/CD pipelines programmatically —
+the SDKs load the same compiled Rust core the CLI uses through a stable C ABI
+(`cavs-ffi`), so there is no shelling out and no CAVS-hosted infrastructure.
+All three expose the same eight operations — `analyze`, `preview`,
+`packDirectory`, `createPlan`, `applyPlan`, `verifyInstall`, `benchmark`,
+`estimateSavings` — with a consistent error model.
+
+```go
+// Go — github.com/orelvis15/cavs-oss/sdks/go
+client, _ := cavs.New()
+defer client.Close()
+preview, _ := client.Preview(ctx, cavs.PreviewRequest{OldPath: "Build_v1", NewPath: "Build_v2"})
+fmt.Println(preview.RecommendedRoute)
+```
+
+```kotlin
+// Kotlin/JVM — io.github.orelvis15:cavs-sdk:1.2.0  (Java 22+)
+CavsClient.create().use { cavs ->
+    val preview = cavs.preview(PreviewRequest(oldPath = "Build_v1", newPath = "Build_v2"))
+    println(preview.recommendedRoute)
+}
+```
+
+```ts
+// Node/TypeScript — @orelvis15/cavs-sdk
+const cavs = new CavsClient();
+const preview = await cavs.preview({ oldPath: "Build_v1", newPath: "Build_v2" });
+console.log(preview.recommendedRoute);
+cavs.close();
+```
+
+Full references: [docs/SDKS.md](docs/SDKS.md) (overview + architecture),
+[docs/SDK_GO.md](docs/SDK_GO.md), [docs/SDK_KOTLIN.md](docs/SDK_KOTLIN.md),
+[docs/SDK_NODE.md](docs/SDK_NODE.md),
+[docs/SDK_NATIVE_ABI.md](docs/SDK_NATIVE_ABI.md).
 
 ## Components
 

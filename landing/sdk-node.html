@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CAVS — Node / TypeScript SDK</title>
+<meta name="description" content="The CAVS Node.js / TypeScript SDK: analyze, preview, pack, plan, apply, verify and benchmark game updates from Node, over the native Rust core — Promise-first, with AbortSignal cancellation and progress events." />
+<meta name="author" content="Orelvis" />
+<meta name="theme-color" content="#0A0E1A" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="CAVS Node SDK" />
+<meta property="og:description" content="Integrate CAVS into Node dashboards, CI tools and release orchestration." />
+<meta property="og:image" content="assets/og-thumb.webp" />
+<link rel="icon" type="image/png" href="assets/logo-transparent-128.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/styles.css" />
+<script>(function(){try{var t=localStorage.getItem('cavs-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+</head>
+<body>
+<div class="bg-fx"></div>
+<div class="bg-grid"></div>
+
+<!-- ============ NAV ============ -->
+<header class="nav" id="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="brand">
+      <img src="assets/logo-transparent-128.png" alt="CAVS logo" />
+      CAVS <span class="tag">v1.2.0</span>
+    </a>
+    <nav class="nav-links" id="navLinks">
+      <a class="nav-page" href="index.html">Home</a>
+      <a class="nav-page" href="try.html">Try CAVS</a>
+      <a class="nav-page" href="benchmarks.html">Benchmarks</a>
+      <a class="nav-page active" href="products.html">Products</a>
+      <a class="nav-page" href="changelog.html">Changelog</a>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme" title="Toggle light / dark">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </button>
+      <a class="btn btn-primary btn-sm" href="https://github.com/orelvis15/cavs" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49l-.01-1.9c-2.78.62-3.37-1.22-3.37-1.22-.46-1.18-1.11-1.5-1.11-1.5-.91-.63.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.79-4.57 5.05.36.32.68.94.68 1.9l-.01 2.82c0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/></svg>
+        Star
+      </a>
+    </nav>
+    <button class="burger" id="burger" aria-label="Menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- ============ PAGE HEAD ============ -->
+<section class="page-head">
+  <div class="wrap">
+    <span class="eyebrow"><a href="products.html#sdks" style="color:inherit;">SDKs</a> · Node / TypeScript</span>
+    <h1>CAVS for <span class="accent">Node</span> tooling.</h1>
+    <p class="section-sub">A Promise-first SDK over the same Rust core the CLI uses, bound through Node-API. Fully typed, with <span class="mono">AbortSignal</span> cancellation and progress events — for release dashboards, CI tools and orchestration. Published as <span class="mono">@orelvis15/cavs-sdk</span>.</p>
+    <div class="hero-cta" style="margin-top:22px;">
+      <a class="btn btn-primary" href="https://www.npmjs.com/package/@orelvis15/cavs-sdk" target="_blank" rel="noopener">On npm</a>
+      <a class="btn btn-ghost" href="https://github.com/orelvis15/cavs/blob/main/docs/SDK_NODE.md" target="_blank" rel="noopener">Full reference</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ AT A GLANCE ============ -->
+<section style="padding-top:40px;">
+  <div class="wrap">
+    <div class="cards g3">
+      <div class="prod reveal"><div class="prod-top"><div><h3>Package</h3><div class="prod-cmd">@orelvis15/cavs-sdk</div></div></div><p>Ships TypeScript types. Requires Node 20+ and a C toolchain-free install — the native binding loads a prebuilt library.</p></div>
+      <div class="prod reveal" style="transition-delay:.05s"><div class="prod-top"><div><h3>Native core</h3><div class="prod-cmd">per-platform packages</div></div></div><p>The library resolves from <span class="mono">@orelvis15/cavs-sdk-&lt;os&gt;-&lt;arch&gt;</span> optional deps, or <span class="mono">CAVS_SDK_LIBRARY</span>.</p></div>
+      <div class="prod reveal" style="transition-delay:.1s"><div class="prod-top"><div><h3>API shape</h3><div class="prod-cmd">Promise-first</div></div></div><p>Every operation returns a Promise. The non-progress path runs off the event loop; failures reject with <span class="mono">CavsError</span>.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ INSTALL ============ -->
+<section class="anchor" id="install">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Install</span>
+      <h2 class="section-title">One install line.</h2>
+      <p class="section-sub">The matching <span class="mono">@orelvis15/cavs-sdk-&lt;platform&gt;</span> package is pulled automatically. For a source checkout, <span class="mono">npm run native</span> stages the library locally.</p>
+    </div>
+    <div class="term">
+      <div class="term-bar">
+        <span class="dots"><i></i><i></i><i></i></span>
+        <span class="title">bash — install</span>
+        <span class="term-copy" data-copy="npm install @orelvis15/cavs-sdk">copy</span>
+      </div>
+      <div class="term-body">
+<div class="cmd"><span class="prompt">$</span> npm install @orelvis15/cavs-sdk</div>
+<div class="cmd"> </div>
+<div class="cmd"><span class="comment"># source checkout: build &amp; stage the native library</span></div>
+<div class="cmd"><span class="prompt">$</span> npm run native</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ QUICKSTART ============ -->
+<section class="anchor" id="quickstart">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Quickstart</span>
+      <h2 class="section-title">Preview an update.</h2>
+    </div>
+    <pre class="code">import { CavsClient } from "@orelvis15/cavs-sdk";
+
+const cavs = new CavsClient();
+try {
+  const preview = await cavs.preview({
+    oldPath: "Build_v1",
+    newPath: "Build_v2",
+    policy: "balanced",
+  });
+  console.log("Recommended route:", preview.recommendedRoute);
+  for (const r of preview.routes) {
+    console.log(`  ${r.name}: ${r.networkBytes} bytes`);
+  }
+} finally {
+  cavs.close();
+}</pre>
+  </div>
+</section>
+
+<!-- ============ API ============ -->
+<section class="anchor" id="api">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">The API</span>
+      <h2 class="section-title">Eight operations,<br>one client.</h2>
+      <p class="section-sub">Every method returns a <span class="mono">Promise</span> and accepts an options object with <span class="mono">onProgress</span> and <span class="mono">signal</span>. Failures reject with a <span class="mono">CavsError</span> carrying a stable <span class="mono">.code</span>.</p>
+    </div>
+    <div class="cmd-list">
+      <div class="cmd-row"><code>analyze({ oldPath, newPath })</code><div class="cmd-desc">Inspect an old→new transition: sizes, estimated update bytes, reuse ratios, worst files and layout findings with fixes.</div></div>
+      <div class="cmd-row"><code>packDirectory({ inputDir, outputCavs })</code><div class="cmd-desc">Package a directory tree into a deduplicated <span class="mono">.cavs</span> container. Profile, compression, signing and ignore globs.</div></div>
+      <div class="cmd-row"><code>preview({ oldPath, newPath, policy })</code><div class="cmd-desc">Estimate the wire cost across routes and recommend the cheapest.</div></div>
+      <div class="cmd-row"><code>createPlan({ oldPath, newPath, outputPlan })</code><div class="cmd-desc">Build a portable, BLAKE3-sealed <span class="mono">.cavsplan</span>. Returns reuse and operation counts.</div></div>
+      <div class="cmd-row"><code>applyPlan({ oldPath, planPath, outputPath })</code><div class="cmd-desc">Apply a plan with verification — atomic for artifacts, staged + journaled for directories.</div></div>
+      <div class="cmd-row"><code>verifyInstall({ target, signature })</code><div class="cmd-desc">Check an install against a <span class="mono">.cavssig</span> or manifest; reports modified / missing / extra.</div></div>
+      <div class="cmd-row"><code>benchmark({ oldPath, newPath })</code><div class="cmd-desc">A repeatable route-comparison report with measured diff/apply timings.</div></div>
+      <div class="cmd-row"><code>estimateSavings({ pricePerGb, monthlyDownloads, … })</code><div class="cmd-desc">Monthly egress cost of full downloads vs CAVS updates, and the savings.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PROGRESS & CANCELLATION ============ -->
+<section class="anchor" id="progress">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Progress &amp; cancellation</span>
+      <h2 class="section-title">AbortSignal and<br>progress events.</h2>
+    </div>
+    <pre class="code">import { CavsClient, CavsError, ErrorCode } from "@orelvis15/cavs-sdk";
+
+const cavs = new CavsClient();
+const ac = new AbortController();
+setTimeout(() =&gt; ac.abort(), 30_000);
+
+try {
+  const plan = await cavs.createPlan(
+    { oldPath: "Build_v1", newPath: "Build_v2", outputPlan: "update.cavsplan" },
+    {
+      signal: ac.signal,
+      onProgress: (e) =&gt; console.log(`[${e.type}] ${e.phase ?? ""}`),
+    },
+  );
+  console.log("reused bytes:", plan.reusedBytes);
+} catch (err) {
+  if (err instanceof CavsError &amp;&amp; err.code === ErrorCode.PathNotFound) {
+    console.error("old build not found");
+  } else {
+    throw err;
+  }
+} finally {
+  cavs.close();
+}</pre>
+    <p class="table-note" style="margin-top:18px;">Enabling <span class="mono">onProgress</span> runs the operation synchronously so callbacks stay on the JS thread; the default (non-progress) path runs off the event loop and honors <span class="mono">signal</span>.</p>
+  </div>
+</section>
+
+<!-- ============ CI/CD ============ -->
+<section class="anchor" id="cicd">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">CI/CD</span>
+      <h2 class="section-title">Feed a release<br>dashboard.</h2>
+    </div>
+    <pre class="code"><span class="comment">// release-preview.ts — run in CI, publish the report</span>
+const cavs = new CavsClient();
+const preview = await cavs.preview({
+  oldPath: process.env.OLD_BUILD!,
+  newPath: process.env.NEW_BUILD!,
+});
+await uploadReport(preview);          // JSON straight to your dashboard
+cavs.close();</pre>
+    <div class="hero-cta" style="margin-top:30px;">
+      <a class="btn btn-ghost" href="sdk-go.html">Go SDK →</a>
+      <a class="btn btn-ghost" href="sdk-kotlin.html">Kotlin SDK →</a>
+      <a class="btn btn-primary" href="https://github.com/orelvis15/cavs/blob/main/docs/SDK_NODE.md" target="_blank" rel="noopener">Full Node reference</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a href="index.html" class="brand" style="font-size:18px;"><img src="assets/logo-transparent-128.png" alt="" style="width:26px;height:26px;" /> CAVS</a>
+        <p class="foot-note">Content-Addressable Verified Streaming.<br>Ship game updates that weigh what changed.</p>
+      </div>
+      <div class="foot-links">
+        <a href="products.html#sdks">SDKs</a>
+        <a href="https://github.com/orelvis15/cavs" target="_blank" rel="noopener">GitHub</a>
+        <a href="index.html">Home</a>
+        <a href="changelog.html">Changelog</a>
+      </div>
+    </div>
+    <p class="foot-note" style="margin-top:32px; opacity:.75;">© 2026 CAVS · Apache 2.0 licensed · SDKs wrap the same Rust core as the CLI.</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>

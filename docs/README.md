@@ -88,6 +88,22 @@
   format and JSON schema with its stability status.
 - [GODOT_PLUGIN.md](GODOT_PLUGIN.md) — v1.0.0: the stable Godot runtime
   API (`fetch`/`fetch_async`/`ensure_pack`) and PCK certification.
+- [SDKS.md](SDKS.md) — v1.2.0: the Go / Kotlin / Node SDKs — shared
+  architecture (Rust core → `cavs-sdk-core` JSON engine → `cavs-ffi` C ABI →
+  bindings), the JSON envelope, the eight operations, error model and the
+  three-SDK comparison.
+- [SDK_GO.md](SDK_GO.md) — v1.2.0: the Go SDK reference — install, native
+  library setup, full `Client` API, context cancellation, progress, typed
+  errors, CI/CD.
+- [SDK_KOTLIN.md](SDK_KOTLIN.md) — v1.2.0: the Kotlin/JVM SDK reference —
+  Java 22 FFM, Gradle/Maven coordinates, `CavsClient`, `CompletableFuture`
+  async, `CavsException`, CI/CD.
+- [SDK_NODE.md](SDK_NODE.md) — v1.2.0: the Node/TypeScript SDK reference —
+  install, native resolution, Promise API, `AbortSignal`, progress,
+  `CavsError`, CI/CD.
+- [SDK_NATIVE_ABI.md](SDK_NATIVE_ABI.md) — v1.2.0: the stable C ABI behind
+  the SDKs — every `cavs_sdk.h` function, memory ownership, the progress
+  callback and threading model, and ABI/schema versioning.
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) — v1.0.0: the gate every
   release runs before tagging.
 - [PAPER.md](PAPER.md) — the technical paper: design, rationale, and results.

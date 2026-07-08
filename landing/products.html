@@ -27,7 +27,7 @@
   <div class="nav-inner">
     <a href="index.html" class="brand">
       <img src="assets/logo-transparent-128.png" alt="CAVS logo" />
-      CAVS <span class="tag">v1.1.0</span>
+      CAVS <span class="tag">v1.2.0</span>
     </a>
     <nav class="nav-links" id="navLinks">
       <a class="nav-page" href="index.html">Home</a>
@@ -55,7 +55,7 @@
   <div class="wrap">
     <span class="eyebrow">The toolkit</span>
     <h1>One engine.<br><span class="accent">Many surfaces.</span></h1>
-    <p class="section-sub">CAVS is a Rust core wrapped in a command-line toolkit, an HTTP origin and a streaming client — plus a shipping Godot plugin, a SteamPipe-style build &amp; update analyzer built into the CLI, and engine plugins on the way. Everything below is Apache-2.0 licensed and lives in one repository.</p>
+    <p class="section-sub">CAVS is a Rust core wrapped in a command-line toolkit, an HTTP origin and a streaming client — plus language SDKs for Go, Kotlin and Node, a shipping Godot plugin, a SteamPipe-style build &amp; update analyzer built into the CLI, and engine plugins on the way. Everything below is Apache-2.0 licensed and lives in one repository.</p>
   </div>
 </section>
 
@@ -111,7 +111,53 @@
         </div>
         <p>CAVS delivery for AssetBundles / Addressables and PAK / IoStore containers, over the shared Rust core.</p>
       </a>
+      <a href="#sdks" class="prod reveal">
+        <div class="prod-top">
+          <span class="prod-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg></span>
+          <div><h3>SDKs</h3><div class="prod-cmd">Go · Kotlin · Node</div></div>
+          <div class="prod-badges"><span class="badge available">new in 1.2</span></div>
+        </div>
+        <p>Drive the same Rust core from your backend and build pipelines — analyze, preview, pack, plan, apply, verify, benchmark — no shelling out to the CLI.</p>
+      </a>
     </div>
+  </div>
+</section>
+
+<!-- ============ SDKs ============ -->
+<section class="anchor" id="sdks">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">SDKs — Go · Kotlin · Node</span>
+      <h2 class="section-title">The engine,<br>in your language.</h2>
+      <p class="section-sub">The SDKs load the same compiled Rust core the CLI uses through a stable C ABI, and expose idiomatic APIs — so publishers, backend teams and CI/CD systems integrate CAVS programmatically instead of shelling out. One JSON contract, three ecosystems: <span class="mono">analyze</span>, <span class="mono">preview</span>, <span class="mono">packDirectory</span>, <span class="mono">createPlan</span>, <span class="mono">applyPlan</span>, <span class="mono">verifyInstall</span>, <span class="mono">benchmark</span> and <span class="mono">estimateSavings</span>.</p>
+    </div>
+    <div class="cards g3">
+      <a href="sdk-go.html" class="prod reveal">
+        <div class="prod-top">
+          <span class="prod-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><circle cx="7" cy="12" r="1.6" fill="currentColor"/><circle cx="13" cy="12" r="1.6" fill="currentColor"/></svg></span>
+          <div><h3>Go</h3><div class="prod-cmd">.../sdks/go/cavs</div></div>
+          <div class="prod-badges"><span class="badge available">stable</span></div>
+        </div>
+        <p>cgo binding with <span class="mono">context.Context</span> cancellation, <span class="mono">WithProgress</span> events and typed <span class="mono">*cavs.Error</span>. Go 1.21+.</p>
+      </a>
+      <a href="sdk-kotlin.html" class="prod reveal" style="transition-delay:.05s">
+        <div class="prod-top">
+          <span class="prod-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M20 4 4 20"/></svg></span>
+          <div><h3>Kotlin / JVM</h3><div class="prod-cmd">io.github.orelvis15:cavs-sdk</div></div>
+          <div class="prod-badges"><span class="badge available">stable</span></div>
+        </div>
+        <p>FFM (JEP&nbsp;454) binding, <span class="mono">AutoCloseable</span> client, <span class="mono">CompletableFuture</span> async, kotlinx.serialization DTOs. Java 22+, Gradle &amp; Maven.</p>
+      </a>
+      <a href="sdk-node.html" class="prod reveal" style="transition-delay:.1s">
+        <div class="prod-top">
+          <span class="prod-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"/></svg></span>
+          <div><h3>Node / TypeScript</h3><div class="prod-cmd">@orelvis15/cavs-sdk</div></div>
+          <div class="prod-badges"><span class="badge available">stable</span></div>
+        </div>
+        <p>Node-API binding, Promise-first, <span class="mono">AbortSignal</span> cancellation, progress events and full TypeScript types. Node 20+.</p>
+      </a>
+    </div>
+    <p class="table-note" style="margin-top:22px;">Every SDK carries the same operations and error codes; the native library ships per platform (linux / macOS / windows, x86_64 &amp; arm64) with a SHA-256 checksum the loader verifies. Full references: <a href="sdk-go.html">Go</a>, <a href="sdk-kotlin.html">Kotlin</a>, <a href="sdk-node.html">Node</a>.</p>
   </div>
 </section>
 

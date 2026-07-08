@@ -6,6 +6,39 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.0] — Language SDKs
+
+CAVS now ships **SDKs for Go, Kotlin/JVM and Node/TypeScript** so publishers,
+backend teams and CI/CD systems can drive the engine programmatically instead
+of shelling out to the CLI. Each SDK loads the same compiled Rust core through
+a new stable C ABI and exposes idiomatic, typed APIs for the eight
+highest-value operations, with progress events and cancellation.
+
+### Added
+
+- `cavs-sdk-core`: a high-level JSON operation engine shared by the SDKs —
+  `analyze`, `packDirectory`, `previewUpdate`/`compareRoutes`, `createPlan`,
+  `applyPlan`, `verifyInstall`, `benchmark` and `estimateSavings`, behind a
+  versioned request/response envelope with a stable `CAVS-E-*` error model.
+- `cavs-ffi`: a minimal, stable C ABI (`cdylib`/`staticlib`) over
+  `cavs-sdk-core` — context/result/job handles, a progress callback,
+  cooperative cancellation, and the checked-in `cavs_sdk.h` header.
+- **Go SDK** (`github.com/orelvis15/cavs-oss/sdks/go`): cgo binding with
+  `context.Context` cancellation, `WithProgress` events and typed
+  `*cavs.Error`.
+- **Kotlin/JVM SDK** (`io.github.orelvis15:cavs-sdk`, Java 22+): a Foreign
+  Function & Memory (JEP 454) binding, an `AutoCloseable` client,
+  `CompletableFuture` async, kotlinx.serialization DTOs, published to Maven
+  Central.
+- **Node/TypeScript SDK** (`@orelvis15/cavs-sdk`): a Node-API binding,
+  Promise-first API, `AbortSignal` cancellation, progress events and full
+  TypeScript types, published to npm with per-platform native packages.
+- Release automation builds `libcavs_sdk` for five targets (linux/macOS/
+  windows × x86_64/arm64) with SHA-256 sidecars and publishes the SDKs to
+  crates.io, npm, Maven Central and a Go submodule tag on each version.
+- Documentation: `docs/SDKS.md`, `docs/SDK_GO.md`, `docs/SDK_KOTLIN.md`,
+  `docs/SDK_NODE.md`, `docs/SDK_NATIVE_ABI.md`, and per-SDK pages on the site.
+
 ## [1.1.0] — The practical patch policy benchmark
 
 CAVS now benchmarks practical pairwise patch policies instead of

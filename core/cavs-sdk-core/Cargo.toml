@@ -1,0 +1,30 @@
+[package]
+name = "cavs-sdk-core"
+description = "High-level JSON operation engine shared by the CAVS FFI layer and the language SDKs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+cavs-hash = { workspace = true }
+cavs-chunker = { workspace = true }
+cavs-format = { workspace = true }
+cavs-manifest = { workspace = true }
+cavs-signature = { workspace = true }
+cavs-plan = { workspace = true }
+cavs-analyzer = { workspace = true }
+cavs-proto = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+zstd = { workspace = true }
+sha2 = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+cavs-signature = { workspace = true }

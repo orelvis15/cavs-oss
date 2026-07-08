@@ -1,0 +1,20 @@
+[package]
+name = "cavs-ffi"
+description = "Stable C ABI over cavs-sdk-core for the CAVS language SDKs (Go/Java/Node)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lib]
+name = "cavs_sdk"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+cavs-sdk-core = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

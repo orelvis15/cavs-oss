@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CAVS — Kotlin SDK</title>
+<meta name="description" content="The CAVS Kotlin/JVM SDK: analyze, preview, pack, plan, apply, verify and benchmark game updates from Kotlin, over the native Rust core via the Java Foreign Function & Memory API — with coroutine-friendly CompletableFuture async and progress lambdas." />
+<meta name="author" content="Orelvis" />
+<meta name="theme-color" content="#0A0E1A" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="CAVS Kotlin SDK" />
+<meta property="og:description" content="Integrate CAVS into JVM build services and release systems from Kotlin." />
+<meta property="og:image" content="assets/og-thumb.webp" />
+<link rel="icon" type="image/png" href="assets/logo-transparent-128.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/styles.css" />
+<script>(function(){try{var t=localStorage.getItem('cavs-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+</head>
+<body>
+<div class="bg-fx"></div>
+<div class="bg-grid"></div>
+
+<!-- ============ NAV ============ -->
+<header class="nav" id="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="brand">
+      <img src="assets/logo-transparent-128.png" alt="CAVS logo" />
+      CAVS <span class="tag">v1.2.0</span>
+    </a>
+    <nav class="nav-links" id="navLinks">
+      <a class="nav-page" href="index.html">Home</a>
+      <a class="nav-page" href="try.html">Try CAVS</a>
+      <a class="nav-page" href="benchmarks.html">Benchmarks</a>
+      <a class="nav-page active" href="products.html">Products</a>
+      <a class="nav-page" href="changelog.html">Changelog</a>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme" title="Toggle light / dark">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </button>
+      <a class="btn btn-primary btn-sm" href="https://github.com/orelvis15/cavs" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49l-.01-1.9c-2.78.62-3.37-1.22-3.37-1.22-.46-1.18-1.11-1.5-1.11-1.5-.91-.63.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.79-4.57 5.05.36.32.68.94.68 1.9l-.01 2.82c0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/></svg>
+        Star
+      </a>
+    </nav>
+    <button class="burger" id="burger" aria-label="Menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- ============ PAGE HEAD ============ -->
+<section class="page-head">
+  <div class="wrap">
+    <span class="eyebrow"><a href="products.html#sdks" style="color:inherit;">SDKs</a> · Kotlin / JVM</span>
+    <h1>CAVS for the <span class="accent">JVM</span>.</h1>
+    <p class="section-sub">Idiomatic Kotlin over the same Rust core the CLI uses, through the Java Foreign Function &amp; Memory API (<span class="mono">JEP&nbsp;454</span>). Typed <span class="mono">@Serializable</span> data classes, an <span class="mono">AutoCloseable</span> client, <span class="mono">CompletableFuture</span> async and progress lambdas. Published as <span class="mono">io.github.orelvis15:cavs-sdk</span>.</p>
+    <div class="hero-cta" style="margin-top:22px;">
+      <a class="btn btn-primary" href="https://central.sonatype.com/artifact/io.github.orelvis15/cavs-sdk" target="_blank" rel="noopener">On Maven Central</a>
+      <a class="btn btn-ghost" href="https://github.com/orelvis15/cavs/blob/main/docs/SDK_KOTLIN.md" target="_blank" rel="noopener">Full reference</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ AT A GLANCE ============ -->
+<section style="padding-top:40px;">
+  <div class="wrap">
+    <div class="cards g3">
+      <div class="prod reveal"><div class="prod-top"><div><h3>Coordinates</h3><div class="prod-cmd">io.github.orelvis15:cavs-sdk:1.2.0</div></div></div><p>Gradle and Maven. The published jar bundles the native library per platform, with a SHA-256 sidecar the loader verifies.</p></div>
+      <div class="prod reveal" style="transition-delay:.05s"><div class="prod-top"><div><h3>Requires</h3><div class="prod-cmd">Java 22+</div></div></div><p>The native bridge uses the FFM API finalized in Java&nbsp;22. Run with <span class="mono">--enable-native-access=ALL-UNNAMED</span>.</p></div>
+      <div class="prod reveal" style="transition-delay:.1s"><div class="prod-top"><div><h3>Backend seam</h3><div class="prod-cmd">NativeBridge</div></div></div><p>The FFM backend sits behind an interface, so an alternative bridge can slot in without touching <span class="mono">CavsClient</span>.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ INSTALL ============ -->
+<section class="anchor" id="install">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Install</span>
+      <h2 class="section-title">Add the dependency.</h2>
+      <p class="section-sub">Released builds bundle the platform library in the jar. For a source checkout, build <span class="mono">cavs-ffi</span> and point <span class="mono">CAVS_SDK_LIBRARY</span> at it.</p>
+    </div>
+    <pre class="code"><span class="comment">// build.gradle.kts</span>
+dependencies {
+    implementation("io.github.orelvis15:cavs-sdk:1.2.0")
+}</pre>
+    <pre class="code" style="margin-top:16px;"><span class="comment">&lt;!-- pom.xml --&gt;</span>
+&lt;dependency&gt;
+  &lt;groupId&gt;io.github.orelvis15&lt;/groupId&gt;
+  &lt;artifactId&gt;cavs-sdk&lt;/artifactId&gt;
+  &lt;version&gt;1.2.0&lt;/version&gt;
+&lt;/dependency&gt;</pre>
+    <div class="term" style="margin-top:16px;">
+      <div class="term-bar">
+        <span class="dots"><i></i><i></i><i></i></span>
+        <span class="title">bash — local native library (source checkout)</span>
+        <span class="term-copy" data-copy="cargo build --release -p cavs-ffi
+export CAVS_SDK_LIBRARY=&quot;$PWD/target/release/libcavs_sdk.so&quot;   # or .dylib">copy</span>
+      </div>
+      <div class="term-body">
+<div class="cmd"><span class="prompt">$</span> cargo build <span class="flag">--release</span> <span class="flag">-p</span> cavs-ffi</div>
+<div class="cmd"><span class="prompt">$</span> <span class="flag">export</span> CAVS_SDK_LIBRARY=<span class="str">"$PWD/target/release/libcavs_sdk.so"</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ QUICKSTART ============ -->
+<section class="anchor" id="quickstart">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Quickstart</span>
+      <h2 class="section-title">Preview an update.</h2>
+    </div>
+    <pre class="code">import com.cavs.sdk.CavsClient
+import com.cavs.sdk.model.PreviewRequest
+
+CavsClient.create().use { cavs ->
+    val preview = cavs.preview(
+        PreviewRequest(oldPath = "Build_v1", newPath = "Build_v2", policy = "balanced"),
+    )
+    println("Recommended route: ${preview.recommendedRoute}")
+    preview.routes.forEach { println("  ${it.name}: ${it.networkBytes} bytes") }
+}</pre>
+    <p class="table-note" style="margin-top:18px;">Run with <span class="mono">java --enable-native-access=ALL-UNNAMED …</span>.</p>
+  </div>
+</section>
+
+<!-- ============ API ============ -->
+<section class="anchor" id="api">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">The API</span>
+      <h2 class="section-title">Eight operations,<br>one client.</h2>
+      <p class="section-sub"><span class="mono">CavsClient</span> is <span class="mono">AutoCloseable</span>. Every method takes a typed request and an optional <span class="mono">(ProgressEvent) -&gt; Unit</span> lambda; <span class="mono">previewAsync</span>, <span class="mono">createPlanAsync</span> and <span class="mono">applyPlanAsync</span> return a <span class="mono">CompletableFuture</span>. Failures throw <span class="mono">CavsException</span> with a <span class="mono">CavsErrorCode</span>.</p>
+    </div>
+    <div class="cmd-list">
+      <div class="cmd-row"><code>analyze(AnalyzeRequest)</code><div class="cmd-desc">Inspect an old→new transition: sizes, estimated update bytes, reuse ratios, worst files and layout findings with fixes.</div></div>
+      <div class="cmd-row"><code>packDirectory(PackDirectoryRequest)</code><div class="cmd-desc">Package a directory tree into a deduplicated <span class="mono">.cavs</span> container. Profile, compression, signing and <span class="mono">.cavsignore</span> globs.</div></div>
+      <div class="cmd-row"><code>preview(PreviewRequest)</code><div class="cmd-desc">Estimate the wire cost across routes and recommend the cheapest.</div></div>
+      <div class="cmd-row"><code>createPlan(CreatePlanRequest)</code><div class="cmd-desc">Build a portable, BLAKE3-sealed <span class="mono">.cavsplan</span>. Returns reuse and operation counts.</div></div>
+      <div class="cmd-row"><code>applyPlan(ApplyPlanRequest)</code><div class="cmd-desc">Apply a plan with verification — atomic for artifacts, staged + journaled for directories.</div></div>
+      <div class="cmd-row"><code>verifyInstall(VerifyRequest)</code><div class="cmd-desc">Check an install against a <span class="mono">.cavssig</span> or manifest; reports modified / missing / extra.</div></div>
+      <div class="cmd-row"><code>benchmark(BenchmarkRequest)</code><div class="cmd-desc">A repeatable route-comparison report with measured diff/apply timings.</div></div>
+      <div class="cmd-row"><code>estimateSavings(SavingsRequest)</code><div class="cmd-desc">Monthly egress cost of full downloads vs CAVS updates, and the savings.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PROGRESS & ASYNC ============ -->
+<section class="anchor" id="progress">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Progress &amp; async</span>
+      <h2 class="section-title">Futures and<br>progress lambdas.</h2>
+    </div>
+    <pre class="code">CavsClient.create().use { cavs ->
+    // Async: returns a CompletableFuture.
+    val future = cavs.createPlanAsync(
+        CreatePlanRequest(oldPath = "Build_v1", newPath = "Build_v2", outputPlan = "update.cavsplan"),
+    )
+
+    // Sync with a progress lambda.
+    val plan = cavs.createPlan(
+        CreatePlanRequest(oldPath = "Build_v1", newPath = "Build_v2", outputPlan = "update.cavsplan"),
+    ) { e -> println("[${e.type}] ${e.phase}") }
+
+    try {
+        cavs.analyze(AnalyzeRequest(oldPath = "missing", newPath = "Build_v2"))
+    } catch (e: CavsException) {
+        if (e.code == CavsErrorCode.PATH_NOT_FOUND) println("old build not found")
+    }
+}</pre>
+  </div>
+</section>
+
+<!-- ============ CI/CD ============ -->
+<section class="anchor" id="cicd">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">CI/CD</span>
+      <h2 class="section-title">Wire it into<br>your build service.</h2>
+    </div>
+    <pre class="code"><span class="comment">// Jenkins / Gradle — fail the build when the update is too large</span>
+pipeline {
+  agent any
+  stages {
+    stage('CAVS Preview') {
+      steps { sh './gradlew runCavsPreview' }
+    }
+  }
+}</pre>
+    <p class="table-note" style="margin-top:22px;">The reports are Kotlin data classes serialized with kotlinx.serialization — marshal them to JSON for dashboards, or assert on <span class="mono">estimatedUpdateBytes</span> to gate a release.</p>
+    <div class="hero-cta" style="margin-top:30px;">
+      <a class="btn btn-ghost" href="sdk-go.html">Go SDK →</a>
+      <a class="btn btn-ghost" href="sdk-node.html">Node SDK →</a>
+      <a class="btn btn-primary" href="https://github.com/orelvis15/cavs/blob/main/docs/SDK_KOTLIN.md" target="_blank" rel="noopener">Full Kotlin reference</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a href="index.html" class="brand" style="font-size:18px;"><img src="assets/logo-transparent-128.png" alt="" style="width:26px;height:26px;" /> CAVS</a>
+        <p class="foot-note">Content-Addressable Verified Streaming.<br>Ship game updates that weigh what changed.</p>
+      </div>
+      <div class="foot-links">
+        <a href="products.html#sdks">SDKs</a>
+        <a href="https://github.com/orelvis15/cavs" target="_blank" rel="noopener">GitHub</a>
+        <a href="index.html">Home</a>
+        <a href="changelog.html">Changelog</a>
+      </div>
+    </div>
+    <p class="foot-note" style="margin-top:32px; opacity:.75;">© 2026 CAVS · Apache 2.0 licensed · SDKs wrap the same Rust core as the CLI.</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CAVS — Go SDK</title>
+<meta name="description" content="The CAVS Go SDK: analyze, preview, pack, plan, apply, verify and benchmark game updates from Go, over the same native Rust core as the CLI — with context cancellation and progress events." />
+<meta name="author" content="Orelvis" />
+<meta name="theme-color" content="#0A0E1A" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="CAVS Go SDK" />
+<meta property="og:description" content="Integrate CAVS into Go build pipelines — no shelling out to the CLI." />
+<meta property="og:image" content="assets/og-thumb.webp" />
+<link rel="icon" type="image/png" href="assets/logo-transparent-128.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/styles.css" />
+<script>(function(){try{var t=localStorage.getItem('cavs-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+</head>
+<body>
+<div class="bg-fx"></div>
+<div class="bg-grid"></div>
+
+<!-- ============ NAV ============ -->
+<header class="nav" id="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="brand">
+      <img src="assets/logo-transparent-128.png" alt="CAVS logo" />
+      CAVS <span class="tag">v1.2.0</span>
+    </a>
+    <nav class="nav-links" id="navLinks">
+      <a class="nav-page" href="index.html">Home</a>
+      <a class="nav-page" href="try.html">Try CAVS</a>
+      <a class="nav-page" href="benchmarks.html">Benchmarks</a>
+      <a class="nav-page active" href="products.html">Products</a>
+      <a class="nav-page" href="changelog.html">Changelog</a>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme" title="Toggle light / dark">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </button>
+      <a class="btn btn-primary btn-sm" href="https://github.com/orelvis15/cavs" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49l-.01-1.9c-2.78.62-3.37-1.22-3.37-1.22-.46-1.18-1.11-1.5-1.11-1.5-.91-.63.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.79-4.57 5.05.36.32.68.94.68 1.9l-.01 2.82c0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/></svg>
+        Star
+      </a>
+    </nav>
+    <button class="burger" id="burger" aria-label="Menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- ============ PAGE HEAD ============ -->
+<section class="page-head">
+  <div class="wrap">
+    <span class="eyebrow"><a href="products.html#sdks" style="color:inherit;">SDKs</a> · Go</span>
+    <h1>CAVS for <span class="accent">Go</span> pipelines.</h1>
+    <p class="section-sub">Drive the same Rust core the CLI uses from Go — through a stable C ABI via cgo, no shelling out. Analyze builds, preview update cost, pack, plan, apply, verify and benchmark, with <span class="mono">context.Context</span> cancellation and streaming progress events.</p>
+    <div class="hero-cta" style="margin-top:22px;">
+      <a class="btn btn-primary" href="https://pkg.go.dev/github.com/orelvis15/cavs-oss/sdks/go/cavs" target="_blank" rel="noopener">API on pkg.go.dev</a>
+      <a class="btn btn-ghost" href="https://github.com/orelvis15/cavs/blob/main/docs/SDK_GO.md" target="_blank" rel="noopener">Full reference</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ AT A GLANCE ============ -->
+<section style="padding-top:40px;">
+  <div class="wrap">
+    <div class="cards g3">
+      <div class="prod reveal"><div class="prod-top"><div><h3>Module</h3><div class="prod-cmd">github.com/orelvis15/cavs-oss/sdks/go</div></div></div><p>Import <span class="mono">.../sdks/go/cavs</span>. Requires Go 1.21+ and a C toolchain (cgo).</p></div>
+      <div class="prod reveal" style="transition-delay:.05s"><div class="prod-top"><div><h3>Native core</h3><div class="prod-cmd">libcavs_sdk</div></div></div><p>The compiled Rust library ships per platform (linux / macOS / windows, x86_64 &amp; arm64) with a checksum.</p></div>
+      <div class="prod reveal" style="transition-delay:.1s"><div class="prod-top"><div><h3>License</h3><div class="prod-cmd">Apache-2.0</div></div></div><p>Same repository and engine as the CLI. No CAVS-hosted infrastructure required.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ INSTALL ============ -->
+<section class="anchor" id="install">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Install</span>
+      <h2 class="section-title">Add the module,<br>stage the native library.</h2>
+      <p class="section-sub">Released builds ship the platform library; for a source checkout, <span class="mono">make native</span> builds and stages it from the Rust workspace. <span class="mono">CAVS_SDK_LIBRARY</span> overrides the path.</p>
+    </div>
+    <div class="term">
+      <div class="term-bar">
+        <span class="dots"><i></i><i></i><i></i></span>
+        <span class="title">bash — install</span>
+        <span class="term-copy" data-copy="go get github.com/orelvis15/cavs-oss/sdks/go
+make -C sdks/go native   # build + stage libcavs_sdk from the Rust workspace">copy</span>
+      </div>
+      <div class="term-body">
+<div class="cmd"><span class="comment"># add the module to your project</span></div>
+<div class="cmd"><span class="prompt">$</span> go get github.com/orelvis15/cavs-oss/sdks/go</div>
+<div class="cmd"> </div>
+<div class="cmd"><span class="comment"># from a checkout: build &amp; stage the native library once</span></div>
+<div class="cmd"><span class="prompt">$</span> make <span class="flag">-C</span> sdks/go native</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ QUICKSTART ============ -->
+<section class="anchor" id="quickstart">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Quickstart</span>
+      <h2 class="section-title">Preview an update<br>from your release job.</h2>
+    </div>
+    <pre class="code">package main
+
+import (
+    "context"
+    "fmt"
+
+    "github.com/orelvis15/cavs-oss/sdks/go/cavs"
+)
+
+func main() {
+    client, err := cavs.New()
+    if err != nil {
+        panic(err)
+    }
+    defer client.Close()
+
+    preview, err := client.Preview(context.Background(), cavs.PreviewRequest{
+        OldPath: "Build_v1",
+        NewPath: "Build_v2",
+        Policy:  cavs.PolicyBalanced,
+    })
+    if err != nil {
+        panic(err)
+    }
+
+    fmt.Println("Recommended route:", preview.RecommendedRoute)
+    for _, r := range preview.Routes {
+        fmt.Printf("  %-16s %d bytes\n", r.Name, r.NetworkBytes)
+    }
+}</pre>
+  </div>
+</section>
+
+<!-- ============ API ============ -->
+<section class="anchor" id="api">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">The API</span>
+      <h2 class="section-title">Eight operations,<br>one client.</h2>
+      <p class="section-sub">Every method takes a <span class="mono">context.Context</span> (cancellation propagates to the native job) and a typed request, and returns a typed report. Pass <span class="mono">cavs.WithProgress(fn)</span> to stream <span class="mono">ProgressEvent</span>s.</p>
+    </div>
+    <div class="cmd-list">
+      <div class="cmd-row"><code>Analyze(ctx, AnalyzeRequest{OldPath, NewPath})</code><div class="cmd-desc">Inspect an old→new transition: sizes, estimated update bytes, reuse ratios, the worst files and layout findings with fixes.</div></div>
+      <div class="cmd-row"><code>PackDirectory(ctx, PackDirectoryRequest{InputDir, OutputCavs})</code><div class="cmd-desc">Package a directory tree into a deduplicated <span class="mono">.cavs</span> container. Options: <span class="mono">Profile</span>, <span class="mono">Compression</span>, <span class="mono">SignKeyPath</span>, <span class="mono">Ignore</span> globs.</div></div>
+      <div class="cmd-row"><code>Preview(ctx, PreviewRequest{OldPath, NewPath, Policy})</code><div class="cmd-desc">Estimate the wire cost across routes (full, SteamPipe-style, CAVS chunk, CAVS plan) and recommend the cheapest.</div></div>
+      <div class="cmd-row"><code>CreatePlan(ctx, CreatePlanRequest{OldPath, NewPath, OutputPlan})</code><div class="cmd-desc">Build a portable, BLAKE3-sealed <span class="mono">.cavsplan</span> — copy-ranges plus zstd fresh data. Returns reuse and op counts.</div></div>
+      <div class="cmd-row"><code>ApplyPlan(ctx, ApplyPlanRequest{OldPath, PlanPath, OutputPath})</code><div class="cmd-desc">Apply a plan with verification: atomic for artifacts, staged + journaled for directories. Returns byte-identical output.</div></div>
+      <div class="cmd-row"><code>VerifyInstall(ctx, VerifyRequest{Target, Signature})</code><div class="cmd-desc">Check an install against a <span class="mono">.cavssig</span> or manifest; reports modified / missing / extra files.</div></div>
+      <div class="cmd-row"><code>Benchmark(ctx, BenchmarkRequest{OldPath, NewPath})</code><div class="cmd-desc">A repeatable route-comparison report with measured diff/apply timings for the CAVS plan route.</div></div>
+      <div class="cmd-row"><code>EstimateSavings(ctx, SavingsRequest{PricePerGB, MonthlyDownloads, …})</code><div class="cmd-desc">Monthly egress cost of full downloads vs CAVS updates, and the savings — pure arithmetic over your pricing.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PROGRESS & CANCELLATION ============ -->
+<section class="anchor" id="progress">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Progress &amp; cancellation</span>
+      <h2 class="section-title">Stream events,<br>cancel with context.</h2>
+    </div>
+    <pre class="code">ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+defer cancel()
+
+plan, err := client.CreatePlan(ctx, cavs.CreatePlanRequest{
+    OldPath:    "Build_v1",
+    NewPath:    "Build_v2",
+    OutputPlan: "update.cavsplan",
+}, cavs.WithProgress(func(e cavs.ProgressEvent) {
+    fmt.Printf("[%s] %s\n", e.Type, e.Phase)
+}))
+if err != nil {
+    // Typed errors carry the stable engine code.
+    if cavs.IsCode(err, cavs.CodePathNotFound) {
+        log.Fatal("old build not found")
+    }
+    panic(err)
+}
+fmt.Println("reused bytes:", plan.ReusedBytes)</pre>
+  </div>
+</section>
+
+<!-- ============ CI/CD ============ -->
+<section class="anchor" id="cicd">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">CI/CD</span>
+      <h2 class="section-title">Gate a release<br>in GitHub Actions.</h2>
+    </div>
+    <pre class="code"><span class="comment"># .github/workflows/cavs-preview.yml</span>
+name: CAVS Preview
+on: [push]
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: stable }
+      - run: make -C sdks/go native
+      - run: go run ./cmd/preview --old Build_v1 --new Build_v2</pre>
+    <p class="table-note" style="margin-top:22px;">Fail the job when the estimated update exceeds a budget, or upload the preview as a build artifact — the report is plain structs you can marshal to JSON.</p>
+    <div class="hero-cta" style="margin-top:30px;">
+      <a class="btn btn-ghost" href="sdk-kotlin.html">Kotlin SDK →</a>
+      <a class="btn btn-ghost" href="sdk-node.html">Node SDK →</a>
+      <a class="btn btn-primary" href="https://github.com/orelvis15/cavs/blob/main/docs/SDK_GO.md" target="_blank" rel="noopener">Full Go reference</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a href="index.html" class="brand" style="font-size:18px;"><img src="assets/logo-transparent-128.png" alt="" style="width:26px;height:26px;" /> CAVS</a>
+        <p class="foot-note">Content-Addressable Verified Streaming.<br>Ship game updates that weigh what changed.</p>
+      </div>
+      <div class="foot-links">
+        <a href="products.html#sdks">SDKs</a>
+        <a href="https://github.com/orelvis15/cavs" target="_blank" rel="noopener">GitHub</a>
+        <a href="index.html">Home</a>
+        <a href="changelog.html">Changelog</a>
+      </div>
+    </div>
+    <p class="foot-note" style="margin-top:32px; opacity:.75;">© 2026 CAVS · Apache 2.0 licensed · SDKs wrap the same Rust core as the CLI.</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
