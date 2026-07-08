@@ -44,7 +44,20 @@ penalized 5×), `fast-nvme`.
 ```text
 score = network_MiB · w_net + apply_ms · w_apply + ram_MiB · w_ram
       + temp_disk_MiB · w_temp + disk_read_MiB · w_read + build_ms · w_build
+      + (patch_steps − 1) · step_risk_weight
 ```
+
+The last term (v1.1.0) prices patch-chain risk: every sequential patch
+apply beyond the first adds a fixed penalty (`STEP_RISK_WEIGHT`, 25
+score points ≈ 2.5 MiB under `balanced`), because a chain multiplies
+the failure surface — each intermediate patch must exist, download and
+apply cleanly, and a failure mid-chain leaves more state to recover.
+All built-in routes are single-step; the penalty exists so a
+graph-fed route (an adjacent or ladder patch chain from
+[PATCH_GRAPH_POLICIES.md](PATCH_GRAPH_POLICIES.md)) is never chosen
+over a one-step route just because it saves a few KiB. The same risk
+model is what `cavs bench patch-policy` reports per policy in
+`apply_chain_report.md`.
 
 | Policy | Optimizes for |
 |---|---|

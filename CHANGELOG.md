@@ -6,6 +6,63 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] — The practical patch policy benchmark
+
+CAVS now benchmarks practical pairwise patch policies instead of
+comparing only against the all-pairs O(N²) worst case. The new
+`cavs bench patch-policy` command compares adjacent diffs, sparse
+power-of-two ladders, base-version policies, hot-pair storage-budget
+policies, the all-pairs theoretical baseline, and CAVS
+content-addressed/hybrid routes under realistic user update traffic
+models — every pairwise number a real diff, applied and byte-verified.
+
+### Added
+
+- `cavs bench patch-policy`: policy-level comparison with real
+  measurements per patch engine (`cavsplan` built in; `bsdiff`,
+  `xdelta3`, `butler-offline` when installed — missing tools skip with
+  a recorded reason, never fail the run).
+- Adjacent pairwise policy benchmark.
+- Sparse/dyadic ladder policy benchmark (`--ladder-mode aligned|dense`).
+- Base-version hub policy benchmark (`--base-policy
+  first|middle|latest-major|fixed:<id>|auto` — auto tests candidates
+  and keeps the best under the traffic model).
+- Hot-pair policy with storage budgets (`--hot-pairs latest:K |
+  traffic-top:K`, `--patch-storage-budget 1GiB|2x-latest-build`,
+  greedy savings-per-stored-byte selection, auditable in
+  `storage_report.md`).
+- All-pairs one-hop baseline, always labeled as theoretical.
+- Traffic model simulation (`adjacent-heavy`, `skip-heavy`,
+  `live-service-weekly`, `major-release`, `random`, `custom:file.toml`)
+  with deterministic weighted expansion.
+- Client states for the CAVS route: cold cache + previous install,
+  warm cache.
+- Patch graph export (`patch_graph.json`) plus `cavs patch-policy
+  graph` (structure-only graphs), `simulate` (replay another traffic
+  model with no re-diffing) and `explain` (show one path with sizes).
+- Per-query path reports (`query_results.csv`), storage vs bandwidth
+  reports, apply-chain/step-risk report, `tool_versions.json`.
+- `cavs bench gen-stream`: deterministic v01…vNN release streams with
+  configurable drift and an optional major content change
+  (`--major-at`).
+- Route planner: patch-chain risk penalty
+  (`(patch_steps − 1) × STEP_RISK_WEIGHT`) so multi-step chains are
+  never chosen over a one-step route for a few KiB
+  (`cavs plan-update` reports `patch_steps` per route).
+- New docs: `PATCH_POLICY_BENCHMARK.md`, `PRACTICAL_PAIRWISE_DIFFS.md`,
+  `PATCH_GRAPH_POLICIES.md`, `TRAFFIC_MODELS.md`,
+  `STORAGE_BUDGET_POLICIES.md`.
+
+### Changed
+
+- Updated README, BENCHMARKS and comparison docs to avoid implying that
+  all pairwise diff systems require O(N²) patches: `O(N²)` is now
+  described specifically as the all-pairs one-hop baseline, and
+  practical pairwise policies (adjacent, ladder, base, hot pairs) are
+  first-class benchmark baselines.
+- `cavs patch-policy` gained subcommands (`graph`, `simulate`,
+  `explain`); the existing sidecar planning flags are unchanged.
+
 ## [1.0.0] — The release certification suite
 
 Highlights:

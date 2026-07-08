@@ -27,7 +27,20 @@
   benchmark harness and how its results are (and are not) comparable.
 - [PAIRWISE_SIDECARS.md](PAIRWISE_SIDECARS.md) — v0.8.0: `.cavspatch` v2
   optimized sidecars with per-file strategy selection, memory budgets,
-  the hot-pair policy and the O(N²) rule.
+  the hot-pair policy and the all-pairs O(N²) rule.
+- [PATCH_POLICY_BENCHMARK.md](PATCH_POLICY_BENCHMARK.md) — v1.1.0:
+  `cavs bench patch-policy` — practical pairwise policies (adjacent,
+  ladder, base hub, hot pairs) vs the all-pairs baseline vs CAVS routes
+  under traffic models.
+- [PRACTICAL_PAIRWISE_DIFFS.md](PRACTICAL_PAIRWISE_DIFFS.md) — v1.1.0:
+  why pairwise diffs are several strategies, not one, and how CAVS
+  compares against each.
+- [PATCH_GRAPH_POLICIES.md](PATCH_GRAPH_POLICIES.md) — v1.1.0: the patch
+  graph data model, edge generators and path selection.
+- [TRAFFIC_MODELS.md](TRAFFIC_MODELS.md) — v1.1.0: built-in user update
+  behavior models and the custom TOML format.
+- [STORAGE_BUDGET_POLICIES.md](STORAGE_BUDGET_POLICIES.md) — v1.1.0:
+  choosing which pairwise patches to store under a byte budget.
 - [DELIVERY_PLANNER.md](DELIVERY_PLANNER.md) — v0.8.0: the route planner —
   no-op/chunks/hybrid/plan/sidecar/bootstrap scored under client profiles.
 - [STEAMPIPE_STYLE_MODEL.md](STEAMPIPE_STYLE_MODEL.md) — v0.9.0: the public

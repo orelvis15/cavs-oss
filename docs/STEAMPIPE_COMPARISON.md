@@ -8,9 +8,11 @@ datasets. Raw outputs and reproduction commands:
 > Every SteamPipe-style figure below is an **estimate from a public
 > model** — not Valve's exact SteamPipe implementation
 > ([STEAMPIPE_STYLE_MODEL.md](STEAMPIPE_STYLE_MODEL.md)). bsdiff and
-> xdelta3 are exact pairwise patchers included for reference; they serve
-> exactly one old→new pair each (the O(N²) problem —
-> [PAIRWISE_SIDECARS.md](PAIRWISE_SIDECARS.md)).
+> xdelta3 are exact pairwise patchers included for reference; each patch
+> serves exactly one old→new pair. Covering every jump in one hop costs
+> O(N²) patches; practical systems chain adjacent/ladder/base policies
+> instead — measured head-to-head in
+> [PATCH_POLICY_BENCHMARK.md](PATCH_POLICY_BENCHMARK.md).
 
 ## Pack pathology (benchmarks A & B)
 

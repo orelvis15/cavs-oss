@@ -68,8 +68,11 @@ still publishing folders — see A.)
 | **CAVS store + 3 hot-pair sidecars** | **35.91 MiB** (30.60 + 5.31) | any jump + optimized previous/top-installed |
 | all-pairs bsdiff | 144.23 MiB in 45 patches | every pair, no reinstall source |
 
-75% less storage, no O(N²) growth; the hot pairs come from
-`cavs patch-policy` (previous, top-installed shares).
+75% less storage than all-pairs one-hop coverage; the hot pairs come from
+`cavs patch-policy` (previous, top-installed shares). All-pairs is the
+theoretical baseline only — the v1.1.0 patch policy benchmark
+([PATCH_POLICY_BENCHMARK.md](PATCH_POLICY_BENCHMARK.md)) also measures the
+practical adjacent/ladder/base/hot-pair policies real systems deploy.
 
 ### E — Interrupted apply & mod preservation
 
@@ -174,7 +177,7 @@ folders, not archives — `cavs preview` warns about this shape
 | Method | Storage | Adjacent updates | v1→v10 jump | Any-pair coverage |
 |---|---:|---:|---:|---|
 | CAVS packfile store | **30.60 MiB** (10 packfiles) | 13.70 MiB total (1.52 avg) | 8.95 MiB | every pair, same objects |
-| bsdiff patches | 4.23 MiB (9 adjacent) + full artifacts | 4.23 MiB total | 3.60 MiB (dedicated patch) | needs 45 patches (O(N²)) or chain-apply |
+| bsdiff patches | 4.23 MiB (9 adjacent) + full artifacts | 4.23 MiB total | 3.60 MiB (dedicated patch) | all-pairs one-hop needs 45 patches; practical policies chain or budget instead |
 
 Per-pair, bsdiff patches are smaller — that is expected and fine. The
 store-once model wins on the operational axis: ten versions fit in less

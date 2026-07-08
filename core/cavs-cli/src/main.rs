@@ -33,6 +33,7 @@ mod optimize_patch;
 mod pack;
 mod pack_dir;
 mod patch_policy;
+mod patch_policy_bench;
 mod patch_v2;
 mod plan_update;
 mod preview;
@@ -396,14 +397,19 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Decide which old→new pairs deserve an optimized sidecar under a
-    /// hot-pair policy (previous, latest-stable, top-installed, pins) —
-    /// never all O(N²) pairs.
+    /// Sidecar hot-pair planning plus the patch graph tools (v1.1.0):
+    /// without a subcommand, decide which old→new pairs deserve an
+    /// optimized sidecar (previous, latest-stable, top-installed, pins).
+    /// Subcommands: `graph` (build a policy patch graph), `simulate`
+    /// (replay a traffic model on a measured graph), `explain` (show one
+    /// path).
     PatchPolicy {
+        #[command(subcommand)]
+        action: Option<PatchPolicyAction>,
         /// Ordered, comma-separated version list; the last one is the
         /// release target (e.g. v1,v2,v3-beta,v4).
         #[arg(long)]
-        versions: String,
+        versions: Option<String>,
         /// JSON map of installed shares, e.g. {"v1":0.12,"v3":0.55}.
         #[arg(long)]
         distribution: Option<PathBuf>,
@@ -1275,6 +1281,87 @@ enum BenchAction {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Compare practical patch graph policies (v1.1.0): adjacent-only,
+    /// sparse dyadic ladder, base hub, hot pairs under a storage budget,
+    /// the all-pairs one-hop theoretical baseline, and CAVS
+    /// content-addressed routes — under an explicit user traffic model.
+    PatchPolicy {
+        /// Ordered version builds (files or directories).
+        #[arg(long, num_args = 1..)]
+        versions: Vec<PathBuf>,
+        /// Directory of ordered builds (alternative to --versions).
+        #[arg(long)]
+        versions_dir: Option<PathBuf>,
+        /// Only entries matching this pattern (`*`/`?`).
+        #[arg(long, default_value = "*")]
+        version_glob: String,
+        /// name | semver | mtime.
+        #[arg(long, default_value = "semver")]
+        sort: String,
+        /// Comma-separated policies to compare.
+        #[arg(long, default_value = patch_policy_bench::DEFAULT_POLICIES)]
+        policies: String,
+        /// Comma-separated engines (cavsplan,bsdiff,xdelta3,butler-offline);
+        /// missing tools are skipped with a recorded reason, never fatal.
+        #[arg(long, default_value = patch_policy_bench::DEFAULT_ENGINES)]
+        patch_engines: String,
+        /// Built-in model (adjacent-heavy, skip-heavy, live-service-weekly,
+        /// major-release, random) or custom:file.toml.
+        #[arg(long, default_value = "adjacent-heavy")]
+        traffic_model: String,
+        /// Override the traffic model's user count.
+        #[arg(long)]
+        users: Option<u64>,
+        /// cold-cache-with-previous-install | warm-cache.
+        #[arg(long, default_value = "cold-cache-with-previous-install")]
+        client_state: String,
+        /// aligned (dyadic intervals, <2N patches) | dense.
+        #[arg(long, default_value = "aligned")]
+        ladder_mode: String,
+        /// first | middle | latest-major | fixed:<id> | auto (test
+        /// candidates, keep the best under the traffic model).
+        #[arg(long, default_value = "auto")]
+        base_policy: String,
+        /// latest:K | traffic-top:K (hot-pairs policy).
+        #[arg(long, default_value = "latest:3")]
+        hot_pairs: String,
+        /// Byte budget for hot-pair patches: 1GiB | 2x-latest-build | ….
+        #[arg(long)]
+        patch_storage_budget: Option<String>,
+        /// Recompression measured on external patch artifacts (zstd-N).
+        #[arg(long, default_value = "zstd-19")]
+        compression: String,
+        /// Keep patch artifacts under out/raw/<engine>/.
+        #[arg(long)]
+        keep_patches: bool,
+        /// Results directory.
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Generate a deterministic v01…vNN release stream for the
+    /// patch-policy benchmark: drift% of blocks change per release,
+    /// with an optional major content change at one release.
+    GenStream {
+        /// Output directory (one .bin per version).
+        #[arg(long)]
+        out: PathBuf,
+        /// Size of each version.
+        #[arg(long, default_value = "32MiB")]
+        size: String,
+        /// Number of releases in the stream (2–200).
+        #[arg(long, default_value_t = 10)]
+        versions: usize,
+        /// PRNG seed (same seed + size ⇒ identical stream).
+        #[arg(long, default_value_t = 5)]
+        seed: u64,
+        /// Percent of blocks changed per release.
+        #[arg(long, default_value_t = 3)]
+        drift_pct: u32,
+        /// 1-based release index that rewrites 60% of blocks (a major
+        /// content/layout change), e.g. 10 for v10.
+        #[arg(long)]
+        major_at: Option<usize>,
+    },
     /// Many-version stream (v0.7.0): v1→vN with ~3% drift per release;
     /// compares CAVS store-once delivery against pairwise patch storage
     /// for adjacent updates, long jumps and reinstalls.
@@ -1291,6 +1378,74 @@ enum BenchAction {
         /// PRNG seed.
         #[arg(long, default_value_t = 5)]
         seed: u64,
+    },
+}
+
+#[derive(Subcommand)]
+enum PatchPolicyAction {
+    /// Build a patch graph (structure only, no diffs) for a set of
+    /// policies over ordered builds; `bench patch-policy` measures it.
+    Graph {
+        /// Ordered version builds (files or directories).
+        #[arg(long, num_args = 1..)]
+        versions: Vec<PathBuf>,
+        /// Directory of ordered builds (alternative to --versions).
+        #[arg(long)]
+        versions_dir: Option<PathBuf>,
+        /// Only entries matching this pattern (`*`/`?`).
+        #[arg(long, default_value = "*")]
+        version_glob: String,
+        /// name | semver | mtime.
+        #[arg(long, default_value = "semver")]
+        sort: String,
+        /// Comma-separated policies (adjacent,ladder,base,hot-pairs,all-pairs,cavs).
+        #[arg(long, default_value = "adjacent,ladder,base,all-pairs")]
+        policies: String,
+        /// aligned (dyadic intervals, <2N patches) | dense.
+        #[arg(long, default_value = "aligned")]
+        ladder_mode: String,
+        /// first | middle | latest-major | fixed:<id> | auto.
+        #[arg(long, default_value = "auto")]
+        base_policy: String,
+        /// latest:K | traffic-top:K (hot-pairs policy).
+        #[arg(long, default_value = "latest:3")]
+        hot_pairs: String,
+        /// Output graph JSON path.
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Replay a traffic model over a measured patch graph.
+    Simulate {
+        /// patch_graph.json from `cavs bench patch-policy`.
+        #[arg(long)]
+        graph: PathBuf,
+        /// Built-in model name or custom:file.toml.
+        #[arg(long, default_value = "adjacent-heavy")]
+        traffic_model: String,
+        /// Override the model's user count.
+        #[arg(long)]
+        users: Option<u64>,
+        /// cold-cache-with-previous-install | warm-cache.
+        #[arg(long, default_value = "cold-cache-with-previous-install")]
+        client_state: String,
+        /// Also write the summary as Markdown to this path.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// Show the exact path one policy takes for one old→new query.
+    Explain {
+        /// patch_graph.json from `cavs bench patch-policy`.
+        #[arg(long)]
+        graph: PathBuf,
+        /// Old version id (as recorded in the graph).
+        #[arg(long)]
+        from: String,
+        /// New version id.
+        #[arg(long)]
+        to: String,
+        /// Policy name (adjacent, ladder, base, hot-pairs, all-pairs, cavs).
+        #[arg(long)]
+        policy: String,
     },
 }
 
@@ -1606,11 +1761,62 @@ fn main() -> Result<()> {
             json,
         }),
         Command::PatchPolicy {
+            action,
             versions,
             distribution,
             config,
             json,
-        } => patch_policy::run(&versions, distribution.as_deref(), config.as_deref(), json),
+        } => match action {
+            Some(PatchPolicyAction::Graph {
+                versions,
+                versions_dir,
+                version_glob,
+                sort,
+                policies,
+                ladder_mode,
+                base_policy,
+                hot_pairs,
+                out,
+            }) => patch_policy_bench::graph_cmd(&patch_policy_bench::GraphArgs {
+                versions,
+                versions_dir,
+                version_glob,
+                sort,
+                policies,
+                ladder_mode,
+                base_policy,
+                hot_pairs,
+                out,
+            }),
+            Some(PatchPolicyAction::Simulate {
+                graph,
+                traffic_model,
+                users,
+                client_state,
+                out,
+            }) => patch_policy_bench::simulate_cmd(
+                &graph,
+                &traffic_model,
+                users,
+                &client_state,
+                out.as_deref(),
+            ),
+            Some(PatchPolicyAction::Explain {
+                graph,
+                from,
+                to,
+                policy,
+            }) => patch_policy_bench::explain_cmd(&graph, &from, &to, &policy),
+            None => {
+                let versions = versions.ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "pass --versions v1,v2,… for sidecar planning, or use a subcommand \
+                         (graph, simulate, explain)"
+                    )
+                })?;
+                patch_policy::run(&versions, distribution.as_deref(), config.as_deref(), json)
+            }
+        },
         Command::PublishDir {
             build,
             previous,
@@ -1684,6 +1890,49 @@ fn main() -> Result<()> {
             }
         },
         Command::Bench { action } => match action {
+            BenchAction::PatchPolicy {
+                versions,
+                versions_dir,
+                version_glob,
+                sort,
+                policies,
+                patch_engines,
+                traffic_model,
+                users,
+                client_state,
+                ladder_mode,
+                base_policy,
+                hot_pairs,
+                patch_storage_budget,
+                compression,
+                keep_patches,
+                out,
+            } => patch_policy_bench::bench(&patch_policy_bench::BenchArgs {
+                versions,
+                versions_dir,
+                version_glob,
+                sort,
+                policies,
+                patch_engines,
+                traffic_model,
+                users,
+                client_state,
+                ladder_mode,
+                base_policy,
+                hot_pairs,
+                patch_storage_budget,
+                compression,
+                keep_patches,
+                out,
+            }),
+            BenchAction::GenStream {
+                out,
+                size,
+                versions,
+                seed,
+                drift_pct,
+                major_at,
+            } => patch_policy_bench::gen_stream(&out, &size, versions, seed, drift_pct, major_at),
             BenchAction::Gen { out, size, seed } => synth::generate(&out, &size, seed),
             BenchAction::GenDir { out, size, seed } => synth::generate_dir(&out, &size, seed),
             BenchAction::Suite { dataset, out } => synth::suite(&dataset, &out),

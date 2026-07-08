@@ -77,9 +77,13 @@ route wins even when it costs a few percent more bytes.
 ## The O(N²) rule: hot pairs only
 
 A sidecar serves **exactly one pair**. With N published versions there
-are N·(N−1)/2 pairs — 45 at 10 versions, 4,950 at 100. CAVS never
-generates all of them: the content-addressed store already serves *any*
-jump. `cavs patch-policy` decides the few pairs worth optimizing:
+are N·(N−1)/2 pairs — 45 at 10 versions, 4,950 at 100. That count only
+applies to the *all-pairs one-hop* graph; practical pairwise systems use
+adjacent diffs, sparse ladders or base-version policies instead
+([PRACTICAL_PAIRWISE_DIFFS.md](PRACTICAL_PAIRWISE_DIFFS.md)). CAVS
+doesn't need any of those graphs — the content-addressed store already
+serves *any* jump — so sidecars stay an optimization for hot pairs.
+`cavs patch-policy` decides the few pairs worth optimizing:
 
 ```toml
 [optimized_patches]

@@ -1,0 +1,237 @@
+{
+  "client_state": "cold-cache-with-previous-install",
+  "engine": "cavsplan",
+  "notes": [],
+  "policies": [
+    {
+      "avg_apply_ms": 38,
+      "avg_bytes": 912757,
+      "avg_steps": 1.5357142857142863,
+      "build_ms": 868,
+      "coverage": 1.0000000000000002,
+      "label": "adjacent pairwise diffs",
+      "max_steps": 9,
+      "median_bytes": 525244,
+      "notes": "O(N) storage; skips chain patches",
+      "p95_bytes": 2100848,
+      "p95_steps": 4,
+      "p99_bytes": 4399444,
+      "patch_count": 9,
+      "policy": "adjacent",
+      "storage_bytes": 4399444,
+      "total_served_bytes": 91275718174,
+      "worst_bytes": 16794492
+    },
+    {
+      "avg_apply_ms": 29,
+      "avg_bytes": 897770,
+      "avg_steps": 1.1985714285714293,
+      "build_ms": 1953,
+      "coverage": 1.0000000000000002,
+      "label": "sparse dyadic ladder (aligned)",
+      "max_steps": 4,
+      "median_bytes": 525244,
+      "notes": "<2N storage (aligned); O(log distance) chains",
+      "p95_bytes": 1969574,
+      "p95_steps": 3,
+      "p99_bytes": 3938133,
+      "patch_count": 16,
+      "policy": "ladder",
+      "storage_bytes": 15295532,
+      "total_served_bytes": 89777024317,
+      "worst_bytes": 16794492
+    },
+    {
+      "avg_apply_ms": 52,
+      "avg_bytes": 2217835,
+      "avg_steps": 1.7593650793650795,
+      "build_ms": 2630,
+      "coverage": 1.0000000000000002,
+      "label": "base hub (v06, bidirectional)",
+      "max_steps": 2,
+      "median_bytes": 1904685,
+      "notes": "auto-selected over v01, v10 under the adjacent-heavy traffic model",
+      "p95_bytes": 3938541,
+      "p95_steps": 2,
+      "p99_bytes": 4069439,
+      "patch_count": 18,
+      "policy": "base",
+      "storage_bytes": 22451493,
+      "total_served_bytes": 221783598539,
+      "worst_bytes": 16794492
+    },
+    {
+      "avg_apply_ms": 35,
+      "avg_bytes": 909161,
+      "avg_steps": 1.4200000000000006,
+      "build_ms": 1127,
+      "coverage": 1.0000000000000002,
+      "label": "hot pairs (latest:3) + adjacent baseline",
+      "max_steps": 7,
+      "median_bytes": 525244,
+      "notes": "budget 2x-latest-build (32.03 MiB); 2 of 2 hot edges kept",
+      "p95_bytes": 2100848,
+      "p95_steps": 4,
+      "p99_bytes": 4333264,
+      "patch_count": 11,
+      "policy": "hot-pairs",
+      "storage_bytes": 6696984,
+      "total_served_bytes": 90916174603,
+      "worst_bytes": 16794492
+    },
+    {
+      "avg_apply_ms": 24,
+      "avg_bytes": 887297,
+      "avg_steps": 0.9900000000000001,
+      "build_ms": 8208,
+      "coverage": 1.0000000000000002,
+      "label": "all-pairs theoretical one-hop baseline",
+      "max_steps": 1,
+      "median_bytes": 525244,
+      "notes": "O(N²) storage; not a normal production policy",
+      "p95_bytes": 1903323,
+      "p95_steps": 1,
+      "p99_bytes": 3740998,
+      "patch_count": 45,
+      "policy": "all-pairs",
+      "storage_bytes": 73909734,
+      "total_served_bytes": 88729719888,
+      "worst_bytes": 16794492
+    },
+    {
+      "avg_apply_ms": 64,
+      "avg_bytes": 2369284,
+      "avg_steps": 1.0,
+      "build_ms": 400,
+      "coverage": 1.0000000000000002,
+      "label": "CAVS content-addressed route",
+      "max_steps": 1,
+      "median_bytes": 1711502,
+      "notes": "no patch graph; chunk store serves any jump",
+      "p95_bytes": 5365391,
+      "p95_steps": 1,
+      "p99_bytes": 9386666,
+      "patch_count": 0,
+      "policy": "cavs",
+      "storage_bytes": 31289454,
+      "total_served_bytes": 236928421539,
+      "worst_bytes": 16929968
+    }
+  ],
+  "traffic_model": {
+    "name": "adjacent-heavy",
+    "rules": [
+      {
+        "kind": "adjacent",
+        "max_skip": 0,
+        "min_age": 0,
+        "min_skip": 0,
+        "probability": 0.8
+      },
+      {
+        "kind": "skip_range",
+        "max_skip": 4,
+        "min_age": 0,
+        "min_skip": 2,
+        "probability": 0.15
+      },
+      {
+        "kind": "old_to_latest",
+        "max_skip": 0,
+        "min_age": 6,
+        "min_skip": 0,
+        "probability": 0.04
+      },
+      {
+        "kind": "reinstall_latest",
+        "max_skip": 0,
+        "min_age": 0,
+        "min_skip": 0,
+        "probability": 0.01
+      }
+    ],
+    "users": 100000
+  },
+  "versions": [
+    {
+      "compressed_bytes": 16794499,
+      "id": "v01",
+      "index": 0,
+      "path": "/private/tmp/claude-501/-Users-l41777-Documents-repositories-bitlakelab-code/80354e9e-0135-481e-aa11-f6257665f465/scratchpad/builds/v01.bin",
+      "signature_hash": "d83d3cf42f8021f752691fc16958142187c7897779a47a8c325b27a9182246a4",
+      "size_bytes": 33554432
+    },
+    {
+      "compressed_bytes": 16794499,
+      "id": "v02",
+      "index": 1,
+      "path": "/private/tmp/claude-501/-Users-l41777-Documents-repositories-bitlakelab-code/80354e9e-0135-481e-aa11-f6257665f465/scratchpad/builds/v02.bin",
+      "signature_hash": "50b0c602c0ac44ea980f348cde40377f64343915b98d652f47b6a1d6c7fbf4fe",
+      "size_bytes": 33554432
+    },
+    {
+      "compressed_bytes": 16794494,
+      "id": "v03",
+      "index": 2,
+      "path": "/private/tmp/claude-501/-Users-l41777-Documents-repositories-bitlakelab-code/80354e9e-0135-481e-aa11-f6257665f465/scratchpad/builds/v03.bin",
+      "signature_hash": "59f133517a3f584a4b69bd21f1f5b5f9c240b805bea1fdeda8285eaf853b91bc",
+      "size_bytes": 33554432
+    },
+    {
+      "compressed_bytes": 16794497,
+      "id": "v04",
+      "index": 3,
+      "path": "/private/tmp/claude-501/-Users-l41777-Documents-repositories-bitlakelab-code/80354e9e-0135-481e-aa11-f6257665f465/scratchpad/builds/v04.bin",
+      "signature_hash": "7f6101d79c47b2ea5679761677580a5f595c0778fc20398df1af5332ed8a40f4",
+      "size_bytes": 33554432
+    },
+    {
+      "compressed_bytes": 16794497,
+      "id": "v05",
+      "index": 4,
+      "path": "/private/tmp/claude-501/-Users-l41777-Documents-repositories-bitlakelab-code/80354e9e-0135-481e-aa11-f6257665f465/scratchpad/builds/v05.bin",
+      "signature_hash": "4332203d7cc1b605627f72e1219044edb65ac0d522c10ef61f1212549cb730ac",
+      "size_bytes": 33554432
+    },
+    {
+      "compressed_bytes": 16794497,
+      "id": "v06",
+      "index": 5,
+      "path": "/private/tmp/claude-501/-Users-l41777-Documents-repositories-bitlakelab-code/80354e9e-0135-481e-aa11-f6257665f465/scratchpad/builds/v06.bin",
+      "signature_hash": "8f78f5de0f01b123a15f3f13e4debc5581f8c1e4c8a9f232fb806c6db1c6341b",
+      "size_bytes": 33554432
+    },
+    {
+      "compressed_bytes": 16794497,
+      "id": "v07",
+      "index": 6,
+      "path": "/private/tmp/claude-501/-Users-l41777-Documents-repositories-bitlakelab-code/80354e9e-0135-481e-aa11-f6257665f465/scratchpad/builds/v07.bin",
+      "signature_hash": "47623435ad41ecb70d18fdedc15daafdae33cbb9c8095187e49af6ae8cdcb043",
+      "size_bytes": 33554432
+    },
+    {
+      "compressed_bytes": 16794495,
+      "id": "v08",
+      "index": 7,
+      "path": "/private/tmp/claude-501/-Users-l41777-Documents-repositories-bitlakelab-code/80354e9e-0135-481e-aa11-f6257665f465/scratchpad/builds/v08.bin",
+      "signature_hash": "b77ba3dd77a8af39de0ef877543df22404f6ae15aab375b32a5623986c7afb6c",
+      "size_bytes": 33554432
+    },
+    {
+      "compressed_bytes": 16794495,
+      "id": "v09",
+      "index": 8,
+      "path": "/private/tmp/claude-501/-Users-l41777-Documents-repositories-bitlakelab-code/80354e9e-0135-481e-aa11-f6257665f465/scratchpad/builds/v09.bin",
+      "signature_hash": "81f826761cbb22c4b5cc304254947c2210fd6fc1338cdcb60d5d8c0d3ca4c755",
+      "size_bytes": 33554432
+    },
+    {
+      "compressed_bytes": 16794492,
+      "id": "v10",
+      "index": 9,
+      "path": "/private/tmp/claude-501/-Users-l41777-Documents-repositories-bitlakelab-code/80354e9e-0135-481e-aa11-f6257665f465/scratchpad/builds/v10.bin",
+      "signature_hash": "c1d84ea100095a00199d0701d03cacf3b6ab9cd19900817ca7aa62579657acbd",
+      "size_bytes": 33554432
+    }
+  ]
+}

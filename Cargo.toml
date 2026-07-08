@@ -21,7 +21,7 @@ members = [
 exclude = ["fuzz"]
 
 [workspace.package]
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 license = "Apache-2.0"
 authors = ["Orelvis Lago Vasallo <orelvis15@gmail.com>"]
@@ -29,17 +29,17 @@ repository = "https://github.com/orelvis15/cavs-oss"
 homepage = "https://github.com/orelvis15/cavs-oss"
 
 [workspace.dependencies]
-cavs-hash = { path = "core/cavs-hash", version = "1.0.0" }
-cavs-chunker = { path = "core/cavs-chunker", version = "1.0.0" }
-cavs-format = { path = "core/cavs-format", version = "1.0.0" }
-cavs-manifest = { path = "core/cavs-manifest", version = "1.0.0" }
-cavs-store = { path = "core/cavs-store", version = "1.0.0" }
-cavs-proto = { path = "core/cavs-proto", version = "1.0.0" }
-cavs-signature = { path = "core/cavs-signature", version = "1.0.0" }
-cavs-rebuild-plan = { path = "core/cavs-rebuild-plan", version = "1.0.0" }
-cavs-plan = { path = "core/cavs-plan", version = "1.0.0" }
-cavs-analyzer = { path = "core/cavs-analyzer", version = "1.0.0" }
-cavs-workspace = { path = "core/cavs-workspace", version = "1.0.0" }
+cavs-hash = { path = "core/cavs-hash", version = "1.1.0" }
+cavs-chunker = { path = "core/cavs-chunker", version = "1.1.0" }
+cavs-format = { path = "core/cavs-format", version = "1.1.0" }
+cavs-manifest = { path = "core/cavs-manifest", version = "1.1.0" }
+cavs-store = { path = "core/cavs-store", version = "1.1.0" }
+cavs-proto = { path = "core/cavs-proto", version = "1.1.0" }
+cavs-signature = { path = "core/cavs-signature", version = "1.1.0" }
+cavs-rebuild-plan = { path = "core/cavs-rebuild-plan", version = "1.1.0" }
+cavs-plan = { path = "core/cavs-plan", version = "1.1.0" }
+cavs-analyzer = { path = "core/cavs-analyzer", version = "1.1.0" }
+cavs-workspace = { path = "core/cavs-workspace", version = "1.1.0" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
 axum = "0.8"

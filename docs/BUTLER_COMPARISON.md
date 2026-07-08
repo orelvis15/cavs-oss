@@ -70,5 +70,9 @@ okay for a dedicated pairwise patch to win on bytes for one exact
 old→new pair — the many-version benchmark (`cavs bench version-stream`)
 shows where the store-once model wins instead: 10 versions of a 32 MiB
 build fit in a **30.6 MiB** store that serves *any* jump directly, while
-full pairwise coverage of 10 versions needs 45 patches plus full
-artifacts.
+all-pairs one-hop coverage of 10 versions needs 45 patches plus full
+artifacts. Since v1.1.0, `cavs bench patch-policy` extends this to the
+*practical* pairwise policies (adjacent chains, sparse ladders, base
+hubs, hot pairs) under explicit user traffic models, with
+`butler-offline` available as a patch engine —
+[PATCH_POLICY_BENCHMARK.md](PATCH_POLICY_BENCHMARK.md).

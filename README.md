@@ -56,7 +56,8 @@ a pixel codec.
   sidecars pick the best strategy **per file** (copy-old with rename
   detection, plan ops, bsdiff, xdelta3, full data) by measuring real
   candidates; `cavs patch-policy` keeps sidecars to hot pairs (never
-  O(N²)); `cavs publish-dir` produces a whole release in one pass; and
+  the all-pairs O(N²) graph); `cavs publish-dir` produces a whole
+  release in one pass; and
   `cavs bench full-pipeline` proves it against the complete external
   butler pipeline (default *and* rediff-optimized patches).
 - **SteamPipe-style local analysis (v0.9.0)**: measure and fix update
@@ -82,6 +83,16 @@ a pixel codec.
   `strict`, stable exit codes and JSON schemas for CI. See
   [docs/CERTIFICATION.md](docs/CERTIFICATION.md) and
   [docs/TRY_CAVS.md](docs/TRY_CAVS.md).
+- **Patch policy benchmark (v1.1.0)**: pairwise diffs are not one
+  strategy, so CAVS benchmarks the *policies* real systems deploy —
+  adjacent-only diffs, sparse power-of-two ladders, base-version hubs,
+  hot pairs under a storage budget — against the all-pairs one-hop
+  baseline (kept only as the theoretical bound) and against CAVS
+  content-addressed routes, under explicit user traffic models
+  (`cavs bench patch-policy`, `cavs patch-policy
+  graph`/`simulate`/`explain`, `cavs bench gen-stream`). See
+  [docs/PATCH_POLICY_BENCHMARK.md](docs/PATCH_POLICY_BENCHMARK.md) and
+  [docs/PRACTICAL_PAIRWISE_DIFFS.md](docs/PRACTICAL_PAIRWISE_DIFFS.md).
 - **Complementary, not competitive**: use the best codec/compressor for the
   bytes; CAVS deduplicates and transports above them.
 
@@ -354,7 +365,7 @@ pairwise **proxy**. Full tables and framing:
 ./target/release/cavs optimize-patch --old ./Build_v1 --new ./Build_v2 \
   --algo auto --compression auto --explain-strategies why.md -o v1_to_v2.cavspatch
 
-# Which pairs deserve a sidecar (never all O(N²) pairs)
+# Which pairs deserve a sidecar (hot pairs only — never the all-pairs O(N²) graph)
 ./target/release/cavs patch-policy --versions v1,v2,...,v10 --distribution shares.json
 
 # Pick the route for one client state under a device profile
@@ -428,6 +439,39 @@ Full story: [docs/STEAMPIPE_COMPARISON.md](docs/STEAMPIPE_COMPARISON.md),
 [docs/BUILD_UPDATE_ANALYZER.md](docs/BUILD_UPDATE_ANALYZER.md).
 
 See [`godot-plugin/README.md`](godot-plugin/README.md) for game integration.
+
+### Patch policy benchmark (v1.1.0)
+
+```sh
+# A deterministic 10-version release stream to measure against
+./target/release/cavs bench gen-stream --out builds --versions 10 --size 32MiB
+
+# Compare practical patch policies (adjacent, ladder, base hub, hot pairs,
+# all-pairs baseline) against CAVS routes under a traffic model
+./target/release/cavs bench patch-policy --versions-dir builds --version-glob 'v*' \
+  --policies adjacent,ladder,base,hot-pairs,all-pairs,cavs \
+  --traffic-model adjacent-heavy --out results/patch-policy
+
+# Hot pairs under a storage budget, and skip-heavy user behavior
+./target/release/cavs bench patch-policy --versions-dir builds \
+  --hot-pairs latest:5 --patch-storage-budget 2x-latest-build \
+  --traffic-model skip-heavy --out results/budget
+
+# Replay a different traffic model on the measured graph, or inspect one path
+./target/release/cavs patch-policy simulate --graph results/patch-policy/patch_graph.json \
+  --traffic-model major-release
+./target/release/cavs patch-policy explain --graph results/patch-policy/patch_graph.json \
+  --from v01 --to v09 --policy ladder
+```
+
+All-pairs pairwise patches require O(N²) patches only if every old→new
+jump must be served in one direct step. Real systems use adjacent diffs,
+sparse ladders, base-version policies, or hot-pair policies instead —
+CAVS benchmarks those practical policies and compares them against its
+content-addressed, cache-aware update routes. Full docs:
+[docs/PATCH_POLICY_BENCHMARK.md](docs/PATCH_POLICY_BENCHMARK.md),
+[docs/PATCH_GRAPH_POLICIES.md](docs/PATCH_GRAPH_POLICIES.md),
+[docs/TRAFFIC_MODELS.md](docs/TRAFFIC_MODELS.md).
 
 ## Components
 

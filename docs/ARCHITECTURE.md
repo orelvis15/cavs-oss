@@ -174,7 +174,13 @@ happens when they don't:
 
 CAVS is complementary to codecs, compressors and delta tools — not a
 replacement. Dedicated pairwise deltas (xdelta, bsdiff) win on raw bytes for a
-single version pair, but require O(N²) precompute across many live versions,
-heavy RAM for large files, and don't provide resumable, CDN-cacheable,
-cross-version reuse. CAVS packages once per release and the same chunk store
-serves any version jump. See [`BENCHMARKS.md`](BENCHMARKS.md).
+single version pair; serving *every* jump as one direct patch requires an
+all-pairs O(N²) graph, so real systems deploy practical policies instead —
+adjacent chains, sparse ladders, base-version hubs, hot pairs — each trading
+storage for chain length and apply cost
+([`PRACTICAL_PAIRWISE_DIFFS.md`](PRACTICAL_PAIRWISE_DIFFS.md)). Those
+policies also cost heavy RAM for large files and don't provide resumable,
+CDN-cacheable, cross-version reuse. CAVS packages once per release, the same
+chunk store serves any version jump, and `cavs bench patch-policy` measures
+the practical policies head-to-head instead of dismissing them. See
+[`BENCHMARKS.md`](BENCHMARKS.md).

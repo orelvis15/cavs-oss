@@ -156,6 +156,12 @@ impl ClientState {
     }
 }
 
+/// Extra score per patch-apply step beyond the first: a chain of
+/// sequential patches multiplies the failure surface (every intermediate
+/// patch must exist, download and apply cleanly), so the planner never
+/// picks a long chain just because it saves a few KiB.
+pub const STEP_RISK_WEIGHT: f64 = 25.0;
+
 #[derive(Serialize, Clone)]
 pub struct ScoredRoute {
     pub route: String,
@@ -166,6 +172,9 @@ pub struct ScoredRoute {
     pub peak_ram_bytes: u64,
     pub temp_disk_bytes: u64,
     pub disk_read_bytes: u64,
+    /// Sequential patch applications this route needs (1 for direct
+    /// routes; >1 for adjacent/ladder patch chains fed from a graph).
+    pub patch_steps: usize,
     pub exact: bool,
     pub score: f64,
     pub notes: String,
@@ -254,6 +263,7 @@ pub fn collect_routes(args: &PlanUpdateArgs, state: &ClientState) -> Result<Vec<
         peak_ram_bytes: 0,
         temp_disk_bytes: 0,
         disk_read_bytes: 0,
+        patch_steps: 1,
         exact: false,
         score: f64::INFINITY,
         notes: why.into(),
@@ -269,6 +279,7 @@ pub fn collect_routes(args: &PlanUpdateArgs, state: &ClientState) -> Result<Vec<
         peak_ram_bytes: 16 << 20,
         temp_disk_bytes: 0,
         disk_read_bytes: 0,
+        patch_steps: 1,
         exact: true,
         score: 0.0,
         notes: "raw download, no reuse".into(),
@@ -294,6 +305,7 @@ pub fn collect_routes(args: &PlanUpdateArgs, state: &ClientState) -> Result<Vec<
         peak_ram_bytes: 32 << 20,
         temp_disk_bytes: new_size,
         disk_read_bytes: 0,
+        patch_steps: 1,
         exact: boot_exact,
         score: 0.0,
         notes: boot_note,
@@ -314,6 +326,7 @@ pub fn collect_routes(args: &PlanUpdateArgs, state: &ClientState) -> Result<Vec<
                     peak_ram_bytes: 64 << 20,
                     temp_disk_bytes: new_size,
                     disk_read_bytes: 0,
+                    patch_steps: 1,
                     exact: true,
                     score: 0.0,
                     notes: "cache already holds old chunks".into(),
@@ -333,6 +346,7 @@ pub fn collect_routes(args: &PlanUpdateArgs, state: &ClientState) -> Result<Vec<
                 peak_ram_bytes: 64 << 20,
                 temp_disk_bytes: new_size,
                 disk_read_bytes: old_size,
+                patch_steps: 1,
                 exact: true,
                 score: 0.0,
                 notes: "cold cache + previous install as local source".into(),
@@ -383,6 +397,7 @@ pub fn collect_routes(args: &PlanUpdateArgs, state: &ClientState) -> Result<Vec<
                 peak_ram_bytes: 40 << 20,
                 temp_disk_bytes: new_size / 4,
                 disk_read_bytes: old_size,
+                patch_steps: 1,
                 exact: plan_exact,
                 score: 0.0,
                 notes: plan_note,
@@ -403,6 +418,7 @@ pub fn collect_routes(args: &PlanUpdateArgs, state: &ClientState) -> Result<Vec<
                         peak_ram_bytes: ram,
                         temp_disk_bytes: new_size / 4,
                         disk_read_bytes: old_size,
+                        patch_steps: 1,
                         exact: true,
                         score: 0.0,
                         notes: p.display().to_string(),
@@ -481,13 +497,17 @@ pub fn score_and_choose(
         } else {
             pol.temp_disk
         };
+        // Chains of sequential patch applies carry recovery risk beyond
+        // their raw byte/CPU cost (see docs/ROUTE_PLANNER.md).
+        let risk_penalty = r.patch_steps.saturating_sub(1) as f64 * STEP_RISK_WEIGHT;
         r.score = mib(r.network_bytes) * pol.network
             + r.apply_ms as f64 * pol.apply_ms
             + mib(r.peak_ram_bytes) * pol.ram_mb
             + mib(r.temp_disk_bytes) * temp_weight
             + mib(r.disk_read_bytes) * pol.disk_read
             + r.build_ms as f64 * pol.build_ms
-            + seek_penalty;
+            + seek_penalty
+            + risk_penalty;
     }
     let best = routes
         .iter()

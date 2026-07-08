@@ -295,7 +295,7 @@ checksum = "8ae3f5d315924270530207e2a68396c3cc547f6dca3fbdca317cfb1a51edb593"
 
 [[package]]
 name = "cavs-analyzer"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "cavs-chunker",
@@ -309,14 +309,14 @@ dependencies = [
 
 [[package]]
 name = "cavs-chunker"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "fastcdc",
 ]
 
 [[package]]
 name = "cavs-cli"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -348,7 +348,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-client"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "cavs-chunker",
@@ -371,7 +371,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-format"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "cavs-hash",
  "cavs-store",
@@ -383,14 +383,14 @@ dependencies = [
 
 [[package]]
 name = "cavs-hash"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "blake3",
 ]
 
 [[package]]
 name = "cavs-manifest"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "cavs-format",
  "cavs-hash",
@@ -402,7 +402,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-plan"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "cavs-hash",
  "cavs-proto",
@@ -416,7 +416,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-proto"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "cavs-hash",
  "serde",
@@ -426,7 +426,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-rebuild-plan"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -434,7 +434,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-server"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -457,7 +457,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-signature"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "cavs-hash",
  "tempfile",
@@ -466,7 +466,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-store"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "cavs-hash",
  "serde",
@@ -478,7 +478,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-workspace"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "cavs-chunker",

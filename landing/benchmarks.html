@@ -163,7 +163,7 @@
     </div>
     <ul class="bullets" style="margin-top:22px;">
       <li><strong>rsync loses on large binaries with scattered changes</strong>: on tps-demo it transmitted 462.95&nbsp;MiB — worse than downloading the whole thing.</li>
-      <li><strong>xdelta3 / bsdiff produce the smallest single-pair patches</strong> — but you need one patch per version pair (O(N²)), and building the bsdiff patch for tps-demo cost <span class="mono">137&nbsp;s and 9.1&nbsp;GB of RAM</span>.</li>
+      <li><strong>xdelta3 / bsdiff produce the smallest single-pair patches</strong> — serving every jump in one hop needs the all-pairs O(N²) graph, practical systems chain adjacent/ladder/base policies instead (CAVS benchmarks both), and building the bsdiff patch for tps-demo cost <span class="mono">137&nbsp;s and 9.1&nbsp;GB of RAM</span>.</li>
       <li><strong>CAVS packs once per release (3.5&nbsp;s)</strong> and the same chunk store serves any version jump, with resumable, CDN-cacheable, cross-version reuse.</li>
     </ul>
     <div class="callout blue">
@@ -340,7 +340,7 @@
     </div>
     <div class="cards g3" style="margin-bottom:32px;">
       <div class="card reveal"><span class="idx">// dedup at rest</span><h3>Content-addressed dedup</h3><p>Two versions of Marble: <strong>13.80 MiB logical → 7.04 MiB on disk</strong> — roughly <span class="green">49% less storage</span>, shared chunks stored once. GC reclaims unreferenced chunks.</p></div>
-      <div class="card reveal" style="transition-delay:.06s"><span class="idx">// many versions</span><h3>10-version stream</h3><p>Store + 3 policy-chosen hot-pair sidecars = <strong>35.91 MiB</strong> serving any jump, vs 144.23&nbsp;MiB for all 45 pair patches — <span class="green">75% less</span>, no O(N²).</p></div>
+      <div class="card reveal" style="transition-delay:.06s"><span class="idx">// many versions</span><h3>10-version stream</h3><p>Store + 3 policy-chosen hot-pair sidecars = <strong>35.91 MiB</strong> serving any jump, vs 144.23&nbsp;MiB for all-pairs one-hop coverage (45 patches) — <span class="green">75% less</span>. v1.1.0 also benchmarks the practical adjacent/ladder/base/hot-pair policies head-to-head.</p></div>
       <div class="card reveal" style="transition-delay:.12s"><span class="idx">// CDN export</span><h3>Deterministic object tree</h3><p><span class="mono">store export</span> emits a stable object tree for static CDN hosting — same wire bytes as loose storage, far fewer objects to host.</p></div>
     </div>
     <div class="table-wrap reveal">

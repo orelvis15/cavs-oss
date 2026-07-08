@@ -56,7 +56,7 @@ versions), a good delta patcher is genuinely strong.
 |---|---|---|
 | Packaging work per release | one patch **per old→new pair** (or a patch chain) | package **once**; all jumps served |
 | v1→v5 direct jump | needs that exact patch, or applies 4 chained patches | same chunk fetch as any update |
-| Storage across N versions | O(N²) patches (or O(N) chain + slow far jumps) | one deduplicated chunk store |
+| Storage across N versions | O(N²) for all-pairs one-hop; practical policies store O(N) adjacent, <2N ladder or budgeted hot pairs and chain the rest ([PRACTICAL_PAIRWISE_DIFFS.md](PRACTICAL_PAIRWISE_DIFFS.md)) | one deduplicated chunk store |
 | CDN cacheability | per-pair patch files, per-audience | immutable content-addressed chunks/packs shared by every jump |
 | Partial/corrupt local state | patch applies to a pristine old file or fails | cache verify/repair; corrupt ranges demote and re-fetch |
 | Resume | restart patch download (tool-dependent) | resumable by design (chunks + HTTP ranges) |
