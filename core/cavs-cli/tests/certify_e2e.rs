@@ -573,7 +573,7 @@ fn certify_godot_pck_pair() {
     .unwrap();
     let out = dir.path().join("godot");
 
-    let plugin_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../godot-plugin/addons");
+    let plugin_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../game-engine-plugins/godot-plugin/addons");
     let mut args = vec![
         "certify".to_string(),
         "godot".to_string(),

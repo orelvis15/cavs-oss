@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CAVS — Unity plugin (coming soon)</title>
+<meta name="description" content="The CAVS Unity plugin — coming soon. CAVS content delivery for AssetBundles and Addressables over the shared Rust core: download only the chunks that changed, verified and reconstructed at runtime." />
+<meta name="author" content="Orelvis" />
+<meta name="theme-color" content="#0A0E1A" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="CAVS Unity plugin — coming soon" />
+<meta property="og:description" content="CAVS delivery for AssetBundles and Addressables, backed by the Rust core." />
+<meta property="og:image" content="assets/og-thumb.webp" />
+<link rel="icon" type="image/png" href="assets/logo-transparent-128.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/styles.css" />
+<script>(function(){try{var t=localStorage.getItem('cavs-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+</head>
+<body>
+<div class="bg-fx"></div>
+<div class="bg-grid"></div>
+
+<!-- ============ NAV ============ -->
+<header class="nav" id="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="brand">
+      <img src="assets/logo-transparent-128.png" alt="CAVS logo" />
+      CAVS <span class="tag">v1.2.0</span>
+    </a>
+    <nav class="nav-links" id="navLinks">
+      <a class="nav-page" href="index.html">Home</a>
+      <a class="nav-page" href="try.html">Try CAVS</a>
+      <a class="nav-page" href="benchmarks.html">Benchmarks</a>
+      <a class="nav-page active" href="products.html">Products</a>
+      <a class="nav-page" href="changelog.html">Changelog</a>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme" title="Toggle light / dark">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </button>
+      <a class="btn btn-primary btn-sm" href="https://github.com/orelvis15/cavs" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49l-.01-1.9c-2.78.62-3.37-1.22-3.37-1.22-.46-1.18-1.11-1.5-1.11-1.5-.91-.63.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.79-4.57 5.05.36.32.68.94.68 1.9l-.01 2.82c0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/></svg>
+        Star
+      </a>
+    </nav>
+    <button class="burger" id="burger" aria-label="Menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- ============ PAGE HEAD ============ -->
+<section class="page-head">
+  <div class="wrap">
+    <span class="eyebrow"><a href="products.html#plugins" style="color:inherit;">Engine plugins</a> · Unity <span class="badge soon" style="margin-left:8px;">soon</span></span>
+    <h1>CAVS for <span class="accent">Unity</span>.</h1>
+    <p class="section-sub">A Unity package that brings CAVS content delivery to AssetBundles and Addressables: download only the chunks that changed between builds, verify them, and mount the reconstructed bundles at runtime — over the same Rust core the CLI and SDKs use. <strong>Not available yet.</strong></p>
+    <div class="hero-cta" style="margin-top:22px;">
+      <a class="btn btn-primary" href="plugin-godot.html">Use the Godot plugin today →</a>
+      <a class="btn btn-ghost" href="https://github.com/orelvis15/cavs" target="_blank" rel="noopener">Watch the repo</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ COMING SOON ============ -->
+<section style="padding-top:40px;">
+  <div class="wrap">
+    <div class="soon-banner reveal" style="border:1px solid var(--border); border-radius:16px; padding:22px 24px; margin-bottom:34px; display:flex; align-items:center; gap:14px;">
+      <span class="badge soon">soon</span>
+      <p style="margin:0;">This plugin is in development. The Godot plugin is the reference client today, and the core engine, server, CLI and SteamPipe-style analyzer are already usable.</p>
+    </div>
+    <div class="section-head">
+      <span class="eyebrow">Planned</span>
+      <h2 class="section-title">What's coming.</h2>
+    </div>
+    <div class="cards g3">
+      <div class="card reveal"><span class="idx">// runtime</span><h3>C# CavsClient</h3><p>A C# client over the CVSP protocol, backed by the Rust core via a stable C ABI (native plugin), with a persistent runtime cache.</p></div>
+      <div class="card reveal" style="transition-delay:.05s"><span class="idx">// editor</span><h3>Build post-process</h3><p>An editor post-process to package AssetBundle / Addressables output into deduplicated <span class="mono">.cavs</span> containers.</p></div>
+      <div class="card reveal" style="transition-delay:.1s"><span class="idx">// integrity</span><h3>Verified reconstruction</h3><p>Byte-identical, SHA-256-verified reconstruction of every bundle before it is loaded — the same guarantee as the Godot client.</p></div>
+    </div>
+    <p class="table-note" style="margin-top:22px;">In the meantime, <span class="mono">cavs analyze steampipe</span> and <span class="mono">cavs analyze-packs</span> already work on Unity build output to estimate and diagnose update cost.</p>
+    <div class="hero-cta" style="margin-top:30px;">
+      <a class="btn btn-ghost" href="plugin-godot.html">Godot plugin →</a>
+      <a class="btn btn-ghost" href="plugin-unreal.html">Unreal plugin →</a>
+      <a class="btn btn-primary" href="products.html#plugins">All engine plugins</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a href="index.html" class="brand" style="font-size:18px;"><img src="assets/logo-transparent-128.png" alt="" style="width:26px;height:26px;" /> CAVS</a>
+        <p class="foot-note">Content-Addressable Verified Streaming.<br>Ship game updates that weigh what changed.</p>
+      </div>
+      <div class="foot-links">
+        <a href="products.html#plugins">Engine plugins</a>
+        <a href="https://github.com/orelvis15/cavs" target="_blank" rel="noopener">GitHub</a>
+        <a href="index.html">Home</a>
+        <a href="changelog.html">Changelog</a>
+      </div>
+    </div>
+    <p class="foot-note" style="margin-top:32px; opacity:.75;">© 2026 CAVS · Apache 2.0 licensed.</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>

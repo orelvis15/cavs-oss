@@ -15,7 +15,7 @@ pub struct Args<'a> {
     pub new_pck: &'a Path,
     pub godot_bin: Option<&'a str>,
     pub test_project: Option<&'a Path>,
-    /// Godot plugin directory (e.g. godot-plugin/addons/cavs) for the API
+    /// Godot plugin directory (e.g. game-engine-plugins/godot-plugin/addons/cavs) for the API
     /// surface check.
     pub plugin_dir: Option<&'a Path>,
 }

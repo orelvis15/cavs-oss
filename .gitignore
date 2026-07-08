@@ -13,10 +13,10 @@ store/
 *.key.pub
 
 # Godot plugin demo / build scratch
-godot-plugin/demo/.work/
-godot-plugin/demo/.godot/
-godot-plugin/demo/addons/
-godot-plugin/dist/
+game-engine-plugins/godot-plugin/demo/.work/
+game-engine-plugins/godot-plugin/demo/.godot/
+game-engine-plugins/godot-plugin/demo/addons/
+game-engine-plugins/godot-plugin/dist/
 **/.godot/
 
 # analyzer reports

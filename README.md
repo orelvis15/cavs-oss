@@ -143,9 +143,7 @@ the paper, [`docs/PAPER.md`](docs/PAPER.md).
 |---|---|
 | [`core/`](core) | The delivery engine (Rust): chunking, hashing, the `.cavs` format, the global content-addressable store, the CVSP protocol, the SteamPipe-style analyzer (`cavs-analyzer`), the local workspace model (`cavs-workspace`), the SDK operation engine (`cavs-sdk-core`) and its C ABI (`cavs-ffi`), and the `cavs` / `cavs-server` / `cavs-client` binaries |
 | [`sdks/`](sdks) | Language SDKs over the shared Rust core via the C ABI: [Go](sdks/go), [Kotlin/JVM](sdks/kotlin) and [Node/TypeScript](sdks/node) |
-| [`godot-plugin/`](godot-plugin) | Godot 4 runtime client in pure GDScript: downloads, verifies and mounts packs with `load_resource_pack()` |
-| [`unity-plugin/`](unity-plugin) | Unity package — **coming soon** |
-| [`unreal-plugin/`](unreal-plugin) | Unreal Engine plugin — **coming soon** |
+| [`game-engine-plugins/`](game-engine-plugins) | Engine integrations over the shared core: [Godot 4](game-engine-plugins/godot-plugin) runtime client in pure GDScript (downloads, verifies and mounts packs with `load_resource_pack()`), plus [Unity](game-engine-plugins/unity-plugin) and [Unreal](game-engine-plugins/unreal-plugin) — **coming soon** |
 | [`docs/`](docs) | Format specification, architecture, benchmarks, and the technical paper |
 
 ## Getting started
@@ -439,7 +437,7 @@ there is deliberately no separate `steam-analyzer` product
 Full story: [docs/STEAMPIPE_COMPARISON.md](docs/STEAMPIPE_COMPARISON.md),
 [docs/BUILD_UPDATE_ANALYZER.md](docs/BUILD_UPDATE_ANALYZER.md).
 
-See [`godot-plugin/README.md`](godot-plugin/README.md) for game integration.
+See [`game-engine-plugins/godot-plugin/README.md`](game-engine-plugins/godot-plugin/README.md) for game integration.
 
 ### Patch policy benchmark (v1.1.0)
 
@@ -547,7 +545,7 @@ Full references: [docs/SDKS.md](docs/SDKS.md) (overview + architecture),
   (`cache verify` / `repair` / `gc`).
 - **Godot plugin**: `CavsClient` in pure GDScript (no native binaries) —
   install as an addon, mount packs at runtime. See
-  [`godot-plugin/README.md`](godot-plugin/README.md).
+  [`game-engine-plugins/godot-plugin/README.md`](game-engine-plugins/godot-plugin/README.md).
 - **SteamPipe-style analysis** (v0.9.0, inside the `cavs` CLI): update-cost
   estimation under a public fixed-1MiB model (`bench steampipe-style`),
   layout diagnosis with recommendations (`analyze steampipe`,

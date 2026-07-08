@@ -131,10 +131,10 @@ automatically on [docs.rs](https://docs.rs).
 
 ## Godot Asset Library
 
-The Godot plugin (`godot-plugin/addons/cavs`) is distributed on the
+The Godot plugin (`game-engine-plugins/godot-plugin/addons/cavs`) is distributed on the
 [Godot Asset Library](https://godotengine.org/asset-library) separately from the
 crates. The Asset Library installs the archive of a single commit and expects
-`addons/` at its root, so a CI step splits `godot-plugin/` onto a dedicated
+`addons/` at its root, so a CI step splits `game-engine-plugins/godot-plugin/` onto a dedicated
 `godot-asset` branch (root = `addons/cavs/...`) and points the library at it.
 
 ### First submission (manual, one time)
@@ -144,7 +144,7 @@ submitted through the web form to obtain a numeric asset id:
 
 1. Generate/refresh the distribution branch locally and push it:
    ```sh
-   git subtree split --prefix=godot-plugin -b godot-asset
+   git subtree split --prefix=game-engine-plugins/godot-plugin -b godot-asset
    git push -f origin godot-asset
    git rev-parse godot-asset   # copy this commit hash
    ```
@@ -154,7 +154,7 @@ submitted through the web form to obtain a numeric asset id:
    - **Issues URL**: `https://github.com/orelvis15/cavs-oss/issues`
    - **Commit**: the hash from step 1
    - **Icon URL**:
-     `https://raw.githubusercontent.com/orelvis15/cavs-oss/main/godot-plugin/addons/cavs/icon.png`
+     `https://raw.githubusercontent.com/orelvis15/cavs-oss/main/game-engine-plugins/godot-plugin/addons/cavs/icon.png`
    - **License**: Apache-2.0 · fill in the name/description.
 3. Wait for moderator approval (up to a few days). Note the asset id in the URL
    (`.../asset-library/asset/<ID>`).

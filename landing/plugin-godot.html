@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CAVS — Godot plugin</title>
+<meta name="description" content="The CAVS Godot 4 plugin: a 100% GDScript client that downloads only the chunks that changed, reconstructs the PCK byte-identically (SHA-256 verified) and mounts it with load_resource_pack(). Install and usage guide." />
+<meta name="author" content="Orelvis" />
+<meta name="theme-color" content="#0A0E1A" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="CAVS Godot plugin" />
+<meta property="og:description" content="Deduplicated content delivery for Godot 4 — pure GDScript, no GDExtension." />
+<meta property="og:image" content="assets/og-thumb.webp" />
+<link rel="icon" type="image/png" href="assets/logo-transparent-128.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/styles.css" />
+<script>(function(){try{var t=localStorage.getItem('cavs-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+</head>
+<body>
+<div class="bg-fx"></div>
+<div class="bg-grid"></div>
+
+<!-- ============ NAV ============ -->
+<header class="nav" id="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="brand">
+      <img src="assets/logo-transparent-128.png" alt="CAVS logo" />
+      CAVS <span class="tag">v1.2.0</span>
+    </a>
+    <nav class="nav-links" id="navLinks">
+      <a class="nav-page" href="index.html">Home</a>
+      <a class="nav-page" href="try.html">Try CAVS</a>
+      <a class="nav-page" href="benchmarks.html">Benchmarks</a>
+      <a class="nav-page active" href="products.html">Products</a>
+      <a class="nav-page" href="changelog.html">Changelog</a>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme" title="Toggle light / dark">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </button>
+      <a class="btn btn-primary btn-sm" href="https://github.com/orelvis15/cavs" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49l-.01-1.9c-2.78.62-3.37-1.22-3.37-1.22-.46-1.18-1.11-1.5-1.11-1.5-.91-.63.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.79-4.57 5.05.36.32.68.94.68 1.9l-.01 2.82c0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/></svg>
+        Star
+      </a>
+    </nav>
+    <button class="burger" id="burger" aria-label="Menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- ============ PAGE HEAD ============ -->
+<section class="page-head">
+  <div class="wrap">
+    <span class="eyebrow"><a href="products.html#plugins" style="color:inherit;">Engine plugins</a> · Godot <span class="badge available" style="margin-left:8px;">stable</span></span>
+    <h1>CAVS for <span class="accent">Godot 4</span>.</h1>
+    <p class="section-sub">Deduplicated content delivery for Godot games <strong>without changing the engine or the PCK format</strong>. The player downloads only the chunks that changed between versions; the pack is reconstructed byte-identically (SHA-256 verified) and mounted with <span class="mono">ProjectSettings.load_resource_pack()</span>. Measured with real PCKs exported by Godot 4.7: updates of <strong>−67% to −70%</strong> versus downloading the full compressed PCK.</p>
+    <div class="hero-cta" style="margin-top:22px;">
+      <a class="btn btn-primary" href="https://github.com/orelvis15/cavs/tree/main/game-engine-plugins/godot-plugin" target="_blank" rel="noopener">Plugin source</a>
+      <a class="btn btn-ghost" href="https://github.com/orelvis15/cavs/blob/main/docs/GODOT_PLUGIN.md" target="_blank" rel="noopener">Full reference</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ AT A GLANCE ============ -->
+<section style="padding-top:40px;">
+  <div class="wrap">
+    <div class="cards g3">
+      <div class="prod reveal"><div class="prod-top"><div><h3>Client</h3><div class="prod-cmd">addons/cavs · class_name CavsClient</div></div></div><p>100% GDScript. Parses the binary CVSP protocol, decompresses with Godot's native zstd, caches in <span class="mono">user://</span>. No GDExtension, no native binaries.</p></div>
+      <div class="prod reveal" style="transition-delay:.05s"><div class="prod-top"><div><h3>Build side</h3><div class="prod-cmd">tools/pack_release.sh</div></div></div><p>Exports the PCK headless and packages it — FastCDC 64&nbsp;KiB + zstd + optional Ed25519 signature.</p></div>
+      <div class="prod reveal" style="transition-delay:.1s"><div class="prod-top"><div><h3>Runtime</h3><div class="prod-cmd">every export target</div></div></div><p>Because it is pure GDScript, the client runs on every platform Godot exports to — desktop, mobile and web.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ INSTALL ============ -->
+<section class="anchor" id="install">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Install</span>
+      <h2 class="section-title">Drop in the addon,<br>enable the plugin.</h2>
+      <p class="section-sub">Nothing to compile on the client side — no native binaries, no GDExtension.</p>
+    </div>
+    <div class="cmd-list">
+      <div class="cmd-row"><code>1 — copy addons/cavs/</code><div class="cmd-desc">Copy the <span class="mono">addons/cavs/</span> folder from <span class="mono">game-engine-plugins/godot-plugin/</span> into your project's root so you get <span class="mono">res://addons/cavs/</span>.</div></div>
+      <div class="cmd-row"><code>2 — enable it</code><div class="cmd-desc">Turn it on in <span class="mono">Project → Project Settings → Plugins</span>. (The runtime also works with a plain <span class="mono">preload("res://addons/cavs/cavs_client.gd")</span> even if the plugin is not enabled.)</div></div>
+      <div class="cmd-row"><code>3 — done</code><div class="cmd-desc">That's the whole client side. It runs on every platform Godot exports to.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PUBLISH ============ -->
+<section class="anchor" id="publish">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Publish a release</span>
+      <h2 class="section-title">Package and serve<br>your builds.</h2>
+      <p class="section-sub">You need the CAVS command-line tools once, to package and serve builds. Build them from the repository root with <span class="mono">cargo build --release</span> (produces <span class="mono">cavs</span> and <span class="mono">cavs-server</span>).</p>
+    </div>
+    <div class="term">
+      <div class="term-bar">
+        <span class="dots"><i></i><i></i><i></i></span>
+        <span class="title">bash — publish</span>
+        <span class="term-copy" data-copy="cargo build --release
+cavs keygen -o publisher.key
+./tools/pack_release.sh /path/to/your-godot-project pck game_v42 publisher.key
+cavs-server releases/*.cavs --listen 0.0.0.0:8990 --tls-cert cert.pem --tls-key key.pem">copy</span>
+      </div>
+      <div class="term-body">
+<div class="cmd"><span class="comment"># build the tools once</span></div>
+<div class="cmd"><span class="prompt">$</span> cargo build <span class="flag">--release</span></div>
+<div class="cmd"> </div>
+<div class="cmd"><span class="comment"># create a signing key so clients can verify releases</span></div>
+<div class="cmd"><span class="prompt">$</span> cavs keygen <span class="flag">-o</span> publisher.key</div>
+<div class="cmd"> </div>
+<div class="cmd"><span class="comment"># export the PCK and package it (helper does both)</span></div>
+<div class="cmd"><span class="prompt">$</span> ./tools/pack_release.sh /path/to/your-godot-project pck game_v42 publisher.key</div>
+<div class="cmd"><span class="comment"># → releases/game_v42.cavs</span></div>
+<div class="cmd"> </div>
+<div class="cmd"><span class="comment"># serve the releases (behind TLS in production)</span></div>
+<div class="cmd"><span class="prompt">$</span> cavs-server releases/*.cavs <span class="flag">--listen</span> 0.0.0.0:8990 <span class="flag">--tls-cert</span> cert.pem <span class="flag">--tls-key</span> key.pem</div>
+      </div>
+    </div>
+    <p class="table-note" style="margin-top:22px;">A runnable demo lives in <span class="mono">game-engine-plugins/godot-plugin/demo/</span>; <span class="mono">demo/run_demo.sh</span> wires the whole flow (export → package → serve → fetch → mount) automatically.</p>
+  </div>
+</section>
+
+<!-- ============ RUNTIME ============ -->
+<section class="anchor" id="runtime">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Runtime usage</span>
+      <h2 class="section-title">Fetch and mount<br>from your game.</h2>
+      <p class="section-sub">The first fetch installs the pack; later versions download only the chunks that changed. Mount packs as early as possible — ideally in the boot autoload/scene.</p>
+    </div>
+    <pre class="code"><span class="comment"># On your loading screen (see demo/boot.gd for the full version with progress):</span>
+<span class="kw">var</span> cavs := CavsClient.new(<span class="str">"https://content.mygame.com"</span>)
+cavs.progress.connect(<span class="kw">func</span>(done, total, stage):
+    progress_bar.value = done * <span class="num">100.0</span> / total, CONNECT_DEFERRED)
+cavs.fetch_async(<span class="str">"game_v42"</span>, <span class="kw">func</span>(result):
+    <span class="kw">if</span> result.ok <span class="kw">and</span> cavs.ensure_pack(<span class="str">"game_v42"</span>):
+        get_tree().change_scene_to_file(<span class="str">"res://levels/level_new.tscn"</span>))</pre>
+    <p class="table-note" style="margin-top:18px;">Retries are safe by design: downloaded chunks stay in the content-addressable cache, so a retried <span class="mono">fetch()</span> — even after the game was killed mid-download — only fetches what is missing.</p>
+  </div>
+</section>
+
+<!-- ============ API ============ -->
+<section class="anchor" id="api">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">CavsClient API</span>
+      <h2 class="section-title">One class,<br>one loading screen.</h2>
+    </div>
+    <div class="table-wrap reveal">
+      <table>
+        <thead><tr><th>Member</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">new(url)</td><td>Client against a cavs-server (<span class="mono">http://</span> or <span class="mono">https://</span>)</td></tr>
+          <tr><td class="mono">fetch(asset) → Dictionary</td><td>Blocking (for threads/tests); returns <span class="mono">{ok, error, files, bytes_wire, chunks_inline, refs}</span></td></tr>
+          <tr><td class="mono">fetch_async(asset, on_done)</td><td>Internal thread; delivers the result on the main thread</td></tr>
+          <tr><td class="mono">ensure_pack(asset) → bool</td><td><span class="mono">fetch()</span> + <span class="mono">load_resource_pack()</span> of the <span class="mono">.pck</span></td></tr>
+          <tr><td class="mono">signal progress(done, total, stage)</td><td>Logical bytes for the progress bar; connect with <span class="mono">CONNECT_DEFERRED</span></td></tr>
+          <tr><td class="mono">max_retries / retry_base_ms</td><td>Retries with exponential backoff on network errors and 5xx</td></tr>
+          <tr><td class="mono">request_timeout_ms</td><td>Per-request timeout (default 30 s)</td></tr>
+          <tr><td class="mono">cache_dir</td><td>Persistent cache (default <span class="mono">user://cavs_cache</span>)</td></tr>
+          <tr><td class="mono">ca_cert_path</td><td>Trusted PEM for self-signed dev TLS</td></tr>
+          <tr><td class="mono">require_sha256</td><td>Warn if the manifest carries no per-file digests</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PRODUCTION NOTES ============ -->
+<section class="anchor" id="production">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Production notes</span>
+      <h2 class="section-title">Verified, cached,<br>mounted early.</h2>
+    </div>
+    <div class="cards g3">
+      <div class="card reveal"><span class="idx">// integrity</span><h3>Nothing corrupt mounts</h3><p>The server verifies BLAKE3 + Merkle + Ed25519 on load; the client verifies the per-file SHA-256 the packer embeds in the manifest. A corrupt chunk or tampered pack never reaches <span class="mono">load_resource_pack()</span>.</p></div>
+      <div class="card reveal" style="transition-delay:.05s"><span class="idx">// cache</span><h3>Immutable by content</h3><p>Chunks are addressed by content, so the cache is shared across versions and assets — that is where the savings come from. Deleting <span class="mono">user://cavs_cache</span> is always safe.</p></div>
+      <div class="card reveal" style="transition-delay:.1s"><span class="idx">// mounting</span><h3>Mount early</h3><p>Load resource packs before the scenes that depend on them are preloaded — ideally from the boot autoload/scene.</p></div>
+    </div>
+    <div class="hero-cta" style="margin-top:30px;">
+      <a class="btn btn-ghost" href="plugin-unity.html">Unity plugin →</a>
+      <a class="btn btn-ghost" href="plugin-unreal.html">Unreal plugin →</a>
+      <a class="btn btn-primary" href="https://github.com/orelvis15/cavs/blob/main/docs/GODOT_PLUGIN.md" target="_blank" rel="noopener">Full Godot reference</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a href="index.html" class="brand" style="font-size:18px;"><img src="assets/logo-transparent-128.png" alt="" style="width:26px;height:26px;" /> CAVS</a>
+        <p class="foot-note">Content-Addressable Verified Streaming.<br>Ship game updates that weigh what changed.</p>
+      </div>
+      <div class="foot-links">
+        <a href="products.html#plugins">Engine plugins</a>
+        <a href="https://github.com/orelvis15/cavs" target="_blank" rel="noopener">GitHub</a>
+        <a href="index.html">Home</a>
+        <a href="changelog.html">Changelog</a>
+      </div>
+    </div>
+    <p class="foot-note" style="margin-top:32px; opacity:.75;">© 2026 CAVS · Apache 2.0 licensed · Benchmarks measured on real Godot PCKs over real HTTP sessions.</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>

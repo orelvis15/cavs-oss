@@ -141,13 +141,13 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ github.event.inputs.tag || github.ref_name }}"
-          sh godot-plugin/package.sh "${VERSION#v}"
+          sh game-engine-plugins/godot-plugin/package.sh "${VERSION#v}"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: godot-plugin
-          path: godot-plugin/dist/*.zip
+          path: game-engine-plugins/godot-plugin/dist/*.zip
 
   release:
     name: publish release

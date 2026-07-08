@@ -31,7 +31,7 @@ store each unique chunk once, and transmit only the chunks a client lacks.
 | `cavs-server` | Stateful HTTP/HTTPS origin: sessions, inline/ref planning, `--store` mode, HLS passthrough, HTTP Range on the bootstrap endpoint, metrics |
 | `cavs-client` | Native streaming client: persistent cache with verify/repair/gc, `.part`→verify→rename reconstruction, resume journal, retry with backoff, and (v0.6.0) hybrid reconstruction from a `--previous-artifact` with no-op detection and directory-mode staged applies |
 
-The Godot plugin (`godot-plugin/`) is a pure-GDScript client — no native
+The Godot plugin (`game-engine-plugins/godot-plugin/`) is a pure-GDScript client — no native
 binary. The SteamPipe-style analysis (v0.9.0) lives inside the `cavs` CLI,
 backed by two library crates: `cavs-analyzer` (fixed-1MiB model, pack
 diagnostics, recommendations) and `cavs-workspace` (local

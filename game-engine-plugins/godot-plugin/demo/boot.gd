@@ -1,6 +1,6 @@
 ## Demo visual de CAVS: instala un juego v1, luego actualiza a v2 y muestra
 ## cuántos bytes viajaron realmente frente al tamaño total del pack.
-## Generado/reproducible con: godot-plugin/demo/run_demo.sh
+## Generado/reproducible con: game-engine-plugins/godot-plugin/demo/run_demo.sh
 extends Control
 
 const CavsClientScript := preload("res://addons/cavs/cavs_client.gd")

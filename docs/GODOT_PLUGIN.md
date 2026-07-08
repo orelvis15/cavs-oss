@@ -5,7 +5,7 @@ The CAVS Godot plugin delivers deduplicated updates to Godot 4 games
 (`addons/cavs/cavs_client.gd`, `class_name CavsClient`) — no
 GDExtension, no native binaries — so it runs on every platform Godot
 exports to. Full install and end-to-end instructions live in
-[`godot-plugin/README.md`](../godot-plugin/README.md).
+[`game-engine-plugins/godot-plugin/README.md`](../game-engine-plugins/godot-plugin/README.md).
 
 The plugin stays intentionally simple:
 
@@ -63,7 +63,7 @@ Checks:
   promotion);
 - PCK analyzer report (`cavs analyze godot-pck`) with actionable layout
   recommendations;
-- plugin API surface (with `--plugin-dir ./godot-plugin/addons`);
+- plugin API surface (with `--plugin-dir ./game-engine-plugins/godot-plugin/addons`);
 - optional engine smoke test:
 
 ```bash

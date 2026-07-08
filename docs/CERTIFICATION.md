@@ -240,7 +240,7 @@ analyzer report, the plugin API surface check (`fetch`, `fetch_async`,
 cavs certify godot \
   --old-pck old.pck --new-pck new.pck \
   --godot-bin /path/to/godot --test-project ./godot-test-project \
-  --plugin-dir ./godot-plugin/addons \
+  --plugin-dir ./game-engine-plugins/godot-plugin/addons \
   --out ./certification/godot
 ```
 

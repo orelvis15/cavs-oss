@@ -47,7 +47,7 @@ Raw outputs: [results/v0.9.0/steampipe-cases/](results/v0.9.0/steampipe-cases/).
   between exports; avoid repacking unrelated assets.
 - **Prefer per-resource compression** over compressing the whole PCK.
 - For delivery, `cavs publish-preview old.pck new.pck`-style runs and
-  the [Godot plugin](../godot-plugin/README.md) cover the runtime side.
+  the [Godot plugin](../game-engine-plugins/godot-plugin/README.md) cover the runtime side.
 
 `cavs analyze-packs old.pck new.pck --engine godot` gives the generic
 pack table for the same pair
