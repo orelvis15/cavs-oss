@@ -105,13 +105,13 @@ pub fn render_summary_md(
          as a theoretical one-hop baseline.\n\n",
     );
     md.push_str(
-        "| Policy | Patch count | Storage | Avg update | P95 update | Max steps | Build time | Coverage | Notes |\n\
-         |---|---:|---:|---:|---:|---:|---:|---:|---|\n",
+        "| Policy | Patch count | Storage | Avg update | P95 update | P99 update | Max steps | Build time | Coverage | Notes |\n\
+         |---|---:|---:|---:|---:|---:|---:|---:|---:|---|\n",
     );
     for s in summaries {
         let _ = writeln!(
             md,
-            "| {} | {} | {} | {} | {} | {} | {:.1}s | {:.1}% | {} |",
+            "| {} | {} | {} | {} | {} | {} | {} | {:.1}s | {:.1}% | {} |",
             s.label,
             if s.policy == "cavs" {
                 "content store".to_string()
@@ -121,6 +121,7 @@ pub fn render_summary_md(
             human_bytes(s.storage_bytes),
             human_bytes(s.avg_bytes),
             human_bytes(s.p95_bytes),
+            human_bytes(s.p99_bytes),
             s.max_steps,
             s.build_ms as f64 / 1000.0,
             s.coverage * 100.0,
@@ -129,9 +130,9 @@ pub fn render_summary_md(
     }
     md.push_str(
         "\nStorage is the sum of stored patch bytes for the policy (deduplicated \
-         chunk store for CAVS). Avg/P95 update bytes are weighted by the traffic \
-         model; uncovered queries fall back to a full compressed download and count \
-         against coverage.\n",
+         chunk store for CAVS). Avg/P95/P99 update bytes are weighted by the \
+         traffic model; uncovered queries fall back to a full compressed download \
+         and count against coverage.\n",
     );
     if !notes.is_empty() {
         md.push_str("\n## Notes\n\n");
@@ -324,12 +325,20 @@ pub fn print_summary(
         state.label()
     );
     println!(
-        "  {:<44} {:>7} {:>12} {:>12} {:>12} {:>6} {:>9} {:>9}",
-        "policy", "patches", "storage", "avg update", "p95 update", "steps", "build", "coverage"
+        "  {:<44} {:>7} {:>12} {:>12} {:>12} {:>12} {:>6} {:>9} {:>9}",
+        "policy",
+        "patches",
+        "storage",
+        "avg update",
+        "p95 update",
+        "p99 update",
+        "steps",
+        "build",
+        "coverage"
     );
     for s in summaries {
         println!(
-            "  {:<44} {:>7} {:>12} {:>12} {:>12} {:>6} {:>8.1}s {:>8.1}%",
+            "  {:<44} {:>7} {:>12} {:>12} {:>12} {:>12} {:>6} {:>8.1}s {:>8.1}%",
             s.label,
             if s.policy == "cavs" {
                 "store".into()
@@ -339,6 +348,7 @@ pub fn print_summary(
             human_bytes(s.storage_bytes),
             human_bytes(s.avg_bytes),
             human_bytes(s.p95_bytes),
+            human_bytes(s.p99_bytes),
             s.max_steps,
             s.build_ms as f64 / 1000.0,
             s.coverage * 100.0,

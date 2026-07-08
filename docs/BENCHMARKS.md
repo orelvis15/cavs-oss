@@ -438,25 +438,45 @@ byte-verified. Full harness: [PATCH_POLICY_BENCHMARK.md](PATCH_POLICY_BENCHMARK.
 
 ### Results — `adjacent-heavy` traffic (80% adjacent, 15% skip 2–4, 4% old→latest, 1% reinstall; cold cache + previous install)
 
-| Policy | Patches | Storage | Avg update | P95 update | Max steps | Build time |
-|---|---:|---:|---:|---:|---:|---:|
-| Adjacent | 9 | **4.20 MiB** | 891 KiB | 2.00 MiB | 9 | 0.8 s |
-| Ladder (aligned) | 16 | 14.59 MiB | 877 KiB | 1.88 MiB | 4 | 1.9 s |
-| Base hub (v06, auto) | 18 | 21.41 MiB | 2.12 MiB | 3.76 MiB | 2 | 2.3 s |
-| Hot pairs (latest:3, 2×-build budget) | 11 | 6.39 MiB | 888 KiB | 2.00 MiB | 7 | 1.1 s |
-| All-pairs (theoretical one-hop) | 45 | 70.49 MiB | **867 KiB** | **1.82 MiB** | **1** | 7.6 s |
-| CAVS | content store | 29.84 MiB | 2.26 MiB | 5.12 MiB | **1** | **0.4 s** |
+| Policy | Patches | Storage | Avg update | P95 update | P99 update | Max steps | Build time |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Adjacent | 9 | **4.20 MiB** | 891 KiB | 2.00 MiB | 4.20 MiB | 9 | 0.9 s |
+| Ladder (aligned) | 16 | 14.59 MiB | 877 KiB | 1.88 MiB | 3.76 MiB | 4 | 2.0 s |
+| Base hub (v06, auto) | 18 | 21.41 MiB | 2.12 MiB | 3.76 MiB | 3.88 MiB | 2 | 2.6 s |
+| Hot pairs (latest:3, 2×-build budget) | 11 | 6.39 MiB | 888 KiB | 2.00 MiB | 4.13 MiB | 7 | 1.1 s |
+| All-pairs (theoretical one-hop) | 45 | 70.49 MiB | **867 KiB** | **1.82 MiB** | **3.57 MiB** | **1** | 8.2 s |
+| CAVS | content store | 29.84 MiB | 2.26 MiB | 5.12 MiB | 8.95 MiB | **1** | **0.4 s** |
 
 ### Results — `skip-heavy` traffic (40% adjacent, 40% skip 2–8, 15% old→latest, 5% reinstall; bsdiff engine)
 
-| Policy | Storage | Avg update | P95 update | Max steps | Build time |
-|---|---:|---:|---:|---:|---:|
-| Adjacent | **4.23 MiB** | 2.28 MiB | 4.23 MiB | 9 | 63 s |
-| Ladder (aligned) | 14.71 MiB | 2.22 MiB | 3.79 MiB | 5 | 126 s |
-| Base hub (v06) | 21.59 MiB | 2.94 MiB | 3.91 MiB | 2 | 149 s |
-| Hot pairs (latest:3) | 6.44 MiB | 2.27 MiB | 4.17 MiB | 8 | 80 s |
-| All-pairs (theoretical one-hop) | 71.07 MiB | **2.17 MiB** | **3.60 MiB** | 2 | 455 s |
-| CAVS | 29.84 MiB | 4.60 MiB | 8.95 MiB | **1** | **0.4 s** |
+| Policy | Storage | Avg update | P95 update | P99 update | Max steps | Build time |
+|---|---:|---:|---:|---:|---:|---:|
+| Adjacent | **4.23 MiB** | 2.28 MiB | 4.23 MiB | 16.02 MiB | 9 | 56 s |
+| Ladder (aligned) | 14.71 MiB | 2.22 MiB | 3.79 MiB | 16.02 MiB | 5 | 118 s |
+| Base hub (v06) | 21.59 MiB | 2.94 MiB | 3.91 MiB | 16.02 MiB | 2 | 167 s |
+| Hot pairs (latest:3) | 6.44 MiB | 2.27 MiB | 4.17 MiB | 16.02 MiB | 8 | 72 s |
+| All-pairs (theoretical one-hop) | 71.07 MiB | **2.17 MiB** | **3.60 MiB** | 16.02 MiB | 2 | 473 s |
+| CAVS | 29.84 MiB | 4.60 MiB | 8.95 MiB | 16.15 MiB | **1** | **0.4 s** |
+
+The P99 tail under skip-heavy is ~16 MiB for every policy — the shared
+compressed full-download cost of the 5% reinstalls, which no pairwise
+policy patches and CAVS serves from its store. It is the same for
+everyone because it is a property of the traffic, not the policy.
+
+### Results — `adjacent-heavy` traffic, `warm-cache` client state
+
+Same graph, warm chunk cache (the client's cache accumulated the chunks
+of every version it already passed through). Only the CAVS route
+changes — pairwise patches don't depend on cache state — and it doesn't
+help much here because each release introduces genuinely new chunks;
+the win from a warm cache is on the download tail, not the average.
+
+| Policy | Avg update | P95 update | P99 update | Max steps |
+|---|---:|---:|---:|---:|
+| Adjacent | 898 KiB | 2.02 MiB | 4.23 MiB | 9 |
+| Ladder (aligned) | 883 KiB | 1.89 MiB | 3.79 MiB | 5 |
+| All-pairs (theoretical one-hop) | **872 KiB** | **1.83 MiB** | **3.60 MiB** | **1** |
+| CAVS (warm) | 2.26 MiB | 5.12 MiB | 8.95 MiB | **1** |
 
 ### Per-query examples (cavsplan engine)
 

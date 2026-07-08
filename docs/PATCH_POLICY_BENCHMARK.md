@@ -80,9 +80,13 @@ from the store. Always one apply step, no per-pair generation.
 
 ## Outputs
 
+A committed example run with a short guide to every file lives in
+[results/v1.1.0/patch-policy/](results/v1.1.0/patch-policy/) (start with
+its `README.md`).
+
 ```text
 results/patch-policy/
-  summary.md              policy comparison table
+  summary.md              policy comparison table (avg/p95/p99, steps, coverage)
   summary.json            machine-readable summaries
   patch_graph.json        versions + edges + measurements (replayable)
   policy_edges.csv        every edge × engine measurement

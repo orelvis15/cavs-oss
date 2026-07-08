@@ -4,10 +4,10 @@
   "notes": [],
   "policies": [
     {
-      "avg_apply_ms": 46,
+      "avg_apply_ms": 38,
       "avg_bytes": 912757,
       "avg_steps": 1.5357142857142863,
-      "build_ms": 834,
+      "build_ms": 868,
       "coverage": 1.0000000000000002,
       "label": "adjacent pairwise diffs",
       "max_steps": 9,
@@ -23,10 +23,10 @@
       "worst_bytes": 16794492
     },
     {
-      "avg_apply_ms": 35,
+      "avg_apply_ms": 29,
       "avg_bytes": 897770,
       "avg_steps": 1.1985714285714293,
-      "build_ms": 1916,
+      "build_ms": 1953,
       "coverage": 1.0000000000000002,
       "label": "sparse dyadic ladder (aligned)",
       "max_steps": 4,
@@ -42,10 +42,10 @@
       "worst_bytes": 16794492
     },
     {
-      "avg_apply_ms": 45,
+      "avg_apply_ms": 52,
       "avg_bytes": 2217835,
       "avg_steps": 1.7593650793650795,
-      "build_ms": 2275,
+      "build_ms": 2630,
       "coverage": 1.0000000000000002,
       "label": "base hub (v06, bidirectional)",
       "max_steps": 2,
@@ -61,10 +61,10 @@
       "worst_bytes": 16794492
     },
     {
-      "avg_apply_ms": 41,
+      "avg_apply_ms": 35,
       "avg_bytes": 909161,
       "avg_steps": 1.4200000000000006,
-      "build_ms": 1085,
+      "build_ms": 1127,
       "coverage": 1.0000000000000002,
       "label": "hot pairs (latest:3) + adjacent baseline",
       "max_steps": 7,
@@ -80,10 +80,10 @@
       "worst_bytes": 16794492
     },
     {
-      "avg_apply_ms": 29,
+      "avg_apply_ms": 24,
       "avg_bytes": 887297,
       "avg_steps": 0.9900000000000001,
-      "build_ms": 7595,
+      "build_ms": 8208,
       "coverage": 1.0000000000000002,
       "label": "all-pairs theoretical one-hop baseline",
       "max_steps": 1,
@@ -102,7 +102,7 @@
       "avg_apply_ms": 64,
       "avg_bytes": 2369284,
       "avg_steps": 1.0,
-      "build_ms": 372,
+      "build_ms": 400,
       "coverage": 1.0000000000000002,
       "label": "CAVS content-addressed route",
       "max_steps": 1,
