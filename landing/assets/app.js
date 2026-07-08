@@ -86,4 +86,25 @@
   } else {
     document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("in"); });
   }
+
+  /* ---- version badge: keep it in sync with the latest GitHub release ----
+     The badge is hardcoded in the HTML so it is correct without JS and never
+     flashes; this only upgrades it if GitHub reports a newer tag, so a future
+     release shows up on the site with no code change. Failures are silent —
+     the hardcoded value stands. */
+  (function () {
+    var badge = document.querySelector(".brand .tag");
+    if (!badge || !window.fetch) return;
+    fetch("https://api.github.com/repos/orelvis15/cavs/releases/latest", {
+      headers: { Accept: "application/vnd.github+json" },
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        var tag = data && data.tag_name;
+        if (tag && /^v?\d+\.\d+/.test(tag) && badge.textContent.trim() !== tag) {
+          badge.textContent = tag;
+        }
+      })
+      .catch(function () {});
+  })();
 })();
