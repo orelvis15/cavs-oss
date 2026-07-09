@@ -27,8 +27,13 @@
   <div class="nav-inner">
     <a href="index.html" class="brand">
       <img src="assets/logo-transparent-128.png" alt="CAVS logo" />
-      CAVS <span class="tag">v1.2.0</span>
+      CAVS
     </a>
+    <div class="ver-badges">
+      <a class="ver-badge" data-cavs-link="core" href="https://github.com/orelvis15/cavs/releases" target="_blank" rel="noopener" title="Core + SDKs — latest release">core <b data-cavs-ver="core">v1.2.0</b></a>
+      <a class="ver-badge" data-cavs-link="plugins" href="https://github.com/orelvis15/cavs/releases?q=plugins" target="_blank" rel="noopener" title="Engine plugins — latest release">plugins <b data-cavs-ver="plugins">—</b></a>
+      <a class="ver-badge" data-cavs-link="desktop" href="https://github.com/orelvis15/cavs/releases?q=desktop" target="_blank" rel="noopener" title="Desktop app — latest release">desktop <b data-cavs-ver="desktop">—</b></a>
+    </div>
     <nav class="nav-links" id="navLinks">
       <a class="nav-page" href="index.html">Home</a>
       <a class="nav-page" href="try.html">Try CAVS</a>
@@ -56,6 +61,59 @@
     <span class="eyebrow">The toolkit</span>
     <h1>One engine.<br><span class="accent">Many surfaces.</span></h1>
     <p class="section-sub">CAVS is a Rust core wrapped in a command-line toolkit, an HTTP origin and a streaming client — plus language SDKs for Go, Kotlin and Node, engine plugins for Godot (shipping) with Unity and Unreal on the way, and a SteamPipe-style build &amp; update analyzer built into the CLI. Everything below is Apache-2.0 licensed and lives in one repository.</p>
+  </div>
+</section>
+
+<!-- ============ GET THE LATEST (downloads) ============ -->
+<section class="dl-band anchor" id="downloads">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Downloads — always the latest</span>
+      <h2 class="section-title">Get each product,<br>on its own version.</h2>
+      <p class="section-sub">Core, SDKs, engine plugins and the desktop app now release on independent version trains. Every button below resolves to the <strong>latest published release</strong> of that product automatically.</p>
+    </div>
+    <div class="dl-grid">
+
+      <div class="dl-card reveal">
+        <h3>Core &amp; CLI <span class="dl-ver" data-cavs-ver="core">v1.2.0</span></h3>
+        <p>The <span class="mono">cavs</span> / <span class="mono">cavs-server</span> / <span class="mono">cavs-client</span> binaries and the Rust crates.</p>
+        <div class="dl-btns">
+          <a class="btn btn-primary" href="https://crates.io/crates/cavs-cli" target="_blank" rel="noopener">crates.io — cargo install</a>
+          <a class="btn btn-ghost" data-cavs-link="core" href="https://github.com/orelvis15/cavs/releases" target="_blank" rel="noopener">Prebuilt binaries</a>
+        </div>
+      </div>
+
+      <div class="dl-card reveal" style="transition-delay:.05s">
+        <h3>SDKs <span class="dl-ver" data-cavs-ver="core">v1.2.0</span></h3>
+        <p>Go, Kotlin and Node — versioned together with the core they bind to.</p>
+        <div class="dl-btns">
+          <a class="btn btn-ghost" href="https://www.npmjs.com/package/@orelvis15/cavs-sdk" target="_blank" rel="noopener">npm</a>
+          <a class="btn btn-ghost" href="https://central.sonatype.com/artifact/io.github.orelvis15/cavs-sdk" target="_blank" rel="noopener">Maven Central</a>
+          <a class="btn btn-ghost" href="https://pkg.go.dev/github.com/orelvis15/cavs-oss/sdks/go" target="_blank" rel="noopener">pkg.go.dev</a>
+        </div>
+      </div>
+
+      <div class="dl-card reveal" style="transition-delay:.1s">
+        <h3>Engine plugins <span class="dl-ver" data-cavs-ver="plugins">—</span></h3>
+        <p>The Godot plugin as an installable <span class="mono">addons/</span> zip. Unity and Unreal are on the way.</p>
+        <div class="dl-btns">
+          <a class="btn btn-primary" data-cavs-dl="plugins-godot" href="https://github.com/orelvis15/cavs/releases?q=plugins" target="_blank" rel="noopener">Download Godot plugin</a>
+          <a class="btn btn-ghost" data-cavs-link="plugins" href="https://github.com/orelvis15/cavs/releases?q=plugins" target="_blank" rel="noopener">Release notes</a>
+        </div>
+      </div>
+
+      <div class="dl-card reveal" style="transition-delay:.15s">
+        <h3>Desktop app <span class="dl-ver" data-cavs-ver="desktop">—</span></h3>
+        <p>The CAVS Desktop build/update lab — native installers for every platform.</p>
+        <div class="dl-btns">
+          <a class="btn btn-primary" data-cavs-dl="desktop-windows" href="https://github.com/orelvis15/cavs/releases?q=desktop" target="_blank" rel="noopener">Windows</a>
+          <a class="btn btn-ghost" data-cavs-dl="desktop-macos" href="https://github.com/orelvis15/cavs/releases?q=desktop" target="_blank" rel="noopener">macOS</a>
+          <a class="btn btn-ghost" data-cavs-dl="desktop-linux" href="https://github.com/orelvis15/cavs/releases?q=desktop" target="_blank" rel="noopener">Linux</a>
+        </div>
+      </div>
+
+    </div>
+    <p class="table-note" style="margin-top:22px;">Core &amp; SDKs share a version (the SDKs bind the core through a C ABI). Plugins and the desktop app version independently — a desktop-only change ships a desktop release without touching the core.</p>
   </div>
 </section>
 
@@ -453,5 +511,6 @@
 </footer>
 
 <script src="assets/app.js"></script>
+<script src="assets/versions.js" defer></script>
 </body>
 </html>

@@ -1,0 +1,65 @@
+name: Release (engine plugins)
+
+# Independent release train for the engine plugins (Godot today; Unity and
+# Unreal on the way). Versioned separately from the core — a plugin-only change
+# ships without re-releasing anything else.
+#
+# Cut a release by tagging with the `plugins-v` prefix:
+#   git tag plugins-v0.1.3 && git push origin plugins-v0.1.3
+on:
+  push:
+    tags:
+      - 'plugins-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Plugin version tag to build (e.g. plugins-v0.1.3)'
+        required: true
+
+permissions:
+  contents: write   # required to create the GitHub Release
+
+jobs:
+  godot-plugin:
+    name: package + publish godot plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version from tag
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          # plugins-v0.1.3 -> 0.1.3
+          VERSION="${TAG#plugins-v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp plugin.cfg with the release version
+        shell: bash
+        run: |
+          set -euo pipefail
+          CFG=game-engine-plugins/godot-plugin/addons/cavs/plugin.cfg
+          sed -i -E "s/^version=\"[^\"]*\"/version=\"${{ steps.ver.outputs.version }}\"/" "$CFG"
+          grep '^version=' "$CFG"
+
+      - name: Build installable plugin zip (addons/ at zip root)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh game-engine-plugins/godot-plugin/package.sh "${{ steps.ver.outputs.version }}"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: CAVS Godot plugin ${{ steps.ver.outputs.version }}
+          files: game-engine-plugins/godot-plugin/dist/*.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          # Don't steal the repo-wide "latest release" pointer from the
+          # core+SDK train; the landing/README resolve this train by its
+          # `plugins-v*` tag prefix instead.
+          make_latest: false

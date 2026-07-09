@@ -653,3 +653,31 @@ footer {
   .reveal { opacity:1; transform:none; transition:none; }
   html { scroll-behavior: auto; }
 }
+
+/* ---------- Per-product version badges (header) ---------- */
+.ver-badges { display: flex; align-items: center; gap: 7px; margin-left: 14px; }
+.ver-badge {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+  color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em;
+  border: 1px solid var(--border-2); border-radius: 6px; padding: 3px 7px;
+  transition: color .2s, border-color .2s, background .2s;
+}
+.ver-badge b { font-weight: 600; color: var(--muted); text-transform: none; letter-spacing: 0; }
+.ver-badge:hover { color: var(--text); border-color: var(--blue); background: var(--card-hover); }
+.ver-badge:hover b { color: var(--blue); }
+@media (max-width: 1080px) { .ver-badges { display: none; } }
+
+/* ---------- Download / registry buttons ---------- */
+.dl-band { padding-top: 40px; padding-bottom: 40px; }
+.dl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+.dl-card {
+  border: 1px solid var(--border-2); border-radius: 14px; padding: 22px;
+  background: var(--card); display: flex; flex-direction: column; gap: 14px;
+}
+.dl-card h3 { font-family: var(--display); font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 9px; }
+.dl-card .dl-ver { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--dim); border: 1px solid var(--border-2); border-radius: 6px; padding: 2px 7px; }
+.dl-card p { font-size: 13.5px; color: var(--muted); line-height: 1.55; margin: -4px 0 2px; }
+.dl-btns { display: flex; flex-wrap: wrap; gap: 9px; margin-top: auto; }
+.dl-btns .btn { padding: 9px 15px; font-size: 13.5px; }
+.dl-btns .btn svg { width: 15px; height: 15px; }

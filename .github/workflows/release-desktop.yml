@@ -1,0 +1,121 @@
+name: Release (desktop app)
+
+# Independent release train for the CAVS Desktop (Tauri) app. Versioned
+# separately from the core — a desktop-only change ships native installers for
+# Windows, macOS and Linux without re-releasing anything else.
+#
+# Cut a release by tagging with the `desktop-v` prefix:
+#   git tag desktop-v1.0.1 && git push origin desktop-v1.0.1
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Desktop version tag to build (e.g. desktop-v1.0.1)'
+        required: true
+
+permissions:
+  contents: write   # required to create the GitHub Release
+
+jobs:
+  build:
+    name: build ${{ matrix.label }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Two separate macOS builds (Apple Silicon + Intel) rather than a
+          # universal binary, so each installer stays lean.
+          - { platform: macos-latest,   label: macos-arm64, args: '--target aarch64-apple-darwin',  rust-targets: 'aarch64-apple-darwin' }
+          - { platform: macos-latest,   label: macos-x64,   args: '--target x86_64-apple-darwin',   rust-targets: 'x86_64-apple-darwin' }
+          # rpm bundling needs rpmbuild (absent on the runner); ship deb +
+          # AppImage, which is what the landing's download matcher expects.
+          - { platform: ubuntu-22.04,   label: linux-x64,   args: '--bundles deb,appimage',         rust-targets: '' }
+          - { platform: windows-latest, label: windows-x64, args: '',                               rust-targets: '' }
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version from tag
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          # desktop-v1.0.1 -> 1.0.1
+          VERSION="${TAG#desktop-v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp desktop version from tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "const fs=require('fs');const v='${{ steps.ver.outputs.version }}';for(const p of ['desktop/package.json','desktop/src-tauri/tauri.conf.json']){const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version=v;fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');}console.log('stamped',v);"
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './desktop/src-tauri -> target'
+
+      - name: Install frontend dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build and upload Tauri bundles
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: desktop
+          tagName: ${{ steps.ver.outputs.tag }}
+          releaseName: CAVS Desktop ${{ steps.ver.outputs.version }}
+          releaseBody: 'Native installers for Windows, macOS and Linux. See the assets below.'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+
+  publish:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Resolve tag
+        id: ver
+        shell: bash
+        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Undraft the release (not marked repo-latest)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Undraft, and keep the repo-wide "latest release" pointer on the
+          # core+SDK train — the landing/README resolve desktop by its
+          # `desktop-v*` tag prefix instead.
+          gh release edit "${{ steps.ver.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --draft=false \
+            --latest=false

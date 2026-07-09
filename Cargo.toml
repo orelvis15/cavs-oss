@@ -20,7 +20,9 @@ members = [
 ]
 # The libFuzzer harness needs nightly and its own profile; it builds from
 # fuzz/ with `cargo +nightly fuzz run <target>`.
-exclude = ["fuzz"]
+# CAVS Desktop (Tauri) is its own crate/workspace with a Tauri-specific
+# release profile; it depends on the core crates by path.
+exclude = ["fuzz", "desktop/src-tauri"]
 
 [workspace.package]
 version = "1.2.0"

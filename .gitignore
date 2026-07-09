@@ -22,6 +22,12 @@ game-engine-plugins/godot-plugin/dist/
 # analyzer reports
 cavs-steam-report/
 
+# CAVS Desktop (Tauri + React) — regenerable / machine-local
+desktop/node_modules/
+desktop/dist/
+desktop/src-tauri/gen/
+desktop/src-tauri/target/
+
 # system / editor
 .DS_Store
 *.log

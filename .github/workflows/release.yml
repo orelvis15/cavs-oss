@@ -1,9 +1,15 @@
-name: Release
+name: Release (core + SDKs)
 
-# Maintainer-controlled: binaries are built and published only when a version
-# tag is pushed (e.g. `git tag v0.1.0 && git push origin v0.1.0`). This is the
-# standard open-source release trigger — merging a PR does nothing on its own;
-# you cut a release by tagging. `workflow_dispatch` allows a manual run too.
+# Release train for the Rust core and the language SDKs, which share one
+# version (the SDKs bind the core through a C ABI). Triggered by a plain
+# `vX.Y.Z` tag — e.g. `git tag v1.3.0 && git push origin v1.3.0`.
+#
+# The other products release on their own trains, independently versioned:
+#   - engine plugins → `plugins-vX.Y.Z`  (release-plugins.yml)
+#   - desktop app    → `desktop-vX.Y.Z`  (release-desktop.yml)
+# Those prefixed tags do NOT match `v*`, so this workflow only ever fires for
+# the core+SDK train. Merging a PR does nothing on its own; you cut a release
+# by tagging. `workflow_dispatch` allows a manual run too.
 on:
   push:
     tags:
@@ -130,28 +136,9 @@ jobs:
             *.tar.gz
             *.zip
 
-  godot-plugin:
-    name: package godot plugin
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build installable plugin zip (addons/ at zip root)
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION="${{ github.event.inputs.tag || github.ref_name }}"
-          sh game-engine-plugins/godot-plugin/package.sh "${VERSION#v}"
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: godot-plugin
-          path: game-engine-plugins/godot-plugin/dist/*.zip
-
   release:
     name: publish release
-    needs: [build, sdk-native, godot-plugin]
+    needs: [build, sdk-native]
     runs-on: ubuntu-latest
     permissions:
       contents: write

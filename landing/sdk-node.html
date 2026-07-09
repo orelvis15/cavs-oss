@@ -27,8 +27,13 @@
   <div class="nav-inner">
     <a href="index.html" class="brand">
       <img src="assets/logo-transparent-128.png" alt="CAVS logo" />
-      CAVS <span class="tag">v1.2.0</span>
+      CAVS
     </a>
+    <div class="ver-badges">
+      <a class="ver-badge" data-cavs-link="core" href="https://github.com/orelvis15/cavs/releases" target="_blank" rel="noopener" title="Core + SDKs — latest release">core <b data-cavs-ver="core">v1.2.0</b></a>
+      <a class="ver-badge" data-cavs-link="plugins" href="https://github.com/orelvis15/cavs/releases?q=plugins" target="_blank" rel="noopener" title="Engine plugins — latest release">plugins <b data-cavs-ver="plugins">—</b></a>
+      <a class="ver-badge" data-cavs-link="desktop" href="https://github.com/orelvis15/cavs/releases?q=desktop" target="_blank" rel="noopener" title="Desktop app — latest release">desktop <b data-cavs-ver="desktop">—</b></a>
+    </div>
     <nav class="nav-links" id="navLinks">
       <a class="nav-page" href="index.html">Home</a>
       <a class="nav-page" href="try.html">Try CAVS</a>
@@ -89,7 +94,7 @@
         <span class="term-copy" data-copy="npm install @orelvis15/cavs-sdk">copy</span>
       </div>
       <div class="term-body">
-<div class="cmd"><span class="prompt">$</span> npm install @orelvis15/cavs-sdk</div>
+<div class="cmd"><span class="prompt">$</span> npm install @orelvis15/cavs-sdk@<span data-cavs-vertext="core">1.2.0</span></div>
 <div class="cmd"> </div>
 <div class="cmd"><span class="comment"># source checkout: build &amp; stage the native library</span></div>
 <div class="cmd"><span class="prompt">$</span> npm run native</div>
@@ -223,5 +228,6 @@ cavs.close();</pre>
 </footer>
 
 <script src="assets/app.js"></script>
+<script src="assets/versions.js" defer></script>
 </body>
 </html>

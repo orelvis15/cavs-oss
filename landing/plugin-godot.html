@@ -27,8 +27,13 @@
   <div class="nav-inner">
     <a href="index.html" class="brand">
       <img src="assets/logo-transparent-128.png" alt="CAVS logo" />
-      CAVS <span class="tag">v1.2.0</span>
+      CAVS
     </a>
+    <div class="ver-badges">
+      <a class="ver-badge" data-cavs-link="core" href="https://github.com/orelvis15/cavs/releases" target="_blank" rel="noopener" title="Core + SDKs — latest release">core <b data-cavs-ver="core">v1.2.0</b></a>
+      <a class="ver-badge" data-cavs-link="plugins" href="https://github.com/orelvis15/cavs/releases?q=plugins" target="_blank" rel="noopener" title="Engine plugins — latest release">plugins <b data-cavs-ver="plugins">—</b></a>
+      <a class="ver-badge" data-cavs-link="desktop" href="https://github.com/orelvis15/cavs/releases?q=desktop" target="_blank" rel="noopener" title="Desktop app — latest release">desktop <b data-cavs-ver="desktop">—</b></a>
+    </div>
     <nav class="nav-links" id="navLinks">
       <a class="nav-page" href="index.html">Home</a>
       <a class="nav-page" href="try.html">Try CAVS</a>
@@ -57,7 +62,8 @@
     <h1>CAVS for <span class="accent">Godot 4</span>.</h1>
     <p class="section-sub">Deduplicated content delivery for Godot games <strong>without changing the engine or the PCK format</strong>. The player downloads only the chunks that changed between versions; the pack is reconstructed byte-identically (SHA-256 verified) and mounted with <span class="mono">ProjectSettings.load_resource_pack()</span>. Measured with real PCKs exported by Godot 4.7: updates of <strong>−67% to −70%</strong> versus downloading the full compressed PCK.</p>
     <div class="hero-cta" style="margin-top:22px;">
-      <a class="btn btn-primary" href="https://github.com/orelvis15/cavs/tree/main/game-engine-plugins/godot-plugin" target="_blank" rel="noopener">Plugin source</a>
+      <a class="btn btn-primary" data-cavs-dl="plugins-godot" href="https://github.com/orelvis15/cavs/releases?q=plugins" target="_blank" rel="noopener">Download plugin <span data-cavs-ver="plugins">(latest)</span></a>
+      <a class="btn btn-ghost" href="https://github.com/orelvis15/cavs/tree/main/game-engine-plugins/godot-plugin" target="_blank" rel="noopener">Plugin source</a>
       <a class="btn btn-ghost" href="https://github.com/orelvis15/cavs/blob/main/docs/GODOT_PLUGIN.md" target="_blank" rel="noopener">Full reference</a>
     </div>
   </div>
@@ -212,5 +218,6 @@ cavs.fetch_async(<span class="str">"game_v42"</span>, <span class="kw">func</spa
 </footer>
 
 <script src="assets/app.js"></script>
+<script src="assets/versions.js" defer></script>
 </body>
 </html>

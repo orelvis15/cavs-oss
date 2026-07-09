@@ -27,8 +27,13 @@
   <div class="nav-inner">
     <a href="index.html" class="brand">
       <img src="assets/logo-transparent-128.png" alt="CAVS logo" />
-      CAVS <span class="tag">v1.2.0</span>
+      CAVS
     </a>
+    <div class="ver-badges">
+      <a class="ver-badge" data-cavs-link="core" href="https://github.com/orelvis15/cavs/releases" target="_blank" rel="noopener" title="Core + SDKs — latest release">core <b data-cavs-ver="core">v1.2.0</b></a>
+      <a class="ver-badge" data-cavs-link="plugins" href="https://github.com/orelvis15/cavs/releases?q=plugins" target="_blank" rel="noopener" title="Engine plugins — latest release">plugins <b data-cavs-ver="plugins">—</b></a>
+      <a class="ver-badge" data-cavs-link="desktop" href="https://github.com/orelvis15/cavs/releases?q=desktop" target="_blank" rel="noopener" title="Desktop app — latest release">desktop <b data-cavs-ver="desktop">—</b></a>
+    </div>
     <nav class="nav-links" id="navLinks">
       <a class="nav-page" href="index.html">Home</a>
       <a class="nav-page" href="try.html">Try CAVS</a>
@@ -67,7 +72,7 @@
 <section style="padding-top:40px;">
   <div class="wrap">
     <div class="cards g3">
-      <div class="prod reveal"><div class="prod-top"><div><h3>Coordinates</h3><div class="prod-cmd">io.github.orelvis15:cavs-sdk:1.2.0</div></div></div><p>Gradle and Maven. The published jar bundles the native library per platform, with a SHA-256 sidecar the loader verifies.</p></div>
+      <div class="prod reveal"><div class="prod-top"><div><h3>Coordinates</h3><div class="prod-cmd">io.github.orelvis15:cavs-sdk:<span data-cavs-vertext="core">1.2.0</span></div></div></div><p>Gradle and Maven. The published jar bundles the native library per platform, with a SHA-256 sidecar the loader verifies.</p></div>
       <div class="prod reveal" style="transition-delay:.05s"><div class="prod-top"><div><h3>Requires</h3><div class="prod-cmd">Java 22+</div></div></div><p>The native bridge uses the FFM API finalized in Java&nbsp;22. Run with <span class="mono">--enable-native-access=ALL-UNNAMED</span>.</p></div>
       <div class="prod reveal" style="transition-delay:.1s"><div class="prod-top"><div><h3>Backend seam</h3><div class="prod-cmd">NativeBridge</div></div></div><p>The FFM backend sits behind an interface, so an alternative bridge can slot in without touching <span class="mono">CavsClient</span>.</p></div>
     </div>
@@ -84,13 +89,13 @@
     </div>
     <pre class="code"><span class="comment">// build.gradle.kts</span>
 dependencies {
-    implementation("io.github.orelvis15:cavs-sdk:1.2.0")
+    implementation("io.github.orelvis15:cavs-sdk:<span data-cavs-vertext="core">1.2.0</span>")
 }</pre>
     <pre class="code" style="margin-top:16px;"><span class="comment">&lt;!-- pom.xml --&gt;</span>
 &lt;dependency&gt;
   &lt;groupId&gt;io.github.orelvis15&lt;/groupId&gt;
   &lt;artifactId&gt;cavs-sdk&lt;/artifactId&gt;
-  &lt;version&gt;1.2.0&lt;/version&gt;
+  &lt;version&gt;<span data-cavs-vertext="core">1.2.0</span>&lt;/version&gt;
 &lt;/dependency&gt;</pre>
     <div class="term" style="margin-top:16px;">
       <div class="term-bar">
@@ -221,5 +226,6 @@ pipeline {
 </footer>
 
 <script src="assets/app.js"></script>
+<script src="assets/versions.js" defer></script>
 </body>
 </html>

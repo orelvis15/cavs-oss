@@ -3,6 +3,18 @@
 [![CI](https://github.com/orelvis15/cavs-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/orelvis15/cavs-oss/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
+**Latest versions** — each product releases on its own independent version train (badges track the latest published release automatically):
+
+[![core + CLI on crates.io](https://img.shields.io/crates/v/cavs-cli?label=core%20%2B%20cli&color=1f6feb)](https://crates.io/crates/cavs-cli)
+[![SDK on npm](https://img.shields.io/npm/v/%40orelvis15%2Fcavs-sdk?label=sdk%20%C2%B7%20npm)](https://www.npmjs.com/package/@orelvis15/cavs-sdk)
+[![SDK on Maven Central](https://img.shields.io/maven-central/v/io.github.orelvis15/cavs-sdk?label=sdk%20%C2%B7%20maven)](https://central.sonatype.com/artifact/io.github.orelvis15/cavs-sdk)
+[![Godot plugin](https://img.shields.io/github/v/release/orelvis15/cavs?filter=plugins-*&label=godot%20plugin&color=2ea043)](https://github.com/orelvis15/cavs/releases?q=plugins)
+[![Desktop app](https://img.shields.io/github/v/release/orelvis15/cavs?filter=desktop-*&label=desktop&color=2ea043)](https://github.com/orelvis15/cavs/releases?q=desktop)
+
+**Get it** — **Core / CLI:** `cargo install cavs-cli` · **SDKs:** [npm](https://www.npmjs.com/package/@orelvis15/cavs-sdk) · [Maven Central](https://central.sonatype.com/artifact/io.github.orelvis15/cavs-sdk) · [pkg.go.dev](https://pkg.go.dev/github.com/orelvis15/cavs-oss/sdks/go) · **Godot plugin:** [download](https://github.com/orelvis15/cavs/releases?q=plugins) · **Desktop (Windows / macOS / Linux):** [download](https://github.com/orelvis15/cavs/releases?q=desktop)
+
+The core and the SDKs share a version (the SDKs bind the core through a C ABI); the engine plugins and the desktop app version independently. See [RELEASING.md](docs/RELEASING.md) for how the release trains work.
+
 **Ship game updates that weigh what *changed*, not what the game weighs.**
 
 CAVS is a content-addressable, verified delivery layer for **game content** —
