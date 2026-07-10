@@ -6,6 +6,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] — Smaller updates & parallel packing
+
 ### Core algorithm improvements — measured, not projected
 
 Every number below was measured on real version pairs (MechanicalFlower/

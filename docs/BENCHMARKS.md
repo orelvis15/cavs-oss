@@ -518,7 +518,7 @@ different traffic model or client state without re-diffing:
 `cavs patch-policy simulate --graph …/patch_graph.json --traffic-model
 major-release`.
 
-## Small chunk profiles, tight normalization & parallel pack (unreleased)
+## Small chunk profiles, tight normalization & parallel pack (v1.3.0)
 
 Measured on two real version pairs — the same Marble PCK pair used above
 (official 1.6.0 → 1.6.1 Linux release builds) and the Godot editor 4.2 →
