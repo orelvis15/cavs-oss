@@ -295,7 +295,7 @@ checksum = "8ae3f5d315924270530207e2a68396c3cc547f6dca3fbdca317cfb1a51edb593"
 
 [[package]]
 name = "cavs-analyzer"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "cavs-chunker",
@@ -309,14 +309,14 @@ dependencies = [
 
 [[package]]
 name = "cavs-chunker"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "fastcdc",
 ]
 
 [[package]]
 name = "cavs-cli"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -348,7 +348,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-client"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "cavs-chunker",
@@ -371,7 +371,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-ffi"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "cavs-sdk-core",
  "serde_json",
@@ -380,11 +380,12 @@ dependencies = [
 
 [[package]]
 name = "cavs-format"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "cavs-hash",
  "cavs-store",
  "ed25519-dalek",
+ "rayon",
  "tempfile",
  "thiserror",
  "zstd",
@@ -392,14 +393,14 @@ dependencies = [
 
 [[package]]
 name = "cavs-hash"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "blake3",
 ]
 
 [[package]]
 name = "cavs-manifest"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "cavs-format",
  "cavs-hash",
@@ -411,7 +412,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-plan"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "cavs-hash",
  "cavs-proto",
@@ -425,7 +426,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-proto"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "cavs-hash",
  "serde",
@@ -435,7 +436,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-rebuild-plan"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -443,7 +444,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-sdk-core"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "cavs-analyzer",
@@ -465,7 +466,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-server"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -488,7 +489,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-signature"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "cavs-hash",
  "tempfile",
@@ -497,7 +498,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-store"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "cavs-hash",
  "serde",
@@ -509,7 +510,7 @@ dependencies = [
 
 [[package]]
 name = "cavs-workspace"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "cavs-chunker",
@@ -668,6 +669,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-deque"
+version = "0.8.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5181e0de7b61eb03a81e347d6dd8797bae9da5146707b51077e2d71a54ec0ceb"
+dependencies = [
+ "crossbeam-epoch",
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-epoch"
+version = "0.9.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d6914041f254d6e9176c01941b21115dcfb7089e55135a35411081bd106ef3f"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-utils"
+version = "0.8.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61803da095bee82a81bb1a452ecc25d3b2f1416d1897eb86430c6159ef717c17"
+
+[[package]]
 name = "crypto-common"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -772,6 +798,12 @@ dependencies = [
  "subtle",
  "zeroize",
 ]
+
+[[package]]
+name = "either"
+version = "1.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91622ff5e7162018101f2fea40d6ebf4a78bbe5a49736a2020649edf9693679e"
 
 [[package]]
 name = "equivalent"
@@ -1411,6 +1443,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom 0.2.17",
+]
+
+[[package]]
+name = "rayon"
+version = "1.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb39b166781f92d482534ef4b4b1b2568f42613b53e5b6c160e24cfbfa30926d"
+dependencies = [
+ "either",
+ "rayon-core",
+]
+
+[[package]]
+name = "rayon-core"
+version = "1.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91"
+dependencies = [
+ "crossbeam-deque",
+ "crossbeam-utils",
 ]
 
 [[package]]

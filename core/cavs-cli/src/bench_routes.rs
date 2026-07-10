@@ -14,6 +14,7 @@ const CAVS_MODE: ChunkMode = ChunkMode::Cdc {
     min: 16 * 1024,
     avg: 64 * 1024,
     max: 256 * 1024,
+    norm: cavs_chunker::NORM_DEFAULT,
 };
 
 #[derive(serde::Serialize)]

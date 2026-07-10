@@ -103,6 +103,7 @@ impl ChunkModeArg {
                     min: (avg / 4).max(1024),
                     avg,
                     max: avg * 4,
+                    norm: cavs_chunker::NORM_DEFAULT,
                 },
                 None => ChunkMode::asset_default(),
             },
@@ -143,7 +144,8 @@ enum Command {
         chunk_size: Option<usize>,
         /// Chunk profile: `auto` classifies the payload and sweeps candidate
         /// profiles by cost, or force one of fixed-256k/fixed-512k/fixed-1m/
-        /// fastcdc-64k/fastcdc-128k/fastcdc-256k. Overrides --mode.
+        /// fastcdc-16k/fastcdc-32k/fastcdc-64k/fastcdc-128k/fastcdc-256k.
+        /// Overrides --mode.
         #[arg(long)]
         profile: Option<String>,
         /// Previous version of the (single) input, so `--profile auto`

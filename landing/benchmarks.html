@@ -335,6 +335,33 @@
   </div>
 </section>
 
+<!-- ============ PROFILES (next release) ============ -->
+<section class="anchor" id="profiles">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">v1.3.0 — small chunk profiles</span>
+      <h2 class="section-title">16 KiB chunks cut real updates<br>up to 68% further.</h2>
+      <p class="section-sub">Measured on the official Marble 1.6.0 → 1.6.1 Linux release builds (real PCK pair). The new <span class="mono">fastcdc-16k</span> / <span class="mono">fastcdc-32k</span> profiles use tight FastCDC normalization; the compact binary manifest keeps their metadata cost at a few KiB. Pack-time hashing and compression now run on all cores (3–7× faster, byte-identical output), which makes per-chunk zstd-19 practical for publishing.</p>
+    </div>
+    <div class="table-wrap reveal">
+      <table>
+        <thead>
+          <tr><th>Config</th><th class="num">Update wire</th><th class="num">vs previous default</th><th class="num">Cold wire</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>fastcdc-64k + zstd-3 (previous default)</td><td class="num">1.50 MiB</td><td class="num">—</td><td class="num">7.81 MiB</td></tr>
+          <tr><td>fastcdc-32k + zstd-3</td><td class="num">0.80 MiB</td><td class="num save">−47%</td><td class="num">8.01 MiB</td></tr>
+          <tr><td>fastcdc-16k + zstd-3</td><td class="num">0.53 MiB</td><td class="num save">−65%</td><td class="num">8.12 MiB</td></tr>
+          <tr><td>fastcdc-16k + zstd-19</td><td class="num blue">0.48 MiB</td><td class="num save">−68%</td><td class="num blue">7.50 MiB</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      The auto-profile sweep now prices manifests at their real binary-v2 weight and measures the small profiles on your actual bytes — and the dual bootstrap route keeps cold installs cheap regardless. Every reconstruction stays <span class="big">byte-identical</span>.
+    </div>
+  </div>
+</section>
+
 <!-- ============ STORAGE ============ -->
 <section class="anchor" id="storage">
   <div class="wrap">

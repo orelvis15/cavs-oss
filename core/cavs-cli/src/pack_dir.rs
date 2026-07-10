@@ -142,11 +142,8 @@ pub fn pack_dir(input: &Path, output: &Path, opts: &PackDirOptions) -> Result<()
 }
 
 fn add_chunked(w: &mut Writer, data: &[u8], mode: ChunkMode) -> Result<Vec<u32>> {
-    let mut idxs = Vec::new();
-    for range in cavs_chunker::split(data, mode) {
-        idxs.push(w.add_chunk(&data[range])?);
-    }
-    Ok(idxs)
+    let ranges = cavs_chunker::split(data, mode);
+    Ok(w.add_chunks_parallel(data, &ranges)?)
 }
 
 /// Deterministic walk: every path under `root`, sorted, symlinks not

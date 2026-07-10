@@ -6,6 +6,57 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] — Smaller updates & parallel packing
+
+### Core algorithm improvements — measured, not projected
+
+Every number below was measured on real version pairs (MechanicalFlower/
+Marble 1.6.0→1.6.1 PCK, Godot editor 4.2→4.2.1 linux binary) and on the
+deterministic synthetic suite; all reconstructions verified byte-identical.
+
+### Added
+
+- **Small chunk profiles `fastcdc-16k` / `fastcdc-32k`** (CLI `--profile`,
+  `cavs sweep`, `--profile auto`, SDK `packDirectory`, desktop app). On the
+  real Marble PCK pair they cut update egress **−65 % / −47 %** vs
+  `fastcdc-64k` for ~+4 % / +2.6 % cold chunk-path egress and a few KiB of
+  (binary v2) manifest. The new profiles use FastCDC normalization level 3
+  (tight size distribution, worth ~−20 % more update egress at the same
+  average); existing profiles keep their exact published boundaries.
+- `cavs-chunker`: `ChunkMode::Cdc` gains a `norm` field (FastCDC
+  normalization level). `NORM_DEFAULT` (= 1) reproduces the pre-existing
+  boundaries bit-for-bit — pinned by a compatibility test.
+- `cavs-format`: `Writer::add_chunks_parallel` — per-chunk BLAKE3 + zstd
+  now run on all cores at pack time; ingest order and the output file are
+  **byte-identical** to the serial path (pinned by test). Measured pack
+  speedup: **3.2×** at zstd-3, **7.2×** at zstd-19 (Godot 100 MB binary).
+  `pack`, `pack-dir` and the SDK `packDirectory` all use it.
+
+### Changed
+
+- `--profile auto` cost model: the manifest term now prices the binary v2
+  manifest (~36 B/chunk, measured) instead of the JSON-era 150 B/chunk,
+  which silently biased the sweep ~4× against the small-chunk profiles
+  that win update egress.
+- `--profile auto` with `--bootstrap` on a first version of update-heavy
+  payloads (engine packs/archives) now starts the stream at `fastcdc-16k`
+  instead of `fastcdc-64k`: the bootstrap already serves the cold path,
+  and updates are 60–68 % cheaper from the first patch on. Existing
+  streams keep continuity through `--prev`.
+- With parallel ingest, per-chunk **zstd-19 becomes a practical choice**
+  for release publishing (`--zstd-level 19`): **−9/10 % wire and storage**
+  on both real pairs, identical client decode cost, server passthrough
+  unchanged. The default stays zstd-3.
+- Desktop app: the pack form now offers the 16k/32k profiles and explicit
+  zstd levels (3 / 9 / 19 / none) — and sends valid `zstd-<level>` values
+  (the previous "zstd" string was rejected by the SDK).
+
+### Honest negatives (measured, not adopted)
+
+- Per-release zstd dictionaries: −0.5–3.5 % — not worth the format change.
+- Bootstrap long-distance matching / level 22: −0.03–1.15 % vs the
+  current zstd-19 — already near-optimal.
+
 ## [1.2.0] — Language SDKs
 
 CAVS now ships **SDKs for Go, Kotlin/JVM and Node/TypeScript** so publishers,

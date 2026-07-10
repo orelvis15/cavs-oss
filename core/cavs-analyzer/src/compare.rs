@@ -20,6 +20,7 @@ const CDC: ChunkMode = ChunkMode::Cdc {
     min: 16 * 1024,
     avg: 64 * 1024,
     max: 256 * 1024,
+    norm: cavs_chunker::NORM_DEFAULT,
 };
 /// Manifest overhead per CDC chunk (hash + offset + len + flags), analytic.
 const CDC_MANIFEST_PER_CHUNK: u64 = 48;

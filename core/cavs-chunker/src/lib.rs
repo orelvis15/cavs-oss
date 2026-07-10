@@ -10,11 +10,26 @@
 
 use std::ops::Range;
 
+/// FastCDC chunk-size normalization level (see the FastCDC 2020 paper).
+/// Higher levels concentrate chunk sizes around `avg` — level 3 measured
+/// ~20% smaller update payloads on real games for the small profiles —
+/// but different levels produce different boundaries, so the level is part
+/// of a profile's identity and must never change for published content.
+/// `NORM_DEFAULT` (level 1) is what every profile before the 16k/32k ones
+/// used and matches `fastcdc::v2020::FastCDC::new`.
+pub const NORM_DEFAULT: u8 = 1;
+/// Tight normalization (level 3), used by the `fastcdc-16k`/`fastcdc-32k`
+/// profiles introduced in 1.3.0.
+pub const NORM_TIGHT: u8 = 3;
+
 /// Chunking strategy. Sizes are in bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChunkMode {
     Fixed { size: usize },
-    Cdc { min: usize, avg: usize, max: usize },
+    /// FastCDC content-defined chunking. `norm` is the normalization level
+    /// (0–3, see [`NORM_DEFAULT`]); it changes boundary placement, so it is
+    /// as much a part of the profile as the sizes are.
+    Cdc { min: usize, avg: usize, max: usize, norm: u8 },
 }
 
 impl ChunkMode {
@@ -32,6 +47,7 @@ impl ChunkMode {
             min: 16 * 1024,
             avg: 64 * 1024,
             max: 256 * 1024,
+            norm: NORM_DEFAULT,
         }
     }
 
@@ -42,6 +58,7 @@ impl ChunkMode {
             min: 16 * 1024,
             avg: 64 * 1024,
             max: 256 * 1024,
+            norm: NORM_DEFAULT,
         }
     }
 }
@@ -66,8 +83,20 @@ pub fn split(input: &[u8], mode: ChunkMode) -> Vec<Range<usize>> {
             }
             out
         }
-        ChunkMode::Cdc { min, avg, max } => {
-            let chunker = fastcdc::v2020::FastCDC::new(input, min as u32, avg as u32, max as u32);
+        ChunkMode::Cdc { min, avg, max, norm } => {
+            let level = match norm {
+                0 => fastcdc::v2020::Normalization::Level0,
+                1 => fastcdc::v2020::Normalization::Level1,
+                2 => fastcdc::v2020::Normalization::Level2,
+                _ => fastcdc::v2020::Normalization::Level3,
+            };
+            let chunker = fastcdc::v2020::FastCDC::with_level(
+                input,
+                min as u32,
+                avg as u32,
+                max as u32,
+                level,
+            );
             chunker.map(|c| c.offset..c.offset + c.length).collect()
         }
     }
@@ -146,6 +175,54 @@ mod tests {
             .filter(|r| set_a.contains(&h(r, &shifted)))
             .count();
         assert!(hits > 0, "CDC should recover shared chunks after a shift");
+    }
+
+    /// Compatibility pin: `norm: NORM_DEFAULT` must keep producing the exact
+    /// boundaries `FastCDC::new` produced before the field existed — every
+    /// published version stream depends on them.
+    #[test]
+    fn norm_default_matches_pre_field_boundaries() {
+        let mut data = vec![0u8; 4 * 1024 * 1024];
+        let mut state = 0xfeedfaceu32;
+        for b in data.iter_mut() {
+            state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+            *b = (state >> 24) as u8;
+        }
+        let via_mode = split(&data, ChunkMode::asset_default());
+        let direct: Vec<Range<usize>> =
+            fastcdc::v2020::FastCDC::new(&data, 16 * 1024, 64 * 1024, 256 * 1024)
+                .map(|c| c.offset..c.offset + c.length)
+                .collect();
+        assert_eq!(via_mode, direct);
+    }
+
+    #[test]
+    fn norm_tight_covers_input_and_narrows_sizes() {
+        let mut data = vec![0u8; 8 * 1024 * 1024];
+        let mut state = 0xabad1deau32;
+        for b in data.iter_mut() {
+            state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+            *b = (state >> 24) as u8;
+        }
+        let loose = ChunkMode::Cdc { min: 4096, avg: 16384, max: 65536, norm: NORM_DEFAULT };
+        let tight = ChunkMode::Cdc { min: 4096, avg: 16384, max: 65536, norm: NORM_TIGHT };
+        let a = split(&data, loose);
+        let b = split(&data, tight);
+        assert_covers(data.len(), &a);
+        assert_covers(data.len(), &b);
+        // Tighter normalization concentrates sizes around avg: the spread
+        // between the 10th and 90th percentile must shrink.
+        let spread = |ranges: &[Range<usize>]| {
+            let mut sizes: Vec<usize> = ranges.iter().map(|r| r.len()).collect();
+            sizes.sort_unstable();
+            sizes[sizes.len() * 9 / 10] - sizes[sizes.len() / 10]
+        };
+        assert!(
+            spread(&b) < spread(&a),
+            "tight spread {} !< loose spread {}",
+            spread(&b),
+            spread(&a)
+        );
     }
 
     // Cheap stand-in hash for tests (avoids a dev-dependency cycle).

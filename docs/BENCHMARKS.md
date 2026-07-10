@@ -97,7 +97,8 @@ packing time). These results set the current defaults: **FastCDC 64 KiB +
 zstd 3**.
 
 Since 0.1.2 the sweep is built in: `cavs sweep new.pck --prev old.cavs`
-measures six candidate profiles (fixed 256K/512K/1M, FastCDC 64K/128K/256K) on
+measures eight candidate profiles (fixed 256K/512K/1M, FastCDC
+16K/32K/64K/128K/256K) on
 the real bytes — chunk counts, sampled compression, manifest weight and real
 chunk reuse — and `cavs pack --profile auto` applies the cheapest. It catches
 per-title cases a fixed default cannot: for Marble (an in-place patch with no
@@ -516,6 +517,49 @@ apply-chain reports, replayable `patch_graph.json`):
 different traffic model or client state without re-diffing:
 `cavs patch-policy simulate --graph …/patch_graph.json --traffic-model
 major-release`.
+
+## Small chunk profiles, tight normalization & parallel pack (v1.3.0)
+
+Measured on two real version pairs — the same Marble PCK pair used above
+(official 1.6.0 → 1.6.1 Linux release builds) and the Godot editor 4.2 →
+4.2.1 linux binary (100 MB) — plus the 256 MiB synthetic suite. All
+reconstructions byte-identical (`cmp`).
+
+**Update egress, Marble PCK pair** (what a client holding 1.6.0 downloads):
+
+| Config | Update wire | Cold wire | Manifest v2 |
+|---|---:|---:|---:|
+| fastcdc-64k + zstd-3 (previous default) | 1.500 MiB | 7.81 MiB | ~4.9 KiB |
+| fastcdc-32k + zstd-3 | 0.798 MiB (**−47%**) | 8.01 MiB | ~11 KiB |
+| fastcdc-16k + zstd-3 | 0.525 MiB (**−65%**) | 8.12 MiB | ~22 KiB |
+| fastcdc-16k + zstd-19 | **0.476 MiB (−68%)** | 7.50 MiB (−4%) | ~22 KiB |
+
+The +4% cold chunk-path cost of 16 KiB chunks is recovered by zstd-19 —
+and the dual bootstrap route serves cold installs anyway. The synthetic
+suite confirms the trend (v2-small update 11.89 → 8.56 MiB, −28%) and the
+shifted case stays at its floor (10.9 KiB).
+
+**Why the sweep missed this before:** the auto-profile cost model priced
+manifests at the JSON-era 150 B/chunk; the binary v2 manifest measures
+~36 B/chunk, so small-chunk profiles were penalized ~4× too hard. Fixed,
+and `fastcdc-16k`/`fastcdc-32k` joined the candidate set. The new
+profiles use FastCDC normalization level 3 (tight chunk-size spread:
+p10–p90 narrows from ~30–140 KiB to ~65–85 KiB at a 64 KiB average),
+worth ~−20% additional update egress at the same average; the existing
+profiles keep their published boundaries bit-for-bit (compatibility test
+pinned).
+
+**Parallel pack:** per-chunk BLAKE3 + zstd now run on all cores, with
+ingest order and output file byte-identical to the serial path (test
+pinned). Measured on the 100 MB Godot binary: 323 → 1,022 MiB/s at
+zstd-3 (**3.2×**), 8 → 54 MiB/s at zstd-19 (**7.2×**). That makes
+per-chunk **zstd-19 practical for release publishing**: −9/10% wire and
+storage on both real pairs with identical client decode cost and
+unchanged server passthrough (chunks still travel as stored).
+
+**Measured and rejected:** per-release zstd dictionaries (−0.5–3.5%, not
+worth the format change) and bootstrap long-distance matching / level 22
+(−0.03–1.15%; the zstd-19 bootstrap is already near-optimal).
 
 ## Honest negatives (video suite)
 

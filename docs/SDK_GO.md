@@ -164,8 +164,9 @@ type PackResult struct {
 }
 ```
 
-Valid `Profile` labels: `auto`, `fastcdc-64k`, `fastcdc-128k`,
-`fastcdc-256k`, `fixed-256k`, `fixed-512k`, `fixed-1m`.
+Valid `Profile` labels: `auto`, `fastcdc-16k`, `fastcdc-32k`,
+`fastcdc-64k`, `fastcdc-128k`, `fastcdc-256k`, `fixed-256k`, `fixed-512k`,
+`fixed-1m`.
 
 ```go
 type PreviewRequest struct {

@@ -14,21 +14,32 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 /// Candidate chunking profiles for the sweep.
+///
+/// The 16k/32k profiles (1.3.0) use FastCDC normalization level 3 — tight
+/// size distribution around the average — because they are new labels with
+/// no published streams to stay boundary-compatible with; measured on real
+/// games they cut update egress a further ~20% vs level 1 at the same
+/// average. The pre-existing profiles keep level 1 forever: their
+/// boundaries are pinned by every already-published version stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChunkProfile {
     Fixed256K,
     Fixed512K,
     Fixed1M,
+    FastCdc16K,
+    FastCdc32K,
     FastCdc64K,
     FastCdc128K,
     FastCdc256K,
 }
 
 impl ChunkProfile {
-    pub const ALL: [ChunkProfile; 6] = [
+    pub const ALL: [ChunkProfile; 8] = [
         ChunkProfile::Fixed256K,
         ChunkProfile::Fixed512K,
         ChunkProfile::Fixed1M,
+        ChunkProfile::FastCdc16K,
+        ChunkProfile::FastCdc32K,
         ChunkProfile::FastCdc64K,
         ChunkProfile::FastCdc128K,
         ChunkProfile::FastCdc256K,
@@ -39,6 +50,8 @@ impl ChunkProfile {
             ChunkProfile::Fixed256K => "fixed-256k",
             ChunkProfile::Fixed512K => "fixed-512k",
             ChunkProfile::Fixed1M => "fixed-1m",
+            ChunkProfile::FastCdc16K => "fastcdc-16k",
+            ChunkProfile::FastCdc32K => "fastcdc-32k",
             ChunkProfile::FastCdc64K => "fastcdc-64k",
             ChunkProfile::FastCdc128K => "fastcdc-128k",
             ChunkProfile::FastCdc256K => "fastcdc-256k",
@@ -62,20 +75,35 @@ impl ChunkProfile {
             ChunkProfile::Fixed256K => ChunkMode::Fixed { size: 256 * 1024 },
             ChunkProfile::Fixed512K => ChunkMode::Fixed { size: 512 * 1024 },
             ChunkProfile::Fixed1M => ChunkMode::Fixed { size: 1024 * 1024 },
+            ChunkProfile::FastCdc16K => ChunkMode::Cdc {
+                min: 4 * 1024,
+                avg: 16 * 1024,
+                max: 64 * 1024,
+                norm: cavs_chunker::NORM_TIGHT,
+            },
+            ChunkProfile::FastCdc32K => ChunkMode::Cdc {
+                min: 8 * 1024,
+                avg: 32 * 1024,
+                max: 128 * 1024,
+                norm: cavs_chunker::NORM_TIGHT,
+            },
             ChunkProfile::FastCdc64K => ChunkMode::Cdc {
                 min: 16 * 1024,
                 avg: 64 * 1024,
                 max: 256 * 1024,
+                norm: cavs_chunker::NORM_DEFAULT,
             },
             ChunkProfile::FastCdc128K => ChunkMode::Cdc {
                 min: 32 * 1024,
                 avg: 128 * 1024,
                 max: 512 * 1024,
+                norm: cavs_chunker::NORM_DEFAULT,
             },
             ChunkProfile::FastCdc256K => ChunkMode::Cdc {
                 min: 64 * 1024,
                 avg: 256 * 1024,
                 max: 1024 * 1024,
+                norm: cavs_chunker::NORM_DEFAULT,
             },
         }
     }
@@ -138,10 +166,13 @@ pub struct ProfileEstimate {
     pub reuse_ratio: f64,
 }
 
-/// Approximate manifest cost per unique chunk. Each chunk appears in the
-/// JSON manifest as a segment entry (hex hash + len + syntax) and again in
-/// the signed chunk_table (hex hash + syntax); measured on real manifests.
-const MANIFEST_BYTES_PER_CHUNK: u64 = 150;
+/// Approximate manifest cost per unique chunk, as the binary v2 manifest
+/// (`CAVSMF2`) prices it: the unique hash (32 B) plus varint index
+/// references — measured ~36–37 B/chunk on real games (e.g. 77.7 KiB for
+/// 2,143 chunks). The old value (150, the JSON-era cost) overweighted the
+/// manifest term ~4×, which silently biased `--profile auto` against the
+/// small-chunk profiles that win update egress.
+const MANIFEST_BYTES_PER_CHUNK: u64 = 36;
 
 /// Per-instruction wire overhead of the CVSP batch encoding (tag + hash +
 /// compression + lengths).
@@ -346,7 +377,11 @@ mod tests {
         assert!(
             matches!(
                 best,
-                ChunkProfile::FastCdc64K | ChunkProfile::FastCdc128K | ChunkProfile::FastCdc256K
+                ChunkProfile::FastCdc16K
+                    | ChunkProfile::FastCdc32K
+                    | ChunkProfile::FastCdc64K
+                    | ChunkProfile::FastCdc128K
+                    | ChunkProfile::FastCdc256K
             ),
             "expected a CDC profile, got {best:?}: {estimates:#?}"
         );
@@ -361,6 +396,44 @@ mod tests {
             .unwrap();
         assert!(cdc.reuse_ratio > 0.9, "cdc reuse {}", cdc.reuse_ratio);
         assert!(fixed.reuse_ratio < 0.1, "fixed reuse {}", fixed.reuse_ratio);
+    }
+
+    /// Many small scattered edits — the update shape real game packs show
+    /// (dozens of resources touched per release) — must steer the
+    /// live-updates sweep to the small CDC profiles (1.3.0): every edit
+    /// invalidates whole chunks, so boundary waste scales with chunk size,
+    /// and the v2 manifest keeps their chunk-count cost trivial.
+    #[test]
+    fn localized_update_with_prev_prefers_small_cdc() {
+        let v1 = pseudo_random(8 * 1024 * 1024, 77);
+        let mut v2 = v1.clone();
+        for i in 0..24u32 {
+            let off = 100_000 + i as usize * 340_000;
+            let patch = pseudo_random(1024, 1000 + i);
+            v2[off..off + patch.len()].copy_from_slice(&patch);
+        }
+
+        let estimates: Vec<ProfileEstimate> = ChunkProfile::ALL
+            .iter()
+            .map(|&p| estimate(&v2, Some(&PrevVersion::Raw(v1.clone())), p, 3))
+            .collect();
+        let best = choose_best(&estimates, &CostWeights::live_updates());
+        assert!(
+            matches!(best, ChunkProfile::FastCdc16K | ChunkProfile::FastCdc32K),
+            "expected a small CDC profile, got {best:?}: {estimates:#?}"
+        );
+        // And its measured update egress must actually beat the old default.
+        let small = estimates.iter().find(|e| e.profile == best).unwrap();
+        let old_default = estimates
+            .iter()
+            .find(|e| e.profile == ChunkProfile::FastCdc64K)
+            .unwrap();
+        assert!(
+            small.update_egress_bytes < old_default.update_egress_bytes,
+            "small {} !< 64k {}",
+            small.update_egress_bytes,
+            old_default.update_egress_bytes
+        );
     }
 
     #[test]

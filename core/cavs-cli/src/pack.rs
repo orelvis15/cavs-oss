@@ -112,7 +112,12 @@ fn resolve_raw_mode(
     // sweep lock the whole version stream into large chunks. Subsequent
     // versions (--prev) measure real reuse and keep continuity.
     if payload.likely_update_heavy && prev.is_none() && opts.bootstrap {
-        let p = ChunkProfile::FastCdc64K;
+        // fastcdc-16k: on the real-game pairs it cut update egress 60–68%
+        // vs fastcdc-64k for ~+4% cold chunk-path egress — and this branch
+        // only fires when --bootstrap serves the cold path anyway. The
+        // profile label locks the stream's boundaries; later versions keep
+        // continuity through --prev.
+        let p = ChunkProfile::FastCdc16K;
         eprintln!(
             "[pack] {} classified as {} -> profile {} (update-heavy; cold path served by bootstrap)",
             input.display(),
@@ -172,13 +177,11 @@ fn write_bootstrap(output: &Path, name: &str, data: &[u8], w: &mut Writer) -> Re
     Ok(())
 }
 
-/// Add `data` as chunks and return the chunk indices.
+/// Add `data` as chunks and return the chunk indices. Hash + compression
+/// run on all cores; the output file is byte-identical to the serial path.
 fn add_chunked(w: &mut Writer, data: &[u8], mode: ChunkMode) -> Result<Vec<u32>> {
-    let mut idxs = Vec::new();
-    for range in cavs_chunker::split(data, mode) {
-        idxs.push(w.add_chunk(&data[range])?);
-    }
-    Ok(idxs)
+    let ranges = cavs_chunker::split(data, mode);
+    Ok(w.add_chunks_parallel(data, &ranges)?)
 }
 
 /// Derive a unique, filesystem-safe logical name from an input path.
