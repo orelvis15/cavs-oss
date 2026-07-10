@@ -108,6 +108,8 @@ pub fn classify(path: &Path, data: &[u8]) -> PayloadProfile {
         ChunkProfile::ALL.to_vec()
     } else if matches!(kind, PayloadKind::MetadataText) {
         vec![
+            ChunkProfile::FastCdc16K,
+            ChunkProfile::FastCdc32K,
             ChunkProfile::FastCdc64K,
             ChunkProfile::FastCdc128K,
             ChunkProfile::Fixed256K,

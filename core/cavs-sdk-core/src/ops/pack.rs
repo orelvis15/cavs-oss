@@ -17,8 +17,9 @@ use std::path::PathBuf;
 struct PackDirectoryRequest {
     input_dir: PathBuf,
     output_cavs: PathBuf,
-    /// fixed-256k | fixed-512k | fixed-1m | fastcdc-64k | fastcdc-128k |
-    /// fastcdc-256k | auto (benchmark-validated default: fastcdc-64k).
+    /// fixed-256k | fixed-512k | fixed-1m | fastcdc-16k | fastcdc-32k |
+    /// fastcdc-64k | fastcdc-128k | fastcdc-256k | auto
+    /// (benchmark-validated default: fastcdc-64k).
     #[serde(default = "default_profile")]
     profile: String,
     /// "zstd-<level>" or "none".
@@ -48,14 +49,34 @@ fn parse_profile(label: &str) -> Result<(ChunkMode, &'static str)> {
                 min: 16 * 1024,
                 avg: 64 * 1024,
                 max: 256 * 1024,
+                norm: cavs_chunker::NORM_DEFAULT,
             },
             "fastcdc-64k",
+        ),
+        "fastcdc-16k" => (
+            ChunkMode::Cdc {
+                min: 4 * 1024,
+                avg: 16 * 1024,
+                max: 64 * 1024,
+                norm: cavs_chunker::NORM_TIGHT,
+            },
+            "fastcdc-16k",
+        ),
+        "fastcdc-32k" => (
+            ChunkMode::Cdc {
+                min: 8 * 1024,
+                avg: 32 * 1024,
+                max: 128 * 1024,
+                norm: cavs_chunker::NORM_TIGHT,
+            },
+            "fastcdc-32k",
         ),
         "fastcdc-128k" => (
             ChunkMode::Cdc {
                 min: 32 * 1024,
                 avg: 128 * 1024,
                 max: 512 * 1024,
+                norm: cavs_chunker::NORM_DEFAULT,
             },
             "fastcdc-128k",
         ),
@@ -64,6 +85,7 @@ fn parse_profile(label: &str) -> Result<(ChunkMode, &'static str)> {
                 min: 64 * 1024,
                 avg: 256 * 1024,
                 max: 1024 * 1024,
+                norm: cavs_chunker::NORM_DEFAULT,
             },
             "fastcdc-256k",
         ),
@@ -188,10 +210,8 @@ pub fn run(ctx: &OpCtx, request: &Value) -> Result<Value> {
             w.set_meta(&format!("exec:{rel_str}"), "1");
         }
 
-        let mut chunks = Vec::new();
-        for range in cavs_chunker::split(&data, mode) {
-            chunks.push(w.add_chunk(&data[range])?);
-        }
+        let ranges = cavs_chunker::split(&data, mode);
+        let chunks = w.add_chunks_parallel(&data, &ranges)?;
         track_id += 1;
         w.add_track(TrackRecord {
             track_id,

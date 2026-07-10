@@ -46,21 +46,36 @@ pub fn mode_from_profile_label(label: Option<&str>) -> ChunkMode {
         Some("fixed-256k") => ChunkMode::Fixed { size: 256 * 1024 },
         Some("fixed-512k") => ChunkMode::Fixed { size: 512 * 1024 },
         Some("fixed-1m") => ChunkMode::Fixed { size: 1024 * 1024 },
+        Some("fastcdc-16k") => ChunkMode::Cdc {
+            min: 4 * 1024,
+            avg: 16 * 1024,
+            max: 64 * 1024,
+            norm: cavs_chunker::NORM_TIGHT,
+        },
+        Some("fastcdc-32k") => ChunkMode::Cdc {
+            min: 8 * 1024,
+            avg: 32 * 1024,
+            max: 128 * 1024,
+            norm: cavs_chunker::NORM_TIGHT,
+        },
         Some("fastcdc-128k") => ChunkMode::Cdc {
             min: 32 * 1024,
             avg: 128 * 1024,
             max: 512 * 1024,
+            norm: cavs_chunker::NORM_DEFAULT,
         },
         Some("fastcdc-256k") => ChunkMode::Cdc {
             min: 64 * 1024,
             avg: 256 * 1024,
             max: 1024 * 1024,
+            norm: cavs_chunker::NORM_DEFAULT,
         },
         // fastcdc-64k and the packer default share these parameters.
         _ => ChunkMode::Cdc {
             min: 16 * 1024,
             avg: 64 * 1024,
             max: 256 * 1024,
+            norm: cavs_chunker::NORM_DEFAULT,
         },
     }
 }
@@ -289,6 +304,36 @@ mod tests {
         out
     }
 
+    /// The label map must mirror `ChunkProfile::to_mode` in cavs-cli —
+    /// including the tight-normalization 16k/32k profiles (1.3.0). A
+    /// mismatch would silently kill hybrid reuse for those streams.
+    #[test]
+    fn new_small_profile_labels_map_to_tight_modes() {
+        assert_eq!(
+            mode_from_profile_label(Some("fastcdc-16k")),
+            ChunkMode::Cdc {
+                min: 4 * 1024,
+                avg: 16 * 1024,
+                max: 64 * 1024,
+                norm: cavs_chunker::NORM_TIGHT,
+            }
+        );
+        assert_eq!(
+            mode_from_profile_label(Some("fastcdc-32k")),
+            ChunkMode::Cdc {
+                min: 8 * 1024,
+                avg: 32 * 1024,
+                max: 128 * 1024,
+                norm: cavs_chunker::NORM_TIGHT,
+            }
+        );
+        // Unknown labels keep falling back to the 64k default.
+        assert_eq!(
+            mode_from_profile_label(None),
+            mode_from_profile_label(Some("fastcdc-64k"))
+        );
+    }
+
     /// Chunk `data`, index a previous artifact, plan and execute — the
     /// whole hybrid path minus the HTTP layer.
     #[test]
@@ -298,6 +343,7 @@ mod tests {
             min: 16 * 1024,
             avg: 64 * 1024,
             max: 256 * 1024,
+            norm: cavs_chunker::NORM_DEFAULT,
         };
 
         // v1 on disk; v2 = v1 with a rewritten slice in the middle.
@@ -449,7 +495,8 @@ mod tests {
                 min: 32 * 1024,
                 avg: 128 * 1024,
                 max: 512 * 1024
-            }
+            ,
+                norm: cavs_chunker::NORM_DEFAULT,}
         );
     }
 }

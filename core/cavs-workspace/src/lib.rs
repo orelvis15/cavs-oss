@@ -151,6 +151,7 @@ const CDC: cavs_chunker::ChunkMode = cavs_chunker::ChunkMode::Cdc {
     min: 16 * 1024,
     avg: 64 * 1024,
     max: 256 * 1024,
+    norm: cavs_chunker::NORM_DEFAULT,
 };
 
 impl DepotIndex {

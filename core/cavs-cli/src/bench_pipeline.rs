@@ -108,6 +108,7 @@ pub fn bench(args: &PipelineArgs) -> Result<()> {
             min: 16 * 1024,
             avg: 64 * 1024,
             max: 256 * 1024,
+            norm: cavs_chunker::NORM_DEFAULT,
         };
         for (_, bytes) in &files_of(args.old)? {
             for range in cavs_chunker::split(bytes, CAVS_MODE) {
