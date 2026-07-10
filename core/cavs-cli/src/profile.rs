@@ -31,10 +31,17 @@ pub enum ChunkProfile {
     FastCdc64K,
     FastCdc128K,
     FastCdc256K,
+    /// `fastcdc-64k` sizes with normalization level 3 (1.4.0). A new label,
+    /// so existing `fastcdc-64k` streams keep their published boundaries;
+    /// new streams that want the 64 KiB average get the tighter size
+    /// distribution that measured ~−20% update egress on real games.
+    FastCdc64KN3,
+    /// `fastcdc-128k` sizes with normalization level 3 (1.4.0).
+    FastCdc128KN3,
 }
 
 impl ChunkProfile {
-    pub const ALL: [ChunkProfile; 8] = [
+    pub const ALL: [ChunkProfile; 10] = [
         ChunkProfile::Fixed256K,
         ChunkProfile::Fixed512K,
         ChunkProfile::Fixed1M,
@@ -43,6 +50,8 @@ impl ChunkProfile {
         ChunkProfile::FastCdc64K,
         ChunkProfile::FastCdc128K,
         ChunkProfile::FastCdc256K,
+        ChunkProfile::FastCdc64KN3,
+        ChunkProfile::FastCdc128KN3,
     ];
 
     pub fn label(&self) -> &'static str {
@@ -55,6 +64,8 @@ impl ChunkProfile {
             ChunkProfile::FastCdc64K => "fastcdc-64k",
             ChunkProfile::FastCdc128K => "fastcdc-128k",
             ChunkProfile::FastCdc256K => "fastcdc-256k",
+            ChunkProfile::FastCdc64KN3 => "fastcdc-64k-n3",
+            ChunkProfile::FastCdc128KN3 => "fastcdc-128k-n3",
         }
     }
 
@@ -104,6 +115,18 @@ impl ChunkProfile {
                 avg: 256 * 1024,
                 max: 1024 * 1024,
                 norm: cavs_chunker::NORM_DEFAULT,
+            },
+            ChunkProfile::FastCdc64KN3 => ChunkMode::Cdc {
+                min: 16 * 1024,
+                avg: 64 * 1024,
+                max: 256 * 1024,
+                norm: cavs_chunker::NORM_TIGHT,
+            },
+            ChunkProfile::FastCdc128KN3 => ChunkMode::Cdc {
+                min: 32 * 1024,
+                avg: 128 * 1024,
+                max: 512 * 1024,
+                norm: cavs_chunker::NORM_TIGHT,
             },
         }
     }
@@ -433,6 +456,74 @@ mod tests {
             "small {} !< 64k {}",
             small.update_egress_bytes,
             old_default.update_egress_bytes
+        );
+    }
+
+    /// The 1.4.0 -n3 profiles reuse the n1 sizes with tight normalization.
+    /// On a boundary-shifting update they must not score *worse* than their
+    /// n1 sibling on update egress — the tight distribution is why they
+    /// exist. (They measure real bytes, so this is a lower-bound sanity
+    /// check, not the full ~20% claim, which needs real game data.)
+    #[test]
+    fn n3_profiles_do_not_regress_update_egress() {
+        let v1 = pseudo_random(8 * 1024 * 1024, 314);
+        // A shift plus scattered edits: the shape n3 is meant to help.
+        let mut v2 = pseudo_random(37, 159);
+        v2.extend_from_slice(&v1);
+        for i in 0..16u32 {
+            let off = 200_000 + i as usize * 400_000;
+            let patch = pseudo_random(512, 900 + i);
+            v2[off..off + patch.len()].copy_from_slice(&patch);
+        }
+        let prev = PrevVersion::Raw(v1.clone());
+        for (n1, n3) in [
+            (ChunkProfile::FastCdc64K, ChunkProfile::FastCdc64KN3),
+            (ChunkProfile::FastCdc128K, ChunkProfile::FastCdc128KN3),
+        ] {
+            let e1 = estimate(&v2, Some(&prev), n1, 3);
+            let e3 = estimate(&v2, Some(&prev), n3, 3);
+            assert!(
+                e3.update_egress_bytes <= (e1.update_egress_bytes as f64 * 1.02) as u64,
+                "{:?} update {} regressed vs {:?} {}",
+                n3,
+                e3.update_egress_bytes,
+                n1,
+                e1.update_egress_bytes
+            );
+        }
+    }
+
+    /// A published n1 `.cavs` (a `ChunkSet`) yields only incidental reuse for
+    /// the -n3 candidate (a handful of min-size boundaries coincide), while
+    /// the matching n1 profile keeps near-total reuse. So `--profile auto`
+    /// naturally keeps a continuing stream on its original profile instead
+    /// of silently switching normalization mid-stream — n1 reuse dwarfs n3's.
+    #[test]
+    fn n3_scores_far_less_reuse_than_n1_against_an_n1_published_stream() {
+        let v1 = pseudo_random(4 * 1024 * 1024, 7);
+        // The "published" stream used n1 64k boundaries.
+        let n1_hashes: HashSet<ChunkHash> =
+            cavs_chunker::split(&v1, ChunkProfile::FastCdc64K.to_mode())
+                .into_iter()
+                .map(|r| hash_chunk(&v1[r]))
+                .collect();
+        let mut v2 = v1.clone();
+        v2[500_000..550_000].copy_from_slice(&pseudo_random(50_000, 8));
+        let prev = PrevVersion::ChunkSet(n1_hashes);
+        let n3 = estimate(&v2, Some(&prev), ChunkProfile::FastCdc64KN3, 3);
+        let n1 = estimate(&v2, Some(&prev), ChunkProfile::FastCdc64K, 3);
+        assert!(
+            n1.reuse_ratio > 0.9,
+            "n1 should keep continuity with its own stream, reuse {}",
+            n1.reuse_ratio
+        );
+        // n3 picks up only incidental boundary coincidences, never enough
+        // to look like a continuing stream: n1 reuse is far higher.
+        assert!(
+            n3.reuse_ratio < 0.4 && n1.reuse_ratio > n3.reuse_ratio * 2.0,
+            "n3 reuse {} should be far below n1 reuse {}",
+            n3.reuse_ratio,
+            n1.reuse_ratio
         );
     }
 

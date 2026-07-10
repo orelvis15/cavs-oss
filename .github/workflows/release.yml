@@ -292,7 +292,22 @@ jobs:
           EOF
           echo "$GPG_PRIVATE_KEY" | gpg --batch --import
           mvn -B -q versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
-          mvn -B -Prelease -DskipTests -Dgpg.passphrase="${GPG_PASSPHRASE:-}" deploy
+          # Deploy, tolerating only "this version already exists on Central"
+          # (so a re-run — or a cancelled run whose async Portal publish
+          # already landed — is idempotent) while failing on any real error.
+          # Central rejects a duplicate GAV with a 400/409 whose body says the
+          # version is already published/promoted; anything else is fatal.
+          if out=$(mvn -B -Prelease -DskipTests -Dgpg.passphrase="${GPG_PASSPHRASE:-}" deploy 2>&1); then
+            echo "$out"; echo "published cavs-sdk $VERSION to Maven Central"
+          else
+            echo "$out"
+            if echo "$out" | grep -qiE "already (exists|published|promoted|released)|has already been|duplicate|409 conflict|version .* exists"; then
+              echo "skip cavs-sdk $VERSION (this version is already on Maven Central)"
+            else
+              echo "::error::Maven Central deploy failed for cavs-sdk $VERSION"
+              exit 1
+            fi
+          fi
 
   publish-go-tag:
     name: tag go submodule

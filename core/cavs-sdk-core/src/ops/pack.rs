@@ -18,8 +18,8 @@ struct PackDirectoryRequest {
     input_dir: PathBuf,
     output_cavs: PathBuf,
     /// fixed-256k | fixed-512k | fixed-1m | fastcdc-16k | fastcdc-32k |
-    /// fastcdc-64k | fastcdc-128k | fastcdc-256k | auto
-    /// (benchmark-validated default: fastcdc-64k).
+    /// fastcdc-64k | fastcdc-128k | fastcdc-256k | fastcdc-64k-n3 |
+    /// fastcdc-128k-n3 | auto (benchmark-validated default: fastcdc-64k).
     #[serde(default = "default_profile")]
     profile: String,
     /// "zstd-<level>" or "none".
@@ -88,6 +88,24 @@ fn parse_profile(label: &str) -> Result<(ChunkMode, &'static str)> {
                 norm: cavs_chunker::NORM_DEFAULT,
             },
             "fastcdc-256k",
+        ),
+        "fastcdc-64k-n3" => (
+            ChunkMode::Cdc {
+                min: 16 * 1024,
+                avg: 64 * 1024,
+                max: 256 * 1024,
+                norm: cavs_chunker::NORM_TIGHT,
+            },
+            "fastcdc-64k-n3",
+        ),
+        "fastcdc-128k-n3" => (
+            ChunkMode::Cdc {
+                min: 32 * 1024,
+                avg: 128 * 1024,
+                max: 512 * 1024,
+                norm: cavs_chunker::NORM_TIGHT,
+            },
+            "fastcdc-128k-n3",
         ),
         "fixed-256k" => (ChunkMode::Fixed { size: 256 * 1024 }, "fixed-256k"),
         "fixed-512k" => (ChunkMode::Fixed { size: 512 * 1024 }, "fixed-512k"),

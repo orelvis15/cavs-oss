@@ -64,6 +64,20 @@ pub fn mode_from_profile_label(label: Option<&str>) -> ChunkMode {
             max: 512 * 1024,
             norm: cavs_chunker::NORM_DEFAULT,
         },
+        // 1.4.0: the -n3 labels reuse the same sizes with normalization
+        // level 3 — new labels so published n1 streams keep their boundaries.
+        Some("fastcdc-64k-n3") => ChunkMode::Cdc {
+            min: 16 * 1024,
+            avg: 64 * 1024,
+            max: 256 * 1024,
+            norm: cavs_chunker::NORM_TIGHT,
+        },
+        Some("fastcdc-128k-n3") => ChunkMode::Cdc {
+            min: 32 * 1024,
+            avg: 128 * 1024,
+            max: 512 * 1024,
+            norm: cavs_chunker::NORM_TIGHT,
+        },
         Some("fastcdc-256k") => ChunkMode::Cdc {
             min: 64 * 1024,
             avg: 256 * 1024,
@@ -330,6 +344,36 @@ mod tests {
         // Unknown labels keep falling back to the 64k default.
         assert_eq!(
             mode_from_profile_label(None),
+            mode_from_profile_label(Some("fastcdc-64k"))
+        );
+    }
+
+    /// The 1.4.0 -n3 labels reuse the n1 sizes with tight normalization. A
+    /// client that maps them to the n1 mode would re-chunk the previous
+    /// artifact on the wrong boundaries and lose all hybrid reuse.
+    #[test]
+    fn n3_profile_labels_map_to_tight_modes() {
+        assert_eq!(
+            mode_from_profile_label(Some("fastcdc-64k-n3")),
+            ChunkMode::Cdc {
+                min: 16 * 1024,
+                avg: 64 * 1024,
+                max: 256 * 1024,
+                norm: cavs_chunker::NORM_TIGHT,
+            }
+        );
+        assert_eq!(
+            mode_from_profile_label(Some("fastcdc-128k-n3")),
+            ChunkMode::Cdc {
+                min: 32 * 1024,
+                avg: 128 * 1024,
+                max: 512 * 1024,
+                norm: cavs_chunker::NORM_TIGHT,
+            }
+        );
+        // The -n3 label must NOT collapse to its n1 sibling's boundaries.
+        assert_ne!(
+            mode_from_profile_label(Some("fastcdc-64k-n3")),
             mode_from_profile_label(Some("fastcdc-64k"))
         );
     }

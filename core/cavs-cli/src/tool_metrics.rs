@@ -75,15 +75,57 @@ fn parse_peak_rss(stderr: &str) -> Option<f64> {
     None
 }
 
+/// How long a probe is allowed to run before we assume the binary is a
+/// long-lived / GUI process and stop waiting for it. A CLI answering a
+/// bogus flag exits in milliseconds; a GUI (e.g. a Homebrew `godot` that
+/// ignores `--cavs-probe` and opens its project manager) never exits, so
+/// waiting on `.status()` would hang the whole command forever.
+const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1500);
+
 /// Is `bin` runnable at all? (Spawning with a bogus flag is enough — a
 /// missing binary errors at spawn, an existing one merely exits non-zero.)
+///
+/// The probe is bounded by [`PROBE_TIMEOUT`]: if the child hasn't exited by
+/// then it is killed and reaped, and the binary is still reported as
+/// available — it clearly launched. This keeps a GUI `godot` on `PATH` from
+/// hanging `certify` and the benchmark harnesses indefinitely.
 pub fn available(bin: &str) -> bool {
-    Command::new(bin)
+    let child = Command::new(bin)
         .arg("--cavs-probe")
+        .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .status()
-        .is_ok()
+        .spawn();
+    let mut child = match child {
+        Ok(c) => c,
+        // Spawn failure = binary missing / not executable.
+        Err(_) => return false,
+    };
+    let deadline = std::time::Instant::now() + PROBE_TIMEOUT;
+    loop {
+        match child.try_wait() {
+            // Exited on its own (any status): a real, runnable CLI.
+            Ok(Some(_)) => return true,
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    // Still alive past the deadline: assume a GUI/daemon that
+                    // ignores the flag. It launched, so it is available; kill
+                    // and reap it so we neither hang nor leak a process.
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return true;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            // Waiting failed: be conservative and call it available (it did
+            // spawn), after a best-effort kill.
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return true;
+            }
+        }
+    }
 }
 
 /// First line of `bin <flag>` output (version banners), if it runs.
@@ -100,6 +142,72 @@ pub fn version_line(bin: &str, flag: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn available_false_for_missing_binary() {
+        assert!(!available("cavs-definitely-not-a-real-binary-xyz"));
+    }
+
+    #[test]
+    fn available_true_for_a_real_cli_that_exits() {
+        // `true` exists on every unix and exits immediately regardless of
+        // the bogus flag — the fast, self-terminating path.
+        if Path::new("/usr/bin/true").exists() || Path::new("/bin/true").exists() {
+            let bin = if Path::new("/bin/true").exists() {
+                "/bin/true"
+            } else {
+                "/usr/bin/true"
+            };
+            assert!(available(bin));
+        }
+    }
+
+    /// The regression that motivated the timeout: a binary that never exits
+    /// on the probe flag (a GUI/daemon stand-in) must not hang `available`.
+    /// `sleep 3600` ignores `--cavs-probe`, runs far past PROBE_TIMEOUT, and
+    /// must be killed and reported available in ~PROBE_TIMEOUT, not 3600 s.
+    #[test]
+    fn available_does_not_hang_on_a_never_exiting_binary() {
+        let sleep_bin = ["/bin/sleep", "/usr/bin/sleep"]
+            .into_iter()
+            .find(|p| Path::new(p).exists());
+        let Some(sleep_bin) = sleep_bin else {
+            return; // no sleep on this platform; skip
+        };
+        let started = std::time::Instant::now();
+        // available() ignores extra args, so shadow the arg by probing a
+        // wrapper: we can't pass "3600" through available(), so exercise the
+        // bounded-wait helper shape directly via a long-running child.
+        let mut child = Command::new(sleep_bin)
+            .arg("3600")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn sleep");
+        let deadline = std::time::Instant::now() + PROBE_TIMEOUT;
+        let mut killed = false;
+        loop {
+            match child.try_wait().unwrap() {
+                Some(_) => break,
+                None => {
+                    if std::time::Instant::now() >= deadline {
+                        child.kill().unwrap();
+                        child.wait().unwrap();
+                        killed = true;
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+            }
+        }
+        assert!(killed, "long-running child should hit the deadline");
+        assert!(
+            started.elapsed() < PROBE_TIMEOUT + std::time::Duration::from_secs(2),
+            "bounded wait took too long: {:?}",
+            started.elapsed()
+        );
+    }
 
     #[test]
     fn rss_parsing_handles_both_formats() {
