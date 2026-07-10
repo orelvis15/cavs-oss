@@ -21,7 +21,7 @@
     "build": "tsc -p tsconfig.json",
     "native": "cargo build --release -p cavs-ffi --manifest-path ../../Cargo.toml && node scripts/stage-native.mjs",
     "pretest": "npm run build",
-    "test": "node --test dist/test/",
+    "test": "node --test dist/test/cavs.test.js",
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
