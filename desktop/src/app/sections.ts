@@ -89,6 +89,8 @@ const PROFILE_OPTIONS = [
   { value: "fastcdc-16k", label: "FastCDC 16k (smallest updates)" },
   { value: "fastcdc-32k", label: "FastCDC 32k" },
   { value: "fastcdc-64k", label: "FastCDC 64k" },
+  { value: "fastcdc-64k-n3", label: "FastCDC 64k · norm-3 (tighter, new streams)" },
+  { value: "fastcdc-128k-n3", label: "FastCDC 128k · norm-3 (tighter, new streams)" },
   { value: "fastcdc-256k", label: "FastCDC 256k" },
 ];
 
@@ -358,6 +360,7 @@ export const SECTIONS: SectionDef[] = [
     engines: ["godot", "unity", "unreal"],
   },
   { id: "local-server", group: "integrate", icon: "server", create: "custom", custom: "LocalServer" },
+  { id: "serverless-cdn", group: "integrate", icon: "globe", create: "custom", custom: "ServerlessCdn" },
   { id: "sdk-helper", group: "integrate", icon: "code", create: "custom", custom: "SdkHelper" },
   { id: "cli-builder", group: "integrate", icon: "terminal", create: "custom", custom: "CliBuilder" },
 

@@ -2,6 +2,7 @@ import type { FC } from "react";
 import { Dashboard } from "./Dashboard";
 import { Activities } from "./Activities";
 import { LocalServer } from "./LocalServer";
+import { ServerlessCdn } from "./ServerlessCdn";
 import { GodotRuntime } from "./GodotRuntime";
 import { SettingsPage } from "./SettingsPage";
 import {
@@ -20,6 +21,7 @@ export const CUSTOM_PAGES: Record<string, FC<CustomPageProps>> = {
   Activities,
   PluginHelper,
   LocalServer,
+  ServerlessCdn,
   GodotRuntime,
   SdkHelper,
   CliBuilder,

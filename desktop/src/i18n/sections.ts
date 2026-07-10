@@ -568,6 +568,34 @@ export const SECTION_TEXT: Record<string, Bi> = {
       },
     },
   },
+  "serverless-cdn": {
+    en: {
+      label: "Serverless CDN",
+      tagline: "Publish a static export and update clients with no server.",
+      help: {
+        summary:
+          "Export a release as an immutable static tree (packs + manifest + chunk-map) for S3/R2/Pages/nginx, then update players straight from it with no cavs-server — via concurrent HTTP Range requests.",
+        points: [
+          "Build the export command from your store and output folder.",
+          "Upload the folder to any static host that honours HTTP Range.",
+          "Clients (CLI fetch-static, or the SDK/plugins) download only changed chunks in parallel.",
+        ],
+      },
+    },
+    es: {
+      label: "CDN sin servidor",
+      tagline: "Publica un export estático y actualiza clientes sin servidor.",
+      help: {
+        summary:
+          "Exporta una release como un árbol estático inmutable (packs + manifest + chunk-map) para S3/R2/Pages/nginx, y actualiza a los jugadores directamente desde ahí sin cavs-server — con peticiones HTTP Range concurrentes.",
+        points: [
+          "Construye el comando de export desde tu store y carpeta de salida.",
+          "Sube la carpeta a cualquier host estático que soporte HTTP Range.",
+          "Los clientes (CLI fetch-static, o el SDK/plugins) descargan en paralelo solo los chunks que cambiaron.",
+        ],
+      },
+    },
+  },
   "sdk-helper": {
     en: {
       label: "SDK / Pipeline",
