@@ -85,13 +85,18 @@ const ENGINE_OPTIONS: { value: string; label: string }[] = [
 ];
 
 const PROFILE_OPTIONS = [
+  { value: "auto", label: "Auto (measured sweep)" },
+  { value: "fastcdc-16k", label: "FastCDC 16k (smallest updates)" },
+  { value: "fastcdc-32k", label: "FastCDC 32k" },
   { value: "fastcdc-64k", label: "FastCDC 64k" },
   { value: "fastcdc-256k", label: "FastCDC 256k" },
-  { value: "auto", label: "Auto" },
 ];
 
+// Values must be the SDK's `zstd-<level>` / `none` strings.
 const COMPRESSION_OPTIONS = [
-  { value: "zstd", label: "zstd" },
+  { value: "zstd-3", label: "zstd-3 (fast, default)" },
+  { value: "zstd-9", label: "zstd-9" },
+  { value: "zstd-19", label: "zstd-19 (smallest downloads)" },
   { value: "none", label: "none" },
 ];
 
@@ -222,7 +227,7 @@ export const SECTIONS: SectionDef[] = [
         { key: "inputDir", label: "fields.inputDir", type: "folder" },
         { key: "outputCavs", label: "fields.outputCavs", type: "text", default: "release.cavs" },
         { key: "profile", label: "fields.profile", type: "select", options: PROFILE_OPTIONS, default: "fastcdc-64k" },
-        { key: "compression", label: "fields.compression", type: "select", options: COMPRESSION_OPTIONS, default: "zstd" },
+        { key: "compression", label: "fields.compression", type: "select", options: COMPRESSION_OPTIONS, default: "zstd-3" },
       ],
     },
   },

@@ -10,7 +10,7 @@ export function cliEquivalent(kind: string, p: Record<string, any>): string | nu
     case "analyze":
       return `cavs analyze ${q(p.oldPath)} ${q(p.newPath)}${p.engineHint && p.engineHint !== "auto" ? ` --engine ${p.engineHint}` : ""}`;
     case "packDirectory":
-      return `cavs pack ${q(p.inputDir)} -o ${q(basename(p.outputCavs ?? "release.cavs"))}${p.profile ? ` --profile ${p.profile}` : ""}${p.compression ? ` --compression ${p.compression}` : ""}`;
+      return `cavs pack ${q(p.inputDir)} -o ${q(basename(p.outputCavs ?? "release.cavs"))}${p.profile ? ` --profile ${p.profile}` : ""}${p.compression === "none" ? " --no-compress" : p.compression?.startsWith("zstd-") ? ` --zstd-level ${p.compression.slice(5)}` : ""}`;
     case "createPlan":
       return `cavs plan-update ${p.oldPath ? `--old ${q(p.oldPath)} ` : ""}--new ${q(p.newPath)} -o ${q(basename(p.outputPlan ?? "update.cavsplan"))}`;
     case "applyPlan":
