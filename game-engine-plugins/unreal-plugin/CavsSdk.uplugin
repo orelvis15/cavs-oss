@@ -1,7 +1,7 @@
 {
   "FileVersion": 3,
   "Version": 1,
-  "VersionName": "0.1.0",
+  "VersionName": "0.2.0",
   "FriendlyName": "CAVS Content Delivery",
   "Description": "Content-addressable, verified game-content delivery for Unreal: install and update PAK/IoStore containers by downloading only the chunks that changed, straight from a static CDN export — no game server. Wraps the CAVS Rust core via a stable C ABI. STATUS: untested.",
   "Category": "Content",

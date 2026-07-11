@@ -129,12 +129,12 @@ export const SECTION_TEXT: Record<string, Bi> = {
   "godot-plugin": {
     en: {
       label: "Plugin",
-      tagline: "Configure the runtime plugin and copy ready-made code.",
+      tagline: "Install the runtime plugin for your engine and copy ready-made code.",
       help: {
-        summary: "Turns the desktop app into an onboarding tool for the CAVS Godot plugin.",
+        summary: "Onboarding for the CAVS engine plugins — Godot (stable), Unity and Unreal (beta).",
         points: [
-          "See installation instructions and configuration values.",
-          "Copy update_and_mount, progress signals and error handling snippets.",
+          "See install instructions and a download link for your engine.",
+          "Copy fetch/update, progress and error-handling snippets.",
           "Everything is copy-paste ready for your project.",
         ],
       },

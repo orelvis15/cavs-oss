@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>CAVS — Unreal plugin (coming soon)</title>
-<meta name="description" content="The CAVS Unreal Engine plugin — coming soon. CAVS content delivery for PAK / IoStore (.ucas / .utoc) containers: ship updates as only the chunks that changed, verified and reconstructed on the client." />
+<title>CAVS — Unreal Engine plugin</title>
+<meta name="description" content="The CAVS Unreal plugin: install and update PAK/IoStore content by downloading only the chunks that changed, straight from a static CDN export — no game server. C++ UCavsClient over the shared Rust core via a stable C ABI." />
 <meta name="author" content="Orelvis" />
 <meta name="theme-color" content="#0A0E1A" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="CAVS Unreal plugin — coming soon" />
-<meta property="og:description" content="CAVS delivery for PAK / IoStore containers, backed by the Rust core." />
+<meta property="og:title" content="CAVS Unreal Engine plugin" />
+<meta property="og:description" content="CAVS delivery for PAK/IoStore containers, backed by the Rust core." />
 <meta property="og:image" content="assets/og-thumb.webp" />
 <link rel="icon" type="image/png" href="assets/logo-transparent-128.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -30,7 +30,7 @@
       CAVS
     </a>
     <div class="ver-badges">
-      <a class="ver-badge" data-cavs-link="core" href="https://github.com/orelvis15/cavs/releases" target="_blank" rel="noopener" title="Core + SDKs — latest release">core <b data-cavs-ver="core">v1.2.0</b></a>
+      <a class="ver-badge" data-cavs-link="core" href="https://github.com/orelvis15/cavs/releases" target="_blank" rel="noopener" title="Core + SDKs — latest release">core <b data-cavs-ver="core">v1.4.0</b></a>
       <a class="ver-badge" data-cavs-link="plugins" href="https://github.com/orelvis15/cavs/releases?q=plugins" target="_blank" rel="noopener" title="Engine plugins — latest release">plugins <b data-cavs-ver="plugins">—</b></a>
       <a class="ver-badge" data-cavs-link="desktop" href="https://github.com/orelvis15/cavs/releases?q=desktop" target="_blank" rel="noopener" title="Desktop app — latest release">desktop <b data-cavs-ver="desktop">—</b></a>
     </div>
@@ -58,33 +58,124 @@
 <!-- ============ PAGE HEAD ============ -->
 <section class="page-head">
   <div class="wrap">
-    <span class="eyebrow"><a href="products.html#plugins" style="color:inherit;">Engine plugins</a> · Unreal <span class="badge soon" style="margin-left:8px;">soon</span></span>
+    <span class="eyebrow"><a href="products.html#plugins" style="color:inherit;">Engine plugins</a> · Unreal <span class="badge soon" style="margin-left:8px;">beta · untested</span></span>
     <h1>CAVS for <span class="accent">Unreal Engine</span>.</h1>
-    <p class="section-sub">An Unreal plugin that brings CAVS content delivery to PAK / IoStore (<span class="mono">.ucas</span> / <span class="mono">.utoc</span>) containers: ship updates as only the chunks that changed, verified and reconstructed on the client — over the same Rust core the CLI and SDKs use. <strong>Not available yet.</strong></p>
+    <p class="section-sub">Install and update PAK / IoStore content by downloading only the chunks that changed between builds — straight from a <strong>static CDN export, with no game server</strong>. A C++ <span class="mono">UCavsClient</span> (over the shared Rust core via a stable C ABI) plans the missing set locally, downloads it over concurrent HTTP Range requests, verifies every chunk (BLAKE3) and reconstructs your files byte-identically. Blueprint-friendly with progress, completion and cancellation delegates.</p>
+    <div class="rec warning" style="margin-top:20px; border:1px solid var(--border); border-radius:12px; padding:14px 18px;">
+      <p style="margin:0;"><strong>Beta, currently untested.</strong> The module compiles against the CAVS C ABI and mirrors the shipping SDK bindings, but it has not yet been built with UnrealBuildTool or run in-editor. It ships with the native libraries bundled so you can try it — feedback and fixes are welcome.</p>
+    </div>
     <div class="hero-cta" style="margin-top:22px;">
-      <a class="btn btn-primary" href="plugin-godot.html">Use the Godot plugin today →</a>
-      <a class="btn btn-ghost" href="https://github.com/orelvis15/cavs" target="_blank" rel="noopener">Watch the repo</a>
+      <a class="btn btn-primary" data-cavs-dl="plugins-unreal" href="https://github.com/orelvis15/cavs/releases?q=plugins" target="_blank" rel="noopener">Download plugin <span data-cavs-ver="plugins">(latest)</span></a>
+      <a class="btn btn-ghost" href="https://github.com/orelvis15/cavs/tree/main/game-engine-plugins/unreal-plugin" target="_blank" rel="noopener">Plugin source</a>
+      <a class="btn btn-ghost" href="https://github.com/orelvis15/cavs/blob/main/docs/EMBEDDABLE_FETCH.md" target="_blank" rel="noopener">Embeddable fetch docs</a>
     </div>
   </div>
 </section>
 
-<!-- ============ COMING SOON ============ -->
+<!-- ============ AT A GLANCE ============ -->
 <section style="padding-top:40px;">
   <div class="wrap">
-    <div class="soon-banner reveal" style="border:1px solid var(--border); border-radius:16px; padding:22px 24px; margin-bottom:34px; display:flex; align-items:center; gap:14px;">
-      <span class="badge soon">soon</span>
-      <p style="margin:0;">This plugin is in development. The Godot plugin is the reference client today, and the core engine, server and CLI (including the SteamPipe-style analysis commands) are already usable.</p>
-    </div>
-    <div class="section-head">
-      <span class="eyebrow">Planned</span>
-      <h2 class="section-title">What's coming.</h2>
-    </div>
     <div class="cards g3">
-      <div class="card reveal"><span class="idx">// runtime</span><h3>C++ runtime client</h3><p>A C++ client over the CVSP protocol, reusing the Rust core via a stable C ABI, with a verified, persistent runtime cache.</p></div>
-      <div class="card reveal" style="transition-delay:.05s"><span class="idx">// build</span><h3>Cooked-output hook</h3><p>A build hook to package cooked PAK / IoStore output into deduplicated <span class="mono">.cavs</span> containers.</p></div>
-      <div class="card reveal" style="transition-delay:.1s"><span class="idx">// packaging</span><h3>Alignment-aware guidance</h3><p>Packaging guidance that keeps updates small — <span class="mono">cavs analyze steampipe</span> and <span class="mono">cavs analyze-packs</span> already flag Unreal pack update bloat.</p></div>
+      <div class="prod reveal"><div class="prod-top"><div><h3>Client</h3><div class="prod-cmd">UCavsClient</div></div></div><p>A Blueprint-exposed <span class="mono">UObject</span> over <span class="mono">libcavs_sdk</span>. <span class="mono">FetchStatic</span> runs on a background thread; progress / completion / failure fire on the game thread as delegates.</p></div>
+      <div class="prod reveal" style="transition-delay:.05s"><div class="prod-top"><div><h3>No server</h3><div class="prod-cmd">static CDN export</div></div></div><p>Publish once with <span class="mono">cavs store export --static-plans</span>; host the tree on S3 / R2 / Pages / nginx. The client updates straight from it.</p></div>
+      <div class="prod reveal" style="transition-delay:.1s"><div class="prod-top"><div><h3>Verified</h3><div class="prod-cmd">byte-identical</div></div></div><p>Every chunk BLAKE3-verified, every file reconstructed byte-identically (a torn file is never promoted) — the same guarantee as the Godot client.</p></div>
     </div>
-    <p class="table-note" style="margin-top:22px;">In the meantime, <span class="mono">cavs analyze steampipe</span> and <span class="mono">cavs analyze-packs</span> already work on Unreal cooked output to estimate and diagnose update cost.</p>
+  </div>
+</section>
+
+<!-- ============ INSTALL ============ -->
+<section class="anchor" id="install">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Install</span>
+      <h2 class="section-title">Drop the plugin<br>into your project.</h2>
+      <p class="section-sub">The download bundles the native <span class="mono">libcavs_sdk</span> for Win64, Mac and Linux under the plugin's ThirdParty folder.</p>
+    </div>
+    <div class="cmd-list">
+      <div class="cmd-row"><code>1 — copy the plugin</code><div class="cmd-desc">Unzip and copy <span class="mono">CavsSdk/</span> into your project's <span class="mono">Plugins/</span> folder (so you get <span class="mono">Plugins/CavsSdk/CavsSdk.uplugin</span>).</div></div>
+      <div class="cmd-row"><code>2 — regenerate + build</code><div class="cmd-desc">Regenerate project files and build. The native libraries are already staged under <span class="mono">Source/ThirdParty/CavsSdkLibrary/lib/&lt;Platform&gt;/</span>.</div></div>
+      <div class="cmd-row"><code>3 — enable it</code><div class="cmd-desc">Turn on <strong>CAVS Content Delivery</strong> in the editor's Plugins panel, then use <span class="mono">UCavsClient</span> from C++ or Blueprint.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PUBLISH ============ -->
+<section class="anchor" id="publish">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Publish a release</span>
+      <h2 class="section-title">Export a static tree,<br>upload it anywhere.</h2>
+      <p class="section-sub">You need the CAVS command-line tools once, to package and export builds. Build them from the repository root with <span class="mono">cargo build --release</span>.</p>
+    </div>
+    <div class="term">
+      <div class="term-bar">
+        <span class="dots"><i></i><i></i><i></i></span>
+        <span class="title">bash — publish</span>
+        <span class="term-copy" data-copy="cavs pack-dir ./Cooked --profile auto -o build.cavs
+cavs store ./store add game build.cavs --storage packfiles
+cavs store ./store export --out ./dist --static-plans
+aws s3 sync ./dist s3://your-bucket/">copy</span>
+      </div>
+      <div class="term-body">
+<div class="cmd"><span class="comment"># package the cooked PAK / IoStore output</span></div>
+<div class="cmd"><span class="prompt">$</span> cavs pack-dir ./Cooked <span class="flag">--profile</span> auto <span class="flag">-o</span> build.cavs</div>
+<div class="cmd"> </div>
+<div class="cmd"><span class="comment"># ingest into a packfile store and export a static tree</span></div>
+<div class="cmd"><span class="prompt">$</span> cavs store ./store add game build.cavs <span class="flag">--storage</span> packfiles</div>
+<div class="cmd"><span class="prompt">$</span> cavs store ./store export <span class="flag">--out</span> ./dist <span class="flag">--static-plans</span></div>
+<div class="cmd"> </div>
+<div class="cmd"><span class="comment"># upload to any static host — no cavs-server runs in production</span></div>
+<div class="cmd"><span class="prompt">$</span> aws s3 sync ./dist s3://your-bucket/</div>
+      </div>
+    </div>
+    <p class="table-note" style="margin-top:22px;">Avoid IoStore offset-cascade update bloat: diagnose with <span class="mono">cavs analyze steampipe</span> and <span class="mono">cavs analyze-packs</span> before you ship.</p>
+  </div>
+</section>
+
+<!-- ============ RUNTIME ============ -->
+<section class="anchor" id="runtime">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Runtime usage</span>
+      <h2 class="section-title">Self-update<br>from your game.</h2>
+      <p class="section-sub">The first launch installs the whole build; later launches download only the chunks that changed, reusing the persistent cache. Bind the delegates and call <span class="mono">FetchStatic</span>.</p>
+    </div>
+    <pre class="code"><span class="type">UCavsClient</span>* Client = NewObject&lt;<span class="type">UCavsClient</span>&gt;();
+Client-&gt;OnProgress.AddDynamic(<span class="kw">this</span>, &amp;AMyActor::HandleProgress);
+Client-&gt;OnCompleted.AddDynamic(<span class="kw">this</span>, &amp;AMyActor::HandleCompleted);
+Client-&gt;OnFailed.AddDynamic(<span class="kw">this</span>, &amp;AMyActor::HandleFailed);
+
+<span class="type">FCavsFetchStaticRequest</span> Req;
+Req.Base        = <span class="str">TEXT("https://cdn.example.com/game")</span>;  <span class="comment">// a store export --static-plans tree</span>
+Req.Asset       = <span class="str">TEXT("game")</span>;
+Req.OutputDir   = FPaths::Combine(FPaths::ProjectPersistentDownloadDir(), <span class="str">TEXT("cavs/install")</span>);
+Req.CacheDir    = FPaths::Combine(FPaths::ProjectPersistentDownloadDir(), <span class="str">TEXT("cavs/cache")</span>);
+Req.Connections = <span class="num">8</span>;
+Client-&gt;FetchStatic(Req);</pre>
+    <p class="table-note" style="margin-top:18px;">Retries are safe by design: verified chunks stay in the content-addressable cache, so a retried fetch — even after the app was killed mid-download — only fetches what is missing.</p>
+  </div>
+</section>
+
+<!-- ============ API ============ -->
+<section class="anchor" id="api">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">UCavsClient API</span>
+      <h2 class="section-title">One object,<br>three delegates.</h2>
+    </div>
+    <div class="table-wrap reveal">
+      <table>
+        <thead><tr><th>Member</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">FetchStatic(FCavsFetchStaticRequest)</td><td>Start a serverless install/update on a background thread</td></tr>
+          <tr><td class="mono">Cancel()</td><td>Request cooperative cancellation of an in-flight fetch</td></tr>
+          <tr><td class="mono">OnProgress(Percentage, Phase)</td><td>Multicast delegate, fired on the game thread</td></tr>
+          <tr><td class="mono">OnCompleted(FCavsFetchResult)</td><td><span class="mono">ChunksFetched, ChunksReused, WireBytes, LogicalBytes, SavedPercent</span></td></tr>
+          <tr><td class="mono">OnFailed(Code, Message)</td><td>Stable <span class="mono">CAVS-E-*</span> code plus a message</td></tr>
+          <tr><td class="mono">Version()</td><td>The native SDK version</td></tr>
+        </tbody>
+      </table>
+    </div>
     <div class="hero-cta" style="margin-top:30px;">
       <a class="btn btn-ghost" href="plugin-godot.html">Godot plugin →</a>
       <a class="btn btn-ghost" href="plugin-unity.html">Unity plugin →</a>

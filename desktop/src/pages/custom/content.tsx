@@ -32,24 +32,28 @@ export function Projects({ sectionId, navigate }: CustomPageProps) {
 }
 
 // ---------------- Plugin Helper (engine-aware) ----------------
+const PLUGINS_RELEASE_URL = "https://github.com/orelvis15/cavs/releases?q=plugins";
+
 export function PluginHelper({ sectionId }: CustomPageProps) {
-  const { t, lang } = useI18n();
+  const { lang } = useI18n();
   const { currentProject } = useProjects();
   const engine = currentProject?.engine ?? "generic";
 
-  // Only Godot ships a runtime plugin today.
+  // Unity (C#) and Unreal (C++) ship as installable beta packages that
+  // self-update from a static CDN export via the shared native core.
+  if (engine === "unity" || engine === "unreal") {
+    return <EnginePluginHelper sectionId={sectionId} engine={engine} />;
+  }
+  // Neither Godot nor Unity/Unreal: point at the SDKs/CLI.
   if (engine !== "godot") {
     const label = engine.charAt(0).toUpperCase() + engine.slice(1);
     return (
       <PageShell sectionId={sectionId}>
         <div className="card" style={{ textAlign: "center", padding: "40px 20px" }}>
-          <div className="badge blue" style={{ marginBottom: 10 }}>
-            {t("plugin.comingSoon")}
-          </div>
           <p className="text-dim" style={{ maxWidth: 460, margin: "0 auto" }}>
             {lang === "es"
-              ? `El plugin de runtime para ${label} aún no está disponible. Mientras tanto, usa los SDKs o el CLI para integrar CAVS en tu pipeline.`
-              : `The ${label} runtime plugin is not available yet. In the meantime, use the SDKs or the CLI to integrate CAVS into your pipeline.`}
+              ? `No hay un plugin de runtime para ${label}. Usa los SDKs o el CLI para integrar CAVS en tu pipeline.`
+              : `There is no runtime plugin for ${label}. Use the SDKs or the CLI to integrate CAVS into your pipeline.`}
           </p>
         </div>
       </PageShell>
@@ -85,6 +89,91 @@ func _on_cavs_progress(phase: String, downloaded: int, total: int):
     $Label.text = phase
     if total > 0:
         $ProgressBar.value = float(downloaded) / float(total) * 100.0`} />
+    </PageShell>
+  );
+}
+
+// ---------------- Unity / Unreal plugin helper ----------------
+function EnginePluginHelper({
+  sectionId,
+  engine,
+}: {
+  sectionId: string;
+  engine: "unity" | "unreal";
+}) {
+  const { lang } = useI18n();
+  const isUnity = engine === "unity";
+  const label = isUnity ? "Unity" : "Unreal Engine";
+
+  const install = isUnity
+    ? `1. Download the Unity plugin zip (button above) and unzip it.
+2. Copy com.cavs.sdk/ into your project's Packages/ folder
+   (or Package Manager → Add package from disk…).
+3. The native libcavs_sdk is bundled under Plugins/ for desktop targets.`
+    : `1. Download the Unreal plugin zip (button above) and unzip it.
+2. Copy CavsSdk/ into your project's Plugins/ folder.
+3. Regenerate project files and build; the native libcavs_sdk is
+   already staged under Source/ThirdParty/CavsSdkLibrary/lib/<Platform>/.
+4. Enable "CAVS Content Delivery" in the editor's Plugins panel.`;
+
+  const usage = isUnity
+    ? `using Cavs;
+using var client = new CavsClient();
+
+var result = await client.FetchStaticAsync(new FetchStaticRequest {
+    base_       = "https://cdn.example.com/game", // store export --static-plans
+    asset       = "game",
+    outputDir   = Path.Combine(Application.persistentDataPath, "cavs/install"),
+    cacheDir    = Path.Combine(Application.persistentDataPath, "cavs/cache"),
+    connections = 8,
+}, onProgress: ev => progressBar.value = (float)ev.percentage);
+
+Debug.Log($"fetched {result.chunksFetched}, reused {result.chunksReused}");`
+    : `UCavsClient* Client = NewObject<UCavsClient>();
+Client->OnProgress.AddDynamic(this, &AMyActor::HandleProgress);
+Client->OnCompleted.AddDynamic(this, &AMyActor::HandleCompleted);
+
+FCavsFetchStaticRequest Req;
+Req.Base      = TEXT("https://cdn.example.com/game"); // store export --static-plans
+Req.Asset     = TEXT("game");
+Req.OutputDir = FPaths::Combine(FPaths::ProjectPersistentDownloadDir(), TEXT("cavs/install"));
+Req.CacheDir  = FPaths::Combine(FPaths::ProjectPersistentDownloadDir(), TEXT("cavs/cache"));
+Req.Connections = 8;
+Client->FetchStatic(Req);`;
+
+  const publish = `# Package the build, export a static tree, upload it (no server needed)
+cavs pack-dir ./${isUnity ? "Build" : "Cooked"} --profile auto -o build.cavs
+cavs store ./store add game build.cavs --storage packfiles
+cavs store ./store export --out ./dist --static-plans
+# upload ./dist to S3 / R2 / GitHub Pages / nginx`;
+
+  return (
+    <PageShell sectionId={sectionId}>
+      <div className="rec warning" style={{ marginBottom: 16 }}>
+        <p style={{ margin: 0 }}>
+          {lang === "es"
+            ? `El plugin de ${label} está en beta y aún no ha sido validado en el editor/dispositivo. Se instala con las librerías nativas incluidas; se agradece feedback.`
+            : `The ${label} plugin is beta and not yet validated in-editor/on-device. It installs with the native libraries bundled; feedback welcome.`}
+        </p>
+      </div>
+
+      <div className="row" style={{ marginBottom: 16 }}>
+        <button className="btn btn-primary" onClick={() => openUrl(PLUGINS_RELEASE_URL)}>
+          <Icon name="download" size={15} />{" "}
+          {lang === "es" ? `Descargar plugin de ${label}` : `Download ${label} plugin`}
+        </button>
+      </div>
+
+      <div className="subhead">{lang === "es" ? "Instalación" : "Installation"}</div>
+      <CodeBlock lang="text" code={install} />
+
+      <div className="subhead">{lang === "es" ? "Publicar (una vez)" : "Publish (once)"}</div>
+      <CodeBlock lang="bash" code={publish} />
+
+      <div className="subhead">
+        {lang === "es" ? "Auto-actualización en el juego" : "In-game self-update"}
+      </div>
+      <CodeBlock lang={isUnity ? "csharp" : "cpp"} code={usage} />
     </PageShell>
   );
 }

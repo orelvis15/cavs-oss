@@ -1,11 +1,17 @@
 name: Release (engine plugins)
 
-# Independent release train for the engine plugins (Godot today; Unity and
-# Unreal on the way). Versioned separately from the core — a plugin-only change
-# ships without re-releasing anything else.
+# Independent release train for the engine plugins (Godot, Unity, Unreal).
+# Versioned separately from the core — a plugin-only change ships without
+# re-releasing anything else.
+#
+# The Godot plugin is pure GDScript. The Unity (C# P/Invoke) and Unreal (C++)
+# plugins are packaged with the prebuilt `libcavs_sdk` native libraries
+# bundled in, so they are drop-in installable. NOTE: packaging does not
+# compile the C#/C++ inside a Unity Editor / Unreal Engine (that needs a
+# licensed engine install); those two plugins ship marked UNTESTED.
 #
 # Cut a release by tagging with the `plugins-v` prefix:
-#   git tag plugins-v0.1.3 && git push origin plugins-v0.1.3
+#   git tag plugins-v0.2.0 && git push origin plugins-v0.2.0
 on:
   push:
     tags:
@@ -13,50 +19,186 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Plugin version tag to build (e.g. plugins-v0.1.3)'
+        description: 'Plugin version tag to build (e.g. plugins-v0.2.0)'
         required: true
 
 permissions:
   contents: write   # required to create the GitHub Release
 
 jobs:
+  # ---- Native libraries for the Unity/Unreal plugins ---------------------
+  sdk-native:
+    name: sdk native ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,    target: x86_64-unknown-linux-gnu,  lib: libcavs_sdk.so }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, lib: libcavs_sdk.so }
+          - { os: macos-14,         target: aarch64-apple-darwin,      lib: libcavs_sdk.dylib }
+          - { os: macos-14,         target: x86_64-apple-darwin,       lib: libcavs_sdk.dylib }
+          - { os: windows-latest,   target: x86_64-pc-windows-msvc,    lib: cavs_sdk.dll }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build native library
+        run: cargo build --release --target ${{ matrix.target }} -p cavs-ffi
+      - name: Package native library + header
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#plugins-v}"
+          DIST="cavs-sdk-native-${VERSION}-${{ matrix.target }}"
+          mkdir "$DIST"
+          cp "target/${{ matrix.target }}/release/${{ matrix.lib }}" "$DIST/"
+          cp core/cavs-ffi/include/cavs_sdk.h "$DIST/"
+          cp LICENSE NOTICE "$DIST/"
+          if [ -f "target/${{ matrix.target }}/release/cavs_sdk.dll.lib" ]; then
+            cp "target/${{ matrix.target }}/release/cavs_sdk.dll.lib" "$DIST/"
+          fi
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "$DIST.zip" "$DIST" >/dev/null
+          else
+            tar czf "$DIST.tar.gz" "$DIST"
+          fi
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-native-${{ matrix.target }}
+          path: |
+            *.tar.gz
+            *.zip
+
+  # ---- Godot plugin (pure GDScript; no natives) --------------------------
   godot-plugin:
-    name: package + publish godot plugin
+    name: package godot plugin
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Resolve version from tag
+      - name: Resolve version
         id: ver
         shell: bash
         run: |
           set -euo pipefail
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          # plugins-v0.1.3 -> 0.1.3
-          VERSION="${TAG#plugins-v}"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Stamp plugin.cfg with the release version
-        shell: bash
+          echo "version=${TAG#plugins-v}" >> "$GITHUB_OUTPUT"
+      - name: Stamp plugin.cfg
         run: |
           set -euo pipefail
           CFG=game-engine-plugins/godot-plugin/addons/cavs/plugin.cfg
           sed -i -E "s/^version=\"[^\"]*\"/version=\"${{ steps.ver.outputs.version }}\"/" "$CFG"
-          grep '^version=' "$CFG"
+      - name: Build installable zip
+        run: sh game-engine-plugins/godot-plugin/package.sh "${{ steps.ver.outputs.version }}"
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-godot
+          path: game-engine-plugins/godot-plugin/dist/*.zip
 
-      - name: Build installable plugin zip (addons/ at zip root)
+  # ---- Unity plugin (bundles the native libs) ----------------------------
+  unity-plugin:
+    name: package unity plugin
+    needs: sdk-native
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve version
+        id: ver
         shell: bash
         run: |
           set -euo pipefail
-          sh game-engine-plugins/godot-plugin/package.sh "${{ steps.ver.outputs.version }}"
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "version=${TAG#plugins-v}" >> "$GITHUB_OUTPUT"
+      - name: Download native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: native-artifacts
+          pattern: sdk-native-*
+          merge-multiple: true
+      - name: Extract natives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p native-extracted
+          for a in native-artifacts/*.tar.gz; do [ -f "$a" ] && tar xzf "$a" -C native-extracted; done
+          for a in native-artifacts/*.zip; do [ -f "$a" ] && unzip -o "$a" -d native-extracted >/dev/null; done
+          ls native-extracted
+      - name: Package Unity plugin
+        run: |
+          sh game-engine-plugins/unity-plugin/package.sh \
+            "${{ steps.ver.outputs.version }}" "$GITHUB_WORKSPACE/native-extracted"
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-unity
+          path: game-engine-plugins/unity-plugin/dist/*.zip
 
+  # ---- Unreal plugin (bundles the native libs) ---------------------------
+  unreal-plugin:
+    name: package unreal plugin
+    needs: sdk-native
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "version=${TAG#plugins-v}" >> "$GITHUB_OUTPUT"
+      - name: Download native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: native-artifacts
+          pattern: sdk-native-*
+          merge-multiple: true
+      - name: Extract natives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p native-extracted
+          for a in native-artifacts/*.tar.gz; do [ -f "$a" ] && tar xzf "$a" -C native-extracted; done
+          for a in native-artifacts/*.zip; do [ -f "$a" ] && unzip -o "$a" -d native-extracted >/dev/null; done
+      - name: Package Unreal plugin
+        run: |
+          sh game-engine-plugins/unreal-plugin/package.sh \
+            "${{ steps.ver.outputs.version }}" "$GITHUB_WORKSPACE/native-extracted"
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-unreal
+          path: game-engine-plugins/unreal-plugin/dist/*.zip
+
+  # ---- Publish all three to one GitHub Release ---------------------------
+  publish:
+    name: publish plugins release
+    needs: [godot-plugin, unity-plugin, unreal-plugin]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+      - name: Download plugin zips
+        uses: actions/download-artifact@v4
+        with:
+          path: plugins
+          pattern: plugin-*
+          merge-multiple: true
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
-          name: CAVS Godot plugin ${{ steps.ver.outputs.version }}
-          files: game-engine-plugins/godot-plugin/dist/*.zip
+          name: CAVS engine plugins ${{ steps.ver.outputs.tag }}
+          files: plugins/*.zip
           generate_release_notes: true
           fail_on_unmatched_files: true
           # Don't steal the repo-wide "latest release" pointer from the

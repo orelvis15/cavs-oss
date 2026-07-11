@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "io.github.orelvis15"
-version = "1.3.0"
+version = "1.4.0"
 
 kotlin {
     // The FFM native bridge (JEP 454) is finalized in Java 22.

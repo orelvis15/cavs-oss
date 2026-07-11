@@ -1,6 +1,6 @@
 [package]
 name = "cavs-desktop"
-version = "1.1.0"
+version = "1.2.0"
 description = "CAVS Desktop — local build/update lab for game developers"
 authors = ["Orelvis Lago Vasallo <orelvis15@gmail.com>"]
 license = "Apache-2.0"

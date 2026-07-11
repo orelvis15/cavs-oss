@@ -17,6 +17,8 @@ game-engine-plugins/godot-plugin/demo/.work/
 game-engine-plugins/godot-plugin/demo/.godot/
 game-engine-plugins/godot-plugin/demo/addons/
 game-engine-plugins/godot-plugin/dist/
+game-engine-plugins/unity-plugin/dist/
+game-engine-plugins/unreal-plugin/dist/
 **/.godot/
 
 # analyzer reports

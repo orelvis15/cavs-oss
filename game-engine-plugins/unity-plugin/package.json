@@ -1,6 +1,6 @@
 {
   "name": "com.cavs.sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "CAVS Content Delivery",
   "description": "Content-addressable, verified game-content delivery for Unity: install and update AssetBundles/Addressables by downloading only the chunks that changed, straight from a static CDN export — no game server. Wraps the CAVS Rust core through a stable C ABI. STATUS: untested (compiles against the C ABI; not yet validated on a device).",
   "unity": "2021.3",

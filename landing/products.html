@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>CAVS — Products</title>
-<meta name="description" content="The CAVS toolkit: the cavs CLI and its command reference, cavs-server and cavs-client, the Rust core engine, the language SDKs, the engine plugins (Godot shipping; Unity and Unreal on the way), and the SteamPipe-style build & update analyzer." />
+<meta name="description" content="The CAVS toolkit: the cavs CLI and its command reference, cavs-server and cavs-client, the Rust core engine, the language SDKs, the engine plugins (Godot, Unity, Unreal), and the SteamPipe-style build & update analyzer." />
 <meta name="author" content="Orelvis" />
 <meta name="theme-color" content="#0A0E1A" />
 <meta property="og:type" content="website" />
@@ -60,7 +60,7 @@
   <div class="wrap">
     <span class="eyebrow">The toolkit</span>
     <h1>One engine.<br><span class="accent">Many surfaces.</span></h1>
-    <p class="section-sub">CAVS is a Rust core wrapped in a command-line toolkit, an HTTP origin and a streaming client — plus language SDKs for Go, Kotlin and Node, engine plugins for Godot (shipping) with Unity and Unreal on the way, and a SteamPipe-style build &amp; update analyzer built into the CLI. Everything below is Apache-2.0 licensed and lives in one repository.</p>
+    <p class="section-sub">CAVS is a Rust core wrapped in a command-line toolkit, an HTTP origin and a streaming client — plus language SDKs for Go, Kotlin and Node, engine plugins for Godot (stable) plus Unity and Unreal (beta), and a SteamPipe-style build &amp; update analyzer built into the CLI. Everything below is Apache-2.0 licensed and lives in one repository.</p>
   </div>
 </section>
 
@@ -95,10 +95,11 @@
 
       <div class="dl-card reveal" style="transition-delay:.1s">
         <h3>Engine plugins <span class="dl-ver" data-cavs-ver="plugins">—</span></h3>
-        <p>The Godot plugin as an installable <span class="mono">addons/</span> zip. Unity and Unreal are on the way.</p>
+        <p>Godot (stable), plus Unity and Unreal (beta, untested) — each an installable, drop-in package.</p>
         <div class="dl-btns">
-          <a class="btn btn-primary" data-cavs-dl="plugins-godot" href="https://github.com/orelvis15/cavs/releases?q=plugins" target="_blank" rel="noopener">Download Godot plugin</a>
-          <a class="btn btn-ghost" data-cavs-link="plugins" href="https://github.com/orelvis15/cavs/releases?q=plugins" target="_blank" rel="noopener">Release notes</a>
+          <a class="btn btn-primary" data-cavs-dl="plugins-godot" href="https://github.com/orelvis15/cavs/releases?q=plugins" target="_blank" rel="noopener">Godot</a>
+          <a class="btn btn-ghost" data-cavs-dl="plugins-unity" href="https://github.com/orelvis15/cavs/releases?q=plugins" target="_blank" rel="noopener">Unity</a>
+          <a class="btn btn-ghost" data-cavs-dl="plugins-unreal" href="https://github.com/orelvis15/cavs/releases?q=plugins" target="_blank" rel="noopener">Unreal</a>
         </div>
       </div>
 
@@ -149,9 +150,9 @@
         <div class="prod-top">
           <span class="prod-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="6"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><circle cx="15" cy="13" r="1" fill="currentColor" stroke="none"/><circle cx="18" cy="11" r="1" fill="currentColor" stroke="none"/></svg></span>
           <div><h3>Engine plugins</h3><div class="prod-cmd">Godot · Unity · Unreal</div></div>
-          <div class="prod-badges"><span class="badge available">Godot stable</span></div>
+          <div class="prod-badges"><span class="badge available">Godot stable</span><span class="badge soon">Unity · Unreal beta</span></div>
         </div>
-        <p>Drop-in content delivery inside your game engine, over the shared Rust core. Godot ships today in pure GDScript; Unity and Unreal are on the way.</p>
+        <p>Drop-in content delivery inside your game engine, over the shared Rust core. Godot ships in pure GDScript; Unity (C#) and Unreal (C++) ship as installable beta packages that self-update from a static CDN export.</p>
       </a>
       <a href="#analyzer" class="prod reveal" style="transition-delay:.05s">
         <div class="prod-top">
@@ -350,7 +351,7 @@
     <div class="section-head">
       <span class="eyebrow">Engine plugins — Godot · Unity · Unreal</span>
       <h2 class="section-title">CAVS delivery,<br>inside your engine.</h2>
-      <p class="section-sub">Each plugin brings deduplicated, verified content delivery to its engine's native containers over the shared Rust core — the player downloads only the chunks that changed and the payload is reconstructed byte-identically (SHA-256 verified). Godot ships today as a pure-GDScript client; Unity and Unreal are on the way. Each has its own install &amp; usage guide.</p>
+      <p class="section-sub">Each plugin brings deduplicated, verified content delivery to its engine's native containers over the shared Rust core — the player downloads only the chunks that changed and the payload is reconstructed byte-identically (SHA-256 verified). Godot ships as a pure-GDScript client; Unity (C#) and Unreal (C++) ship as installable beta packages that self-update from a static CDN export (currently untested). Each has its own install &amp; usage guide.</p>
     </div>
     <div class="cards g3">
       <a href="plugin-godot.html" class="prod reveal">
@@ -365,17 +366,17 @@
         <div class="prod-top">
           <span class="prod-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span>
           <div><h3>Unity</h3><div class="prod-cmd">AssetBundles · Addressables</div></div>
-          <div class="prod-badges"><span class="badge soon">soon</span></div>
+          <div class="prod-badges"><span class="badge soon">beta · untested</span></div>
         </div>
-        <p>A C# <span class="mono">CavsClient</span> over CVSP for AssetBundles and Addressables, an editor post-process to package build output, and a verified runtime cache.</p>
+        <p>A C# <span class="mono">CavsClient</span> (P/Invoke over the Rust core) that self-updates AssetBundles / Addressables from a static CDN export — with progress, cancellation and a verified cache. Native libs bundled.</p>
       </a>
       <a href="plugin-unreal.html" class="prod reveal" style="transition-delay:.1s">
         <div class="prod-top">
           <span class="prod-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Z"/><path d="M12 6v12M8 9l8 6M16 9l-8 6"/></svg></span>
           <div><h3>Unreal</h3><div class="prod-cmd">PAK · IoStore</div></div>
-          <div class="prod-badges"><span class="badge soon">soon</span></div>
+          <div class="prod-badges"><span class="badge soon">beta · untested</span></div>
         </div>
-        <p>A C++ runtime client over CVSP for PAK / IoStore (<span class="mono">.ucas</span> / <span class="mono">.utoc</span>), a build hook to package cooked output, and alignment-aware packaging guidance.</p>
+        <p>A C++ <span class="mono">UCavsClient</span> (Blueprint-friendly, over the Rust core) that self-updates PAK / IoStore (<span class="mono">.ucas</span> / <span class="mono">.utoc</span>) content from a static CDN export, with progress and cancellation delegates. Native libs bundled.</p>
       </a>
     </div>
     <p class="table-note" style="margin-top:22px;">Full guides: <a href="plugin-godot.html">Godot</a>, <a href="plugin-unity.html">Unity</a>, <a href="plugin-unreal.html">Unreal</a>. The Godot plugin is the reference client today.</p>

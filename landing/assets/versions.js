@@ -50,7 +50,9 @@
     "desktop-windows": function (n) { return /\.msi$/i.test(n) || /-setup\.exe$/i.test(n); },
     "desktop-macos": function (n) { return /\.dmg$/i.test(n); },
     "desktop-linux": function (n) { return /\.appimage$/i.test(n) || /\.deb$/i.test(n); },
-    "plugins-godot": function (n) { return /\.zip$/i.test(n); },
+    "plugins-godot": function (n) { return /godot.*\.zip$/i.test(n); },
+    "plugins-unity": function (n) { return /unity.*\.zip$/i.test(n); },
+    "plugins-unreal": function (n) { return /unreal.*\.zip$/i.test(n); },
   };
 
   function verText(tag) {
