@@ -104,6 +104,9 @@
 - [SDK_NATIVE_ABI.md](SDK_NATIVE_ABI.md) — v1.2.0: the stable C ABI behind
   the SDKs — every `cavs_sdk.h` function, memory ownership, the progress
   callback and threading model, and ABI/schema versioning.
+- [GIT_LFS.md](GIT_LFS.md) — v1.5.0: `cavs-lfs-agent` — CAVS as a Git LFS
+  standalone custom transfer agent: chunk-level dedup for LFS objects,
+  directory/CDN remotes, setup and troubleshooting.
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) — v1.0.0: the gate every
   release runs before tagging.
 - [PAPER.md](PAPER.md) — the technical paper: design, rationale, and results.

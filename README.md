@@ -120,6 +120,13 @@ a pixel codec.
   links, with byte-identical egress. See
   [docs/SERVERLESS_DELIVERY.md](docs/SERVERLESS_DELIVERY.md) and
   [docs/EMBEDDABLE_FETCH.md](docs/EMBEDDABLE_FETCH.md).
+- **Git LFS transfer agent (v1.5.0)**: `cavs-lfs-agent` plugs CAVS into Git
+  LFS as a standalone custom transfer agent — LFS objects are chunked and
+  deduplicated at the remote, so pushing a 22 MiB asset with ~3 MiB of
+  changes stores and sends ~3 MiB instead of the whole file, and pulls reuse
+  the local chunk cache across versions. Works against a plain directory
+  remote (read/write) or a CDN/static host (read-only). See
+  [docs/GIT_LFS.md](docs/GIT_LFS.md).
 - **Complementary, not competitive**: use the best codec/compressor for the
   bytes; CAVS deduplicates and transports above them.
 

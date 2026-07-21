@@ -6,6 +6,35 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Git LFS transfer agent (new crate `cavs-lfs-agent`).** A Git LFS
+  *standalone custom transfer agent* that replaces LFS's whole-file transfer
+  and storage with CAVS chunk-level dedup: uploads pack each LFS object as a
+  single raw track (asset name = track name = the LFS sha256 oid, so
+  `cavs-fetch`'s existing `sha256:` meta verification checks the oid end to
+  end), ingest into a shared `GlobalStore` at the remote and refresh a static
+  export before reporting success; downloads run through the embeddable
+  `cavs-fetch` engine (local chunk cache, concurrent range fetch, BLAKE3 +
+  sha256 verification). Measured in the committed e2e: a ~3 MiB change to a
+  22 MiB file stores/sends ~3.3 MiB instead of the whole file, and a warm
+  pull moves ~0.5 MiB. Directory and `file://` remotes are read/write (with
+  a cross-process file lock; bare git repos auto-derive `<repo>/cavs/`);
+  `http(s)://` remotes are read-only for CDN-served clones. Protocol-level
+  integration tests plus a real git+git-lfs e2e (`core/cavs-lfs-agent/e2e/`,
+  also a CI job). See [docs/GIT_LFS.md](docs/GIT_LFS.md).
+
+### Changed
+
+- **Shared ingest/manifest library APIs (refactor).** `cavs store add`'s
+  container→store ingest moved into `cavs-format` as
+  `ingest_into_store()`/`IngestStats`, and the static-export manifest
+  builder moved into `cavs-store` as `GlobalStore::asset_manifest()` /
+  `export_static_manifests()` (new `cavs-proto` dependency); cavs-cli now
+  calls the shared APIs. `export_object_store()` skips copying packs/indexes
+  already present with the same length at the destination — re-exports into
+  the same tree are effectively incremental.
+
 ## [1.4.0] — Serverless delivery, parallel downloads & embeddable client
 
 Everything measured below was verified on real version pairs and the
