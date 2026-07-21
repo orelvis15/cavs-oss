@@ -178,6 +178,64 @@ pub struct IndexReport {
     pub deltas: usize,
 }
 
+/// Per-pack fragmentation detail (Round 3D telemetry).
+#[derive(Debug, Clone)]
+pub struct PackFragmentation {
+    pub pack: String,
+    pub disk_bytes: u64,
+    pub live_bytes: u64,
+    pub live_chunks: u64,
+    /// `1 - live/disk`: bytes a compaction of this pack would reclaim.
+    pub dead_ratio: f64,
+}
+
+/// Store-wide fragmentation report: what repacking would buy, before
+/// paying for it.
+#[derive(Debug, Clone)]
+pub struct FragmentationReport {
+    pub pack_count: u64,
+    /// Packs smaller than [`GlobalStore::SMALL_PACK_BYTES`].
+    pub small_packs: u64,
+    pub small_pack_ratio: f64,
+    pub disk_bytes: u64,
+    pub live_bytes: u64,
+    pub dead_bytes: u64,
+    pub dead_bytes_ratio: f64,
+    /// A comparative indicator in [0, 2] (small-pack ratio + dead-bytes
+    /// ratio) — meaningful across versions of the same store, not as an
+    /// absolute truth.
+    pub fragmentation_score: f64,
+    pub packs: Vec<PackFragmentation>,
+}
+
+/// What a repack pass intends to do (from [`GlobalStore::repack_plan`]).
+#[derive(Debug, Clone, Default)]
+pub struct RepackPlan {
+    /// Groups of small packs to merge into preferred-size packs.
+    pub merge_groups: Vec<Vec<String>>,
+    /// Packs whose dead-bytes ratio warrants an individual compaction.
+    pub compact_packs: Vec<String>,
+    pub estimated_read_bytes: u64,
+    pub estimated_reclaim_bytes: u64,
+}
+
+impl RepackPlan {
+    pub fn is_empty(&self) -> bool {
+        self.merge_groups.is_empty() && self.compact_packs.is_empty()
+    }
+}
+
+/// What a repack pass actually did.
+#[derive(Debug, Clone, Default)]
+pub struct RepackOutcome {
+    pub packs_rewritten: u64,
+    pub packs_written: u64,
+    pub chunks_moved: u64,
+    pub bytes_read: u64,
+    pub bytes_written: u64,
+    pub quarantined: Vec<String>,
+}
+
 /// Summary for `store stat`.
 #[derive(Debug, Clone)]
 pub struct StoreStats {
@@ -365,6 +423,197 @@ impl GlobalStore {
     /// Whether this store runs on the segmented (mmap) index.
     pub fn is_segmented(&self) -> bool {
         self.seg.is_some()
+    }
+
+    /// Packs below this size are merge candidates: many small packs mean
+    /// many pack switches, ranges and HTTP requests per reconstruction.
+    pub const SMALL_PACK_BYTES: u64 = 8 * 1024 * 1024;
+    /// A pack whose dead-bytes ratio exceeds this is a compaction candidate.
+    pub const DEAD_RATIO_THRESHOLD: f64 = 0.30;
+
+    /// Round 3D fragmentation telemetry: one streaming ledger pass + one
+    /// `stat` per referenced pack. Makes repacking a measured decision
+    /// instead of a guess.
+    pub fn fragmentation(&self) -> FragmentationReport {
+        let mut live: HashMap<String, (u64, u64)> = HashMap::new(); // pack -> (bytes, chunks)
+        for (_, info) in self.chunks_iter() {
+            if let Some(pack) = info.pack {
+                let e = live.entry(pack).or_default();
+                e.0 += info.len_stored as u64;
+                e.1 += 1;
+            }
+        }
+        let mut packs: Vec<PackFragmentation> = live
+            .into_iter()
+            .map(|(pack, (live_bytes, live_chunks))| {
+                let disk_bytes = std::fs::metadata(packfile::pack_path(&self.packs_dir(), &pack))
+                    .map(|m| m.len())
+                    .unwrap_or(0);
+                let dead_ratio = if disk_bytes == 0 {
+                    0.0
+                } else {
+                    // Header/footer overhead is not "dead"; clamp at 0.
+                    1.0 - (live_bytes.min(disk_bytes) as f64 / disk_bytes as f64)
+                };
+                PackFragmentation {
+                    pack,
+                    disk_bytes,
+                    live_bytes,
+                    live_chunks,
+                    dead_ratio,
+                }
+            })
+            .collect();
+        packs.sort_by(|a, b| b.dead_ratio.total_cmp(&a.dead_ratio));
+
+        let pack_count = packs.len() as u64;
+        let small_packs = packs
+            .iter()
+            .filter(|p| p.disk_bytes < Self::SMALL_PACK_BYTES)
+            .count() as u64;
+        let disk_bytes: u64 = packs.iter().map(|p| p.disk_bytes).sum();
+        let live_bytes: u64 = packs.iter().map(|p| p.live_bytes).sum();
+        let dead_bytes = disk_bytes.saturating_sub(live_bytes);
+        let small_pack_ratio = if pack_count == 0 {
+            0.0
+        } else {
+            small_packs as f64 / pack_count as f64
+        };
+        let dead_bytes_ratio = if disk_bytes == 0 {
+            0.0
+        } else {
+            dead_bytes as f64 / disk_bytes as f64
+        };
+        FragmentationReport {
+            pack_count,
+            small_packs,
+            small_pack_ratio,
+            disk_bytes,
+            live_bytes,
+            dead_bytes,
+            dead_bytes_ratio,
+            fragmentation_score: small_pack_ratio + dead_bytes_ratio,
+            packs,
+        }
+    }
+
+    /// First-generation repack planner: merge small packs up to the
+    /// preferred pack size, and compact packs past the dead-bytes
+    /// threshold. Pack affinity by access telemetry is deliberately out of
+    /// scope (Round 4).
+    pub fn repack_plan(&self) -> RepackPlan {
+        let frag = self.fragmentation();
+        let mut plan = RepackPlan::default();
+        let mut merge_batch: Vec<String> = Vec::new();
+        let mut batch_bytes = 0u64;
+        for p in &frag.packs {
+            if p.disk_bytes < Self::SMALL_PACK_BYTES {
+                if batch_bytes + p.live_bytes > self.preferred_pack_size && merge_batch.len() > 1 {
+                    plan.merge_groups.push(std::mem::take(&mut merge_batch));
+                    batch_bytes = 0;
+                }
+                merge_batch.push(p.pack.clone());
+                batch_bytes += p.live_bytes;
+                plan.estimated_read_bytes += p.live_bytes;
+                plan.estimated_reclaim_bytes += p.disk_bytes.saturating_sub(p.live_bytes);
+            } else if p.dead_ratio > Self::DEAD_RATIO_THRESHOLD {
+                plan.compact_packs.push(p.pack.clone());
+                plan.estimated_read_bytes += p.live_bytes;
+                plan.estimated_reclaim_bytes += p.disk_bytes.saturating_sub(p.live_bytes);
+            }
+        }
+        // A merge needs at least two packs to be worth a rewrite.
+        if merge_batch.len() > 1 {
+            plan.merge_groups.push(merge_batch);
+        }
+        plan
+    }
+
+    /// Execute a repack plan, copy-on-write: live chunks of each group are
+    /// rewritten into fresh packs, the ledger swaps to a new generation,
+    /// and only then are the old packs quarantined (recoverable for the
+    /// whole quarantine window — a crash at any point loses nothing).
+    /// Reads keep working throughout: old packs stay in place until the
+    /// ledger no longer references them.
+    ///
+    /// Note: exported static trees hold copies of the old packs; re-export
+    /// affected assets (and their meta-packs) after a repack.
+    pub fn repack_run(&mut self, plan: &RepackPlan, dry_run: bool) -> Result<RepackOutcome> {
+        let mut outcome = RepackOutcome::default();
+        if plan.is_empty() {
+            return Ok(outcome);
+        }
+        // Never interleave with an open ingest pack.
+        self.flush_packs()?;
+
+        let mut groups: Vec<Vec<String>> = plan.merge_groups.clone();
+        groups.extend(plan.compact_packs.iter().map(|p| vec![p.clone()]));
+
+        for group in groups {
+            let members: HashSet<&str> = group.iter().map(String::as_str).collect();
+            // Live chunks of this group, in physical order (locality kept).
+            let mut chunks: Vec<(String, ChunkInfo)> = self
+                .chunks_iter()
+                .filter(|(_, i)| i.pack.as_deref().is_some_and(|p| members.contains(p)))
+                .collect();
+            chunks.sort_by(|a, b| {
+                (a.1.pack.as_deref(), a.1.pack_offset).cmp(&(b.1.pack.as_deref(), b.1.pack_offset))
+            });
+            outcome.packs_rewritten += group.len() as u64;
+            if dry_run {
+                outcome.chunks_moved += chunks.len() as u64;
+                outcome.bytes_read += chunks.iter().map(|(_, i)| i.len_stored as u64).sum::<u64>();
+                continue;
+            }
+
+            // Copy live chunks into fresh packs (rolling over at the
+            // preferred size), then repoint the ledger.
+            let mut writer: Option<PackWriter> = None;
+            let mut finished: Vec<(String, Vec<packfile::PackEntry>)> = Vec::new();
+            for (hex, _) in &chunks {
+                let hash = from_hex(hex).ok_or_else(|| StoreError::BadHash(hex.clone()))?;
+                let (stored, flags, len_raw) = self.read_chunk_stored(&hash)?;
+                outcome.bytes_read += stored.len() as u64;
+                if writer.is_none() {
+                    writer = Some(PackWriter::create(&self.packs_dir())?);
+                }
+                let w = writer.as_mut().unwrap();
+                w.append(hash, &stored, len_raw, flags)?;
+                outcome.bytes_written += stored.len() as u64;
+                if w.data_len() >= self.preferred_pack_size {
+                    let (pack_hex, entries) = writer.take().unwrap().finish()?;
+                    finished.push((pack_hex, entries));
+                }
+            }
+            if let Some(w) = writer.take() {
+                if w.is_empty() {
+                    w.abort();
+                } else {
+                    let (pack_hex, entries) = w.finish()?;
+                    finished.push((pack_hex, entries));
+                }
+            }
+            outcome.chunks_moved += chunks.len() as u64;
+            outcome.packs_written += finished.len() as u64;
+
+            // Repoint every moved chunk at its new pack, then persist the
+            // ledger before touching the old packs.
+            for (pack_hex, entries) in &finished {
+                for entry in entries {
+                    let hex = to_hex(&entry.hash);
+                    self.chunk_update(&hex, |info| {
+                        info.pack = Some(pack_hex.clone());
+                        info.pack_offset = Some(entry.offset);
+                    });
+                }
+            }
+            self.save_index()?;
+            for pack in &group {
+                self.quarantine_pack(pack)?;
+                outcome.quarantined.push(pack.clone());
+            }
+        }
+        Ok(outcome)
     }
 
     /// A small structural report of the ledger, for `store index-inspect`.
@@ -2312,6 +2561,115 @@ mod tests {
             keys.len(),
             t.elapsed() / keys.len() as u32
         );
+    }
+
+    #[test]
+    fn repack_merges_small_packs_copy_on_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store =
+            GlobalStore::open_with_layout(dir.path(), Some(StoreLayout::Packfiles)).unwrap();
+        // Force one tiny pack per publish: 20 small packs.
+        store.set_preferred_pack_size(1);
+        let mut hashes = Vec::new();
+        for i in 0..20u8 {
+            let data = vec![i; 3000];
+            let h = hash_chunk(&data);
+            store.put_chunk(&h, &data, 0, data.len() as u32).unwrap();
+            store.publish_asset(&rec(&format!("a{i}"), &[&h])).unwrap();
+            hashes.push(h);
+        }
+        let before = store.fragmentation();
+        assert_eq!(before.pack_count, 20);
+        assert_eq!(before.small_packs, 20);
+
+        // Merge them with a sane target size again.
+        store.set_preferred_pack_size(128 * 1024 * 1024);
+        let plan = store.repack_plan();
+        assert!(!plan.is_empty());
+        let outcome = store.repack_run(&plan, false).unwrap();
+        assert_eq!(outcome.packs_rewritten, 20);
+        assert_eq!(outcome.chunks_moved, 20);
+        assert_eq!(outcome.quarantined.len(), 20);
+
+        let after = store.fragmentation();
+        assert!(
+            after.pack_count as f64 <= before.pack_count as f64 * 0.3,
+            "pack count must drop >=70% (before {}, after {})",
+            before.pack_count,
+            after.pack_count
+        );
+        // Copy-on-write: every chunk still reads back and verifies.
+        assert_eq!(store.verify().unwrap(), 20);
+        for h in &hashes {
+            assert!(store.read_chunk_stored(h).is_ok());
+        }
+
+        // Reopen: the repacked ledger persisted; integrity holds.
+        drop(store);
+        let store = GlobalStore::open(dir.path()).unwrap();
+        assert_eq!(store.verify().unwrap(), 20);
+    }
+
+    #[test]
+    fn repack_compacts_dead_bytes_and_is_dry_run_safe() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store =
+            GlobalStore::open_with_layout(dir.path(), Some(StoreLayout::Packfiles)).unwrap();
+        store.set_preferred_pack_size(1024 * 1024 * 1024);
+        // One pack: 10 chunks, then unpublish+gc 4 of them (~40% dead).
+        // Individual chunks stay under the small-pack threshold, so make
+        // the pack big enough to be a *compaction* candidate.
+        let mut live_hashes = Vec::new();
+        let mut dead_recs = Vec::new();
+        for i in 0..10u8 {
+            let data = vec![i; 2 * 1024 * 1024];
+            let h = hash_chunk(&data);
+            store.put_chunk(&h, &data, 0, data.len() as u32).unwrap();
+            if i < 4 {
+                dead_recs.push((format!("dead{i}"), h));
+            } else {
+                live_hashes.push((format!("live{i}"), h));
+            }
+        }
+        let all: Vec<&ChunkHash> = dead_recs
+            .iter()
+            .map(|(_, h)| h)
+            .chain(live_hashes.iter().map(|(_, h)| h))
+            .collect();
+        store.publish_asset(&rec("everything", &all)).unwrap();
+        for (name, h) in &live_hashes {
+            store.publish_asset(&rec(name, &[h])).unwrap();
+        }
+        // Drop the umbrella asset: the 4 dead-only chunks hit refcount 0.
+        store.unpublish_asset("everything").unwrap();
+        store.gc(0).unwrap();
+
+        let frag = store.fragmentation();
+        assert_eq!(frag.pack_count, 1);
+        assert!(
+            frag.dead_bytes_ratio > 0.35,
+            "expected ~40% dead, got {:.2}",
+            frag.dead_bytes_ratio
+        );
+
+        // Dry run: reports work, changes nothing.
+        let plan = store.repack_plan();
+        assert_eq!(plan.compact_packs.len(), 1);
+        let dry = store.repack_run(&plan, true).unwrap();
+        assert_eq!(dry.chunks_moved, 6);
+        assert_eq!(store.fragmentation().pack_count, 1, "dry run wrote nothing");
+        assert!(dry.quarantined.is_empty());
+
+        // Real run reclaims ~all dead bytes.
+        let outcome = store.repack_run(&plan, false).unwrap();
+        assert_eq!(outcome.chunks_moved, 6);
+        let after = store.fragmentation();
+        assert!(
+            after.dead_bytes_ratio < 0.05,
+            "dead bytes reclaimed, got {:.2}",
+            after.dead_bytes_ratio
+        );
+        assert_eq!(store.verify().unwrap(), 6);
     }
 
     #[test]

@@ -1524,6 +1524,17 @@ enum StoreAction {
     IndexMigrate,
     /// Report the ledger's index mode, generation, segments and deltas.
     IndexInspect,
+    /// Round 3D telemetry: per-pack live/dead bytes, small-pack ratio and
+    /// a comparative fragmentation score.
+    Fragmentation,
+    /// Merge small packs and compact packs with excessive dead bytes,
+    /// copy-on-write (old packs go to quarantine, recoverable). Re-export
+    /// affected assets afterwards if a static tree serves this store.
+    Repack {
+        /// Plan and report only; write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -1885,6 +1896,8 @@ fn main() -> Result<()> {
             StoreAction::Export { out, static_plans } => store::export(&dir, &out, static_plans),
             StoreAction::IndexMigrate => store::index_migrate(&dir),
             StoreAction::IndexInspect => store::index_inspect(&dir),
+            StoreAction::Fragmentation => store::fragmentation(&dir),
+            StoreAction::Repack { dry_run } => store::repack(&dir, dry_run),
         },
         Command::Manifest { action } => match action {
             ManifestAction::Export { input, out } => manifest_cmd::export(&input, out.as_deref()),

@@ -163,6 +163,80 @@ pub fn index_inspect(store_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Round 3D: fragmentation telemetry.
+pub fn fragmentation(store_dir: &Path) -> Result<()> {
+    let store = GlobalStore::open(store_dir)?;
+    let f = store.fragmentation();
+    println!(
+        "packs   : {} total · {} small (<8 MiB, {:.0}%)",
+        f.pack_count,
+        f.small_packs,
+        f.small_pack_ratio * 100.0
+    );
+    println!(
+        "bytes   : {} on disk · {} live · {} dead ({:.1}%)",
+        human_bytes(f.disk_bytes),
+        human_bytes(f.live_bytes),
+        human_bytes(f.dead_bytes),
+        f.dead_bytes_ratio * 100.0
+    );
+    println!("score   : {:.3} (small-pack ratio + dead-bytes ratio)", f.fragmentation_score);
+    for p in f.packs.iter().take(8) {
+        println!(
+            "  pack {}… {} disk / {} live · {:.0}% dead · {} chunks",
+            &p.pack[..12.min(p.pack.len())],
+            human_bytes(p.disk_bytes),
+            human_bytes(p.live_bytes),
+            p.dead_ratio * 100.0,
+            p.live_chunks
+        );
+    }
+    if f.packs.len() > 8 {
+        println!("  … {} more", f.packs.len() - 8);
+    }
+    Ok(())
+}
+
+/// Round 3D: merge small packs / compact dead bytes, copy-on-write.
+pub fn repack(store_dir: &Path, dry_run: bool) -> Result<()> {
+    let mut store = GlobalStore::open(store_dir)?;
+    let plan = store.repack_plan();
+    if plan.is_empty() {
+        println!("repack  : nothing to do (no small packs, dead bytes under threshold)");
+        return Ok(());
+    }
+    println!(
+        "plan    : merge {} groups ({} packs) · compact {} packs · ~{} to read · ~{} reclaimable",
+        plan.merge_groups.len(),
+        plan.merge_groups.iter().map(Vec::len).sum::<usize>(),
+        plan.compact_packs.len(),
+        human_bytes(plan.estimated_read_bytes),
+        human_bytes(plan.estimated_reclaim_bytes)
+    );
+    let outcome = store.repack_run(&plan, dry_run)?;
+    if dry_run {
+        println!(
+            "dry-run : would rewrite {} packs / {} chunks ({} read)",
+            outcome.packs_rewritten,
+            outcome.chunks_moved,
+            human_bytes(outcome.bytes_read)
+        );
+        return Ok(());
+    }
+    println!(
+        "repack  : {} packs -> {} ({} chunks moved, {} read, {} written); {} quarantined",
+        outcome.packs_rewritten,
+        outcome.packs_written,
+        outcome.chunks_moved,
+        human_bytes(outcome.bytes_read),
+        human_bytes(outcome.bytes_written),
+        outcome.quarantined.len()
+    );
+    println!("note    : re-export affected assets if a static tree serves this store");
+    print_stats(&store);
+    Ok(())
+}
+
 fn print_stats(store: &GlobalStore) {
     let s = store.stats();
     // stored_bytes can briefly exceed the logical (referenced) total when
