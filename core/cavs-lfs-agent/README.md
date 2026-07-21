@@ -96,6 +96,10 @@ Pass via `lfs.customtransfer.cavs.args`:
 | `--pubkey <hex>` | — | require Ed25519-signed manifests on download |
 | `--sign-key <file>` | — | sign uploads (64-hex secret key) |
 
+Downloads honour `CAVS_FETCH_MAX_INFLIGHT_BYTES` (default 128 MiB): a
+process-wide cap on range-request bytes in flight, so many parallel
+downloads can't stack unbounded buffers.
+
 ## Limitations
 
 - Uploads need a writable **directory** remote; syncing the tree to S3/R2 is
