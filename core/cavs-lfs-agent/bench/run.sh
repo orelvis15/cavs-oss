@@ -18,7 +18,7 @@
 # Usage: bench/run.sh [out-dir]        (default: ./bench-results)
 # Env:   AGENT=<path>       agent binary (default: cargo build --release)
 #        SCENARIOS="…"      subset of: big-binary compressible many-files
-#                           full-rewrite cross-repo
+#                           full-rewrite tensor cross-repo
 #        SYSTEMS="…"        subset of: git lfs cavs   (default: all)
 #        CAVS_PROFILE=<p>   chunking profile for the agent (label appended
 #                           to the system name when set, e.g. cavs-fastcdc-16k)
@@ -113,7 +113,7 @@ emit_cavs_breakdown() { # emit_cavs_breakdown <scenario> <version> <tree>
   emit "$SC" "$CAVS_SYS" breakdown "$NV" store_pack_data_kb "$(kb_named "$STORE/packs" '*.cavspack')"
   emit "$SC" "$CAVS_SYS" breakdown "$NV" store_pack_index_kb "$(kb_named "$STORE/packs" '*.cavsindex')"
   emit "$SC" "$CAVS_SYS" breakdown "$NV" store_meta_kb \
-    "$(( $(kb "$STORE/assets") + $(kb_named "$STORE" 'index.json') ))"
+    "$(( $(kb "$STORE/assets") + $(kb_named "$STORE" 'index.*') ))"
   emit "$SC" "$CAVS_SYS" breakdown "$NV" export_pack_kb "$(kb "$TREE/chunks/packs")"
   emit "$SC" "$CAVS_SYS" breakdown "$NV" export_index_kb "$(kb "$TREE/chunks/indexes")"
   emit "$SC" "$CAVS_SYS" breakdown "$NV" export_manifest_kb "$(kb_named "$TREE/assets" 'manifest.json')"
@@ -327,7 +327,7 @@ run_crossrepo() {
   rm -rf "$ROOT"
 }
 
-SCENARIOS=${SCENARIOS:-"big-binary compressible many-files full-rewrite cross-repo"}
+SCENARIOS=${SCENARIOS:-"big-binary compressible many-files full-rewrite tensor cross-repo"}
 SYSTEMS=${SYSTEMS:-"git lfs cavs"}
 for SC in $SCENARIOS; do
   if [ "$SC" = cross-repo ]; then

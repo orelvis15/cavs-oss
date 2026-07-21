@@ -351,10 +351,80 @@ fn batch_uploads_share_one_session() {
     }
     agent.terminate();
 
+    // Session finalize aggregates the whole batch into ONE pack (Xet-style
+    // xorb aggregation) instead of one pack per object. Packs are sharded
+    // into `packs/<ab>/<hex>.cavspack`.
+    let mut packs = 0;
+    for shard in std::fs::read_dir(remote.join(".store").join("packs"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+    {
+        packs += std::fs::read_dir(shard.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x == "cavspack"))
+            .count();
+    }
+    assert_eq!(packs, 1, "5-object push must produce one aggregated pack");
+
     // Every object of the batch is independently fetchable.
     for (i, oid) in oids.iter().enumerate() {
         let got = download(&remote, &tmp.path().join("cache-dl"), oid);
         assert_eq!(&got, &blobs[i], "object {i} corrupted");
+    }
+}
+
+/// A push interrupted after per-object acks but before terminate publishes
+/// nothing (atomic session), and a full retry then publishes everything.
+#[test]
+fn killed_before_terminate_publishes_nothing_and_retry_repairs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let remote = tmp.path().join("remote");
+    let cache = tmp.path().join("cache");
+    let work = tmp.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+
+    let blobs: Vec<Vec<u8>> = (0..3)
+        .map(|i| test_bytes(2 * 1024 * 1024, 500 + i))
+        .collect();
+
+    let mut agent = Agent::spawn(&remote, &cache, &[]);
+    agent.init("upload");
+    let mut oids = Vec::new();
+    for data in &blobs {
+        let oid = oid_of(data);
+        let src = work.join(&oid);
+        std::fs::write(&src, data).unwrap();
+        agent.send(json!({
+            "event": "upload", "oid": oid, "size": data.len(), "path": src
+        }));
+        let done = agent.recv_complete(&oid);
+        assert!(done.get("error").is_none(), "upload failed: {done}");
+        oids.push(oid);
+    }
+    // Kill without terminate: the session never finalized.
+    agent.child.kill().expect("kill agent");
+    let _ = agent.child.wait();
+
+    for oid in &oids {
+        assert!(
+            !remote
+                .join("assets")
+                .join(oid)
+                .join("manifest.json")
+                .is_file(),
+            "nothing may be published before finalize"
+        );
+    }
+
+    // Retry the whole push (git-lfs re-sends every object): full repair.
+    for data in &blobs {
+        upload(&remote, &cache, &work, data);
+    }
+    for (i, oid) in oids.iter().enumerate() {
+        let got = download(&remote, &tmp.path().join("cache-dl"), oid);
+        assert_eq!(&got, &blobs[i], "object {i} corrupted after crash+retry");
     }
 }
 

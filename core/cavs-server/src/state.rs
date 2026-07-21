@@ -92,11 +92,14 @@ impl ChunkSource {
                     ChunkSource::Store { hashes, .. } => *hashes.get(idx as usize)?,
                     _ => unreachable!(),
                 };
-                let raw = if flags & CHUNK_FLAG_ZSTD != 0 {
+                let mut raw = if flags & CHUNK_FLAG_ZSTD != 0 {
                     zstd::bulk::decompress(&stored, len_raw as usize).ok()?
                 } else {
                     stored
                 };
+                if flags & cavs_format::CHUNK_FLAG_BG4 != 0 {
+                    raw = cavs_format::bg4_ungroup(&raw);
+                }
                 (hash_chunk(&raw) == hash).then_some(raw)
             }
         }
@@ -665,8 +668,18 @@ impl AppState {
                 }
                 Slot::Inline(cold_pos) => {
                     // Wire passthrough: the payload travels exactly as
-                    // stored, so zstd chunks cost zero extra CPU.
-                    let (payload, flags, len_raw) = payloads.next().expect("cold batch aligned");
+                    // stored, so zstd chunks cost zero extra CPU. BG4 chunks
+                    // (not produced by server-side stores today) are decoded
+                    // here: the wire protocol — and the non-Rust SDKs that
+                    // speak it — only knows none/zstd.
+                    let (mut payload, mut flags, len_raw) =
+                        payloads.next().expect("cold batch aligned");
+                    if flags & cavs_format::CHUNK_FLAG_BG4 != 0 {
+                        let raw = zstd::bulk::decompress(&payload, len_raw as usize)
+                            .map_err(|e| format!("bg4 chunk decode: {e}"))?;
+                        payload = cavs_format::bg4_ungroup(&raw);
+                        flags = 0;
+                    }
                     let idx = cold[cold_pos];
                     self.metrics
                         .chunks_inline_total
@@ -751,7 +764,14 @@ impl AppState {
         self.metrics
             .chunk_requests_total
             .fetch_add(1, Ordering::Relaxed);
-        let (stored, flags, len_raw) = asset.source.read_stored(idx).ok()?;
+        let (mut stored, mut flags, len_raw) = asset.source.read_stored(idx).ok()?;
+        if flags & cavs_format::CHUNK_FLAG_BG4 != 0 {
+            // The wire only knows none/zstd (non-Rust SDKs speak it too):
+            // decode BG4 chunks server-side and ship them raw.
+            let raw = zstd::bulk::decompress(&stored, len_raw as usize).ok()?;
+            stored = cavs_format::bg4_ungroup(&raw);
+            flags = 0;
+        }
         let compression = if flags & CHUNK_FLAG_ZSTD != 0 {
             cavs_proto::WIRE_COMPRESSION_ZSTD
         } else {

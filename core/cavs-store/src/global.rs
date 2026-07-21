@@ -11,8 +11,12 @@
 //!   packs/<ab>/<id>.cavspack packfile layout: chunks appended into large
 //!   packs/<ab>/<id>.cavsindex  immutable packs + per-pack sidecar index
 //!   assets/<name>.json       per-asset record (tracks/segments by hash)
-//!   index.json               chunk ledger: hex -> {sizes, flags, refcount,
-//!                            pack location}; plus the store layout
+//!   index.bin                chunk ledger: per chunk {sizes, flags,
+//!                            refcount, pack location}; plus the store
+//!                            layout. Compact binary snapshot (CAVSIDX1,
+//!                            BLAKE3-sealed); pre-1.6 stores used
+//!                            index.json, still read and migrated on the
+//!                            next save.
 //! ```
 //! Chunks are stored in their *stored* (possibly compressed) form so the
 //! server can stream them to clients with zero recompression, exactly like
@@ -46,6 +50,8 @@ pub enum StoreError {
     BadAssetName(String),
     #[error("corrupt packfile: {0}")]
     PackCorrupt(String),
+    #[error("corrupt index: {0}")]
+    IndexCorrupt(String),
     #[error("store uses layout {store:?}, requested {requested:?}")]
     LayoutMismatch {
         store: StoreLayout,
@@ -154,6 +160,10 @@ struct Index {
     /// Physical layout; absent in pre-0.4.0 stores (= loose).
     #[serde(default)]
     layout: StoreLayout,
+    /// Monotonic save counter; lets tooling tell which of two snapshots
+    /// (`index.bin` vs `index.bin.prev`) is newer without trusting mtimes.
+    #[serde(default)]
+    generation: u64,
 }
 
 /// Summary for `store stat`.
@@ -180,6 +190,9 @@ pub struct GlobalStore {
     index: Index,
     open_pack: Option<PackWriter>,
     preferred_pack_size: u64,
+    /// `Some` while a publish batch is open (see
+    /// [`Self::begin_publish_batch`]): asset records queued for the commit.
+    batch: Option<Vec<AssetRecord>>,
 }
 
 impl GlobalStore {
@@ -194,30 +207,35 @@ impl GlobalStore {
     pub fn open_with_layout(root: &Path, layout: Option<StoreLayout>) -> Result<Self> {
         std::fs::create_dir_all(root.join("chunks"))?;
         std::fs::create_dir_all(root.join("assets"))?;
-        let index_path = root.join("index.json");
-        let index = if index_path.exists() {
-            let index: Index = serde_json::from_slice(&std::fs::read(&index_path)?)?;
-            if let Some(requested) = layout {
-                if requested != index.layout {
-                    return Err(StoreError::LayoutMismatch {
-                        store: index.layout,
-                        requested,
-                    });
-                }
+        let bin_path = root.join("index.bin");
+        let prev_path = root.join("index.bin.prev");
+        let json_path = root.join("index.json");
+        // A crash mid-save can leave a temp snapshot behind; the live ledger
+        // was never touched, so it is safe to drop.
+        let _ = std::fs::remove_file(bin_path.with_extension("bin.tmp"));
+        let index = match Self::load_ledger(&bin_path, &prev_path, &json_path)? {
+            Some(index) => index,
+            None => {
+                let index = Index {
+                    layout: layout.unwrap_or_default(),
+                    ..Index::default()
+                };
+                // Persist immediately: the layout is a creation-time property
+                // and must survive even if nothing is published yet.
+                let tmp = bin_path.with_extension("bin.tmp");
+                std::fs::write(&tmp, encode_index(&index))?;
+                std::fs::rename(&tmp, &bin_path)?;
+                index
             }
-            index
-        } else {
-            let index = Index {
-                layout: layout.unwrap_or_default(),
-                ..Index::default()
-            };
-            // Persist immediately: the layout is a creation-time property
-            // and must survive even if nothing is published yet.
-            let tmp = index_path.with_extension("json.tmp");
-            std::fs::write(&tmp, serde_json::to_vec_pretty(&index)?)?;
-            std::fs::rename(&tmp, &index_path)?;
-            index
         };
+        if let Some(requested) = layout {
+            if requested != index.layout && (bin_path.exists() || json_path.exists()) {
+                return Err(StoreError::LayoutMismatch {
+                    store: index.layout,
+                    requested,
+                });
+            }
+        }
         // A crash mid-ingest can leave a temp pack behind; it was never
         // referenced by the ledger, so it is safe to drop.
         let packs_dir = root.join("packs");
@@ -228,12 +246,93 @@ impl GlobalStore {
                 }
             }
         }
-        Ok(Self {
+        let store = Self {
             root: root.to_path_buf(),
             index,
             open_pack: None,
             preferred_pack_size: PREFERRED_PACK_SIZE,
-        })
+            batch: None,
+        };
+        // A ledger recovered from a previous generation may reference packs
+        // a newer GC had already quarantined; bring them back.
+        store.restore_quarantined_packs()?;
+        Ok(store)
+    }
+
+    /// Load the ledger, preferring `index.bin` and falling back to the
+    /// previous generation (`index.bin.prev`) if the current snapshot is
+    /// corrupt or missing (a crash between the two renames of
+    /// [`Self::save_index`] leaves only `.prev`). A legacy `index.json`
+    /// (pre-1.6) is read as a last resort and migrated on the next save.
+    /// Returns `Ok(None)` when no ledger exists at all (a new store).
+    fn load_ledger(bin: &Path, prev: &Path, json: &Path) -> Result<Option<Index>> {
+        let current = if bin.exists() {
+            match decode_index(&std::fs::read(bin)?) {
+                Ok(index) => return Ok(Some(index)),
+                Err(e) => Some(e), // corrupt: try the previous generation
+            }
+        } else {
+            None
+        };
+        if prev.exists() {
+            match decode_index(&std::fs::read(prev)?) {
+                Ok(index) => return Ok(Some(index)),
+                Err(prev_err) => {
+                    // Both generations bad: surface the current one's error
+                    // (or the prev error when index.bin never existed).
+                    return Err(current.unwrap_or(prev_err));
+                }
+            }
+        }
+        if let Some(e) = current {
+            return Err(e);
+        }
+        if json.exists() {
+            return Ok(Some(serde_json::from_slice::<Index>(&std::fs::read(
+                json,
+            )?)?));
+        }
+        Ok(None)
+    }
+
+    /// Begin a publish batch (session-scoped, Xet-style finalize): until
+    /// [`Self::commit_publish_batch`], `publish_asset` only updates the
+    /// in-memory ledger — the ingest pack stays open across assets (so many
+    /// small assets aggregate into few large packs instead of one pack per
+    /// asset), asset record files are not written, and `index.json` is not
+    /// saved. If the process dies before the commit, the on-disk store is
+    /// exactly as it was before the batch (orphan `.part` packs are swept on
+    /// the next open), so an interrupted push simply re-ingests.
+    pub fn begin_publish_batch(&mut self) {
+        if self.batch.is_none() {
+            self.batch = Some(Vec::new());
+        }
+    }
+
+    /// Persist everything the open publish batch deferred: close the ingest
+    /// pack (resolving ledger locations), write every queued asset record,
+    /// and save the ledger once — one `index.json` write per push session
+    /// instead of one per object. Idempotent; a no-op when no batch is open.
+    pub fn commit_publish_batch(&mut self) -> Result<()> {
+        let Some(pending) = self.batch.take() else {
+            return Ok(());
+        };
+        let had_open_pack = self.open_pack.is_some();
+        self.flush_packs()?;
+        for record in &pending {
+            self.write_asset_record(record)?;
+        }
+        if !pending.is_empty() || had_open_pack {
+            self.save_index()?;
+        }
+        Ok(())
+    }
+
+    /// Whether an asset is published — including assets queued in an open
+    /// publish batch (unlike [`Self::get_asset`], which reads the record
+    /// file a batch has not written yet).
+    pub fn has_asset(&self, name: &str) -> bool {
+        self.index.assets.contains_key(name)
     }
 
     pub fn layout(&self) -> StoreLayout {
@@ -472,13 +571,20 @@ impl GlobalStore {
 
     /// Publish (or replace) an asset. Refcounts are adjusted so the chunk
     /// ledger reflects exactly the currently-published assets.
+    ///
+    /// Inside a publish batch (see [`Self::begin_publish_batch`]) only the
+    /// in-memory ledger changes; the ingest pack stays open and nothing is
+    /// persisted until [`Self::commit_publish_batch`].
     pub fn publish_asset(&mut self, record: &AssetRecord) -> Result<()> {
         if record.name.contains(['/', '\\', '.']) || record.name.is_empty() {
             return Err(StoreError::BadAssetName(record.name.clone()));
         }
-        // Close the ingest pack so every chunk has a resolved location
-        // before the ledger is persisted.
-        self.flush_packs()?;
+        let batching = self.batch.is_some();
+        if !batching {
+            // Close the ingest pack so every chunk has a resolved location
+            // before the ledger is persisted.
+            self.flush_packs()?;
+        }
         // Distinct chunks this asset references.
         let mut distinct: HashSet<String> = HashSet::new();
         for t in &record.tracks {
@@ -506,6 +612,16 @@ impl GlobalStore {
         self.index
             .assets
             .insert(record.name.clone(), distinct.into_iter().collect());
+        if batching {
+            self.batch.as_mut().unwrap().push(record.clone());
+            return Ok(());
+        }
+        self.write_asset_record(record)?;
+        self.save_index()
+    }
+
+    /// Write an asset's record file (`assets/<name>.json`) atomically.
+    fn write_asset_record(&self, record: &AssetRecord) -> Result<()> {
         let json = serde_json::to_vec_pretty(record)?;
         let path = self
             .root
@@ -514,7 +630,7 @@ impl GlobalStore {
         let tmp = path.with_extension("json.tmp");
         std::fs::write(&tmp, &json)?;
         std::fs::rename(&tmp, &path)?;
-        self.save_index()
+        Ok(())
     }
 
     /// Unpublish an asset: drop its references (chunks may become zero-ref,
@@ -576,7 +692,8 @@ impl GlobalStore {
                 }
             }
         }
-        // Delete packs that no remaining chunk references.
+        // Quarantine packs that no remaining chunk references (deleted only
+        // after they also age out of quarantine, below).
         if !touched_packs.is_empty() {
             let live: HashSet<&str> = self
                 .index
@@ -586,17 +703,187 @@ impl GlobalStore {
                 .collect();
             for pack in &touched_packs {
                 if !live.contains(pack.as_str()) {
-                    let path = packfile::pack_path(&self.packs_dir(), pack);
-                    if let Ok(meta) = std::fs::metadata(&path) {
-                        bytes += meta.len();
-                    }
-                    let _ = std::fs::remove_file(&path);
-                    let _ = std::fs::remove_file(packfile::index_path(&self.packs_dir(), pack));
+                    self.quarantine_pack(pack)?;
                 }
             }
         }
+        self.quarantine_orphan_packs(grace_secs)?;
+        bytes += self.sweep_quarantine(grace_secs)?;
         self.save_index()?;
         Ok((doomed.len() as u64, bytes))
+    }
+
+    fn quarantine_dir(&self) -> PathBuf {
+        self.root.join("quarantine")
+    }
+
+    /// Move a pack (and its sidecar index) out of the live tree into
+    /// `quarantine/`, stamping when it got there. Quarantined packs are
+    /// still recoverable: opening a store whose ledger references one moves
+    /// it straight back (see [`Self::restore_quarantined_packs`]); only
+    /// [`Self::sweep_quarantine`] deletes, and only after the pack has also
+    /// sat out the quarantine period. Two-stage deletion means an eventual-
+    /// consistency or in-flight-finalize race costs a restore, not data.
+    fn quarantine_pack(&self, hex: &str) -> Result<()> {
+        let qdir = self.quarantine_dir();
+        std::fs::create_dir_all(&qdir)?;
+        let src = packfile::pack_path(&self.packs_dir(), hex);
+        if src.exists() {
+            std::fs::rename(&src, qdir.join(format!("{hex}.cavspack")))?;
+        }
+        let idx = packfile::index_path(&self.packs_dir(), hex);
+        if idx.exists() {
+            std::fs::rename(&idx, qdir.join(format!("{hex}.cavsindex")))?;
+        }
+        std::fs::write(qdir.join(format!("{hex}.qsince")), now_epoch().to_string())?;
+        Ok(())
+    }
+
+    /// Delete quarantined packs that have sat in quarantine for at least
+    /// `quarantine_secs`. A pack the ledger references again (it was
+    /// quarantined by mistake or restored logically) is moved back instead
+    /// of deleted. Returns bytes reclaimed.
+    fn sweep_quarantine(&self, quarantine_secs: u64) -> Result<u64> {
+        let qdir = self.quarantine_dir();
+        if !qdir.is_dir() {
+            return Ok(0);
+        }
+        let live: HashSet<&str> = self
+            .index
+            .chunks
+            .values()
+            .filter_map(|i| i.pack.as_deref())
+            .collect();
+        let now = now_epoch();
+        let mut bytes = 0u64;
+        for entry in std::fs::read_dir(&qdir)?.flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "cavspack") {
+                continue;
+            }
+            let Some(hex) = path.file_stem().and_then(|s| s.to_str()).map(String::from) else {
+                continue;
+            };
+            if live.contains(hex.as_str()) {
+                self.restore_pack_from_quarantine(&hex)?;
+                continue;
+            }
+            let since = std::fs::read_to_string(qdir.join(format!("{hex}.qsince")))
+                .ok()
+                .and_then(|s| s.trim().parse::<u64>().ok());
+            let Some(since) = since else {
+                // Missing/unreadable stamp: restart the clock, never delete
+                // on unknown age.
+                std::fs::write(qdir.join(format!("{hex}.qsince")), now.to_string())?;
+                continue;
+            };
+            if now.saturating_sub(since) < quarantine_secs {
+                continue;
+            }
+            if let Ok(meta) = std::fs::metadata(&path) {
+                bytes += meta.len();
+            }
+            let _ = std::fs::remove_file(&path);
+            let _ = std::fs::remove_file(qdir.join(format!("{hex}.cavsindex")));
+            let _ = std::fs::remove_file(qdir.join(format!("{hex}.qsince")));
+        }
+        Ok(bytes)
+    }
+
+    /// Move a quarantined pack back into the live tree.
+    fn restore_pack_from_quarantine(&self, hex: &str) -> Result<()> {
+        let qdir = self.quarantine_dir();
+        let dst = packfile::pack_path(&self.packs_dir(), hex);
+        std::fs::create_dir_all(dst.parent().unwrap())?;
+        let src = qdir.join(format!("{hex}.cavspack"));
+        if src.exists() && !dst.exists() {
+            std::fs::rename(&src, &dst)?;
+        }
+        let qidx = qdir.join(format!("{hex}.cavsindex"));
+        if qidx.exists() {
+            let idst = packfile::index_path(&self.packs_dir(), hex);
+            if !idst.exists() {
+                std::fs::rename(&qidx, &idst)?;
+            }
+        }
+        let _ = std::fs::remove_file(qdir.join(format!("{hex}.qsince")));
+        Ok(())
+    }
+
+    /// On open: any quarantined pack the ledger still references goes back
+    /// into the live tree (e.g. the ledger was recovered from
+    /// `index.bin.prev`, or a GC raced a finalize).
+    fn restore_quarantined_packs(&self) -> Result<()> {
+        let qdir = self.quarantine_dir();
+        if !qdir.is_dir() {
+            return Ok(());
+        }
+        let live: HashSet<String> = self
+            .index
+            .chunks
+            .values()
+            .filter_map(|i| i.pack.clone())
+            .collect();
+        for entry in std::fs::read_dir(&qdir)?.flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "cavspack") {
+                continue;
+            }
+            if let Some(hex) = path.file_stem().and_then(|s| s.to_str()) {
+                if live.contains(hex) {
+                    self.restore_pack_from_quarantine(hex)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Quarantine sealed packs on disk that no ledger chunk references —
+    /// the residue of a session that flushed a pack (rollover) but died
+    /// before committing its publish batch. Such packs are invisible to the
+    /// refcount path above (no ledger entry ever pointed at them). The same
+    /// `grace_secs` applies, against the pack's mtime, so a concurrent
+    /// ingest's freshly sealed-but-not-yet-committed pack is never touched
+    /// by an aggressive `gc(0)` from another process. Deletion happens only
+    /// later, in [`Self::sweep_quarantine`].
+    fn quarantine_orphan_packs(&self, grace_secs: u64) -> Result<()> {
+        let packs_dir = self.packs_dir();
+        if !packs_dir.is_dir() {
+            return Ok(());
+        }
+        let live: HashSet<&str> = self
+            .index
+            .chunks
+            .values()
+            .filter_map(|i| i.pack.as_deref())
+            .collect();
+        let now = std::time::SystemTime::now();
+        for shard in std::fs::read_dir(&packs_dir)?.flatten() {
+            if !shard.path().is_dir() {
+                continue;
+            }
+            for entry in std::fs::read_dir(shard.path())?.flatten() {
+                let path = entry.path();
+                if path.extension().is_none_or(|e| e != "cavspack") {
+                    continue;
+                }
+                let Some(hex) = path.file_stem().and_then(|s| s.to_str()) else {
+                    continue;
+                };
+                if live.contains(hex) {
+                    continue;
+                }
+                let old_enough = entry.metadata().and_then(|m| m.modified()).is_ok_and(|m| {
+                    now.duration_since(m)
+                        .is_ok_and(|age| age.as_secs() >= grace_secs)
+                });
+                if !old_enough {
+                    continue;
+                }
+                self.quarantine_pack(hex)?;
+            }
+        }
+        Ok(())
     }
 
     pub fn asset_names(&self) -> Vec<String> {
@@ -662,9 +949,9 @@ impl GlobalStore {
     }
 
     /// Verify: every ledger chunk reads back (loose file or pack range),
-    /// decompresses when stored with zstd, and re-hashes to its identity;
-    /// every referenced pack passes its header/footer check. Returns the
-    /// number of chunks checked.
+    /// decompresses when stored with zstd (undoing the BG4 pretransform when
+    /// flagged), and re-hashes to its identity; every referenced pack passes
+    /// its header/footer check. Returns the number of chunks checked.
     pub fn verify(&self) -> Result<u64> {
         // Cap decompression by the ledger's own raw length, itself sane-
         // bounded so a corrupt ledger cannot request a huge allocation.
@@ -672,7 +959,7 @@ impl GlobalStore {
         for hex in self.index.chunks.keys() {
             let hash = from_hex(hex).ok_or_else(|| StoreError::BadHash(hex.clone()))?;
             let (stored, flags, len_raw) = self.read_chunk_stored(&hash)?;
-            let raw = if flags & 1 != 0 {
+            let mut raw = if flags & 1 != 0 {
                 // CHUNK_FLAG_ZSTD == 1 (cavs-format), kept as a plain bit
                 // here to avoid a dependency cycle.
                 if len_raw as u64 > MAX_RAW {
@@ -683,6 +970,11 @@ impl GlobalStore {
             } else {
                 stored
             };
+            if flags & 2 != 0 {
+                // CHUNK_FLAG_BG4 == 2 (cavs-format): undo the byte-grouping
+                // pretransform before re-hashing.
+                raw = bg4_ungroup(&raw);
+            }
             if raw.len() != len_raw as usize || cavs_hash::hash_chunk(&raw) != hash {
                 return Err(StoreError::BadHash(hex.clone()));
             }
@@ -973,13 +1265,296 @@ impl GlobalStore {
         Ok(written)
     }
 
-    fn save_index(&self) -> Result<()> {
-        let path = self.root.join("index.json");
-        let tmp = path.with_extension("json.tmp");
-        std::fs::write(&tmp, serde_json::to_vec_pretty(&self.index)?)?;
+    /// Persist the ledger crash-safely. The snapshot is staged to a temp
+    /// file, fsynced, read back and seal-verified before it replaces
+    /// `index.bin`; the outgoing snapshot is kept one generation as
+    /// `index.bin.prev` (the open path falls back to it). At no point does
+    /// a readable `index.bin`/`index.bin.prev` pair not exist, so a crash
+    /// anywhere in this sequence loses at most the in-memory batch, never
+    /// the store.
+    fn save_index(&mut self) -> Result<()> {
+        self.index.generation += 1;
+        let path = self.root.join("index.bin");
+        let prev = self.root.join("index.bin.prev");
+        let tmp = path.with_extension("bin.tmp");
+        let encoded = encode_index(&self.index);
+        {
+            use std::io::Write as _;
+            let mut f = std::fs::File::create(&tmp)?;
+            f.write_all(&encoded)?;
+            f.sync_all()?;
+        }
+        // Read back what the filesystem actually holds: a truncated or
+        // bit-flipped staging write must fail here, not at the next open.
+        decode_index(&std::fs::read(&tmp)?).inspect_err(|_| {
+            let _ = std::fs::remove_file(&tmp);
+        })?;
+        if path.exists() {
+            std::fs::rename(&path, &prev)?;
+        }
         std::fs::rename(&tmp, &path)?;
+        // Make both renames durable before reporting success.
+        if let Ok(dir) = std::fs::File::open(&self.root) {
+            let _ = dir.sync_all();
+        }
+        // A legacy pre-1.6 ledger is superseded by this save; leaving it
+        // behind would resurrect stale state on a downgrade mid-history.
+        let _ = std::fs::remove_file(self.root.join("index.json"));
         Ok(())
     }
+}
+
+// --- binary ledger snapshot (index.bin) -----------------------------------
+//
+// Compact fixed-record format so a large store's open/save cost scales with
+// chunk count, not JSON text size (the ledger is the one store structure
+// that grows with every unique chunk). Layout, little-endian throughout:
+//
+//   header (self-describing, INDEX_HEADER_SIZE bytes):
+//     "CAVSIDX1"        magic
+//     u16 version       readers reject versions above their own
+//     u16 header_size   body starts here (lets v1 grow header fields)
+//     u16 record_size   size of one chunk record (validated before parse)
+//     u16 flags         reserved, 0
+//     u8  layout        0 = loose, 1 = packfiles
+//     u8  reserved
+//     u64 generation    monotonic save counter
+//     u64 created_at    unix seconds of this save
+//     6B  reserved
+//   body:
+//     u32 pack_count    { u16 len, hex bytes } × pack_count
+//     u64 chunk_count   { hash 32B, len_raw u32, len_stored u32, flags u32,
+//                         refcount u64, zero_since u64 (MAX = none),
+//                         pack_ord u32 (MAX = none), pack_offset u64
+//                       } × chunk_count, sorted by hex (BTreeMap order)
+//     u32 asset_count   { u16 len, name bytes, u32 n, hash 32B × n } × count
+//   BLAKE3 of everything above (32B seal)
+
+const INDEX_MAGIC: &[u8; 8] = b"CAVSIDX1";
+const INDEX_VERSION: u16 = 1;
+const INDEX_HEADER_SIZE: u16 = 40;
+const INDEX_RECORD_SIZE: u16 = 72;
+
+fn encode_index(index: &Index) -> Vec<u8> {
+    let mut out = Vec::with_capacity(64 + index.chunks.len() * INDEX_RECORD_SIZE as usize);
+    out.extend_from_slice(INDEX_MAGIC);
+    out.extend_from_slice(&INDEX_VERSION.to_le_bytes());
+    out.extend_from_slice(&INDEX_HEADER_SIZE.to_le_bytes());
+    out.extend_from_slice(&INDEX_RECORD_SIZE.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes()); // flags
+    out.push(match index.layout {
+        StoreLayout::Loose => 0,
+        StoreLayout::Packfiles => 1,
+    });
+    out.push(0);
+    out.extend_from_slice(&index.generation.to_le_bytes());
+    out.extend_from_slice(&now_epoch().to_le_bytes());
+    out.extend_from_slice(&[0u8; 6]);
+    debug_assert_eq!(out.len(), INDEX_HEADER_SIZE as usize);
+
+    // Pack table: dedup pack ids so chunk records store a u32 ordinal.
+    let mut packs: Vec<&str> = Vec::new();
+    let mut pack_ord: HashMap<&str, u32> = HashMap::new();
+    for info in index.chunks.values() {
+        if let Some(p) = info.pack.as_deref() {
+            if !pack_ord.contains_key(p) {
+                pack_ord.insert(p, packs.len() as u32);
+                packs.push(p);
+            }
+        }
+    }
+    out.extend_from_slice(&(packs.len() as u32).to_le_bytes());
+    for p in &packs {
+        out.extend_from_slice(&(p.len() as u16).to_le_bytes());
+        out.extend_from_slice(p.as_bytes());
+    }
+
+    out.extend_from_slice(&(index.chunks.len() as u64).to_le_bytes());
+    for (hex, info) in &index.chunks {
+        // Ledger keys are always hex of 32B BLAKE3 (from_hex only fails on
+        // a hand-corrupted store, encoded here as a zero hash — decode then
+        // fails verification instead of silently dropping the entry).
+        let hash = from_hex(hex).unwrap_or([0u8; 32]);
+        out.extend_from_slice(&hash);
+        out.extend_from_slice(&info.len_raw.to_le_bytes());
+        out.extend_from_slice(&info.len_stored.to_le_bytes());
+        out.extend_from_slice(&info.flags.to_le_bytes());
+        out.extend_from_slice(&info.refcount.to_le_bytes());
+        out.extend_from_slice(&info.zero_since.unwrap_or(u64::MAX).to_le_bytes());
+        let ord = info
+            .pack
+            .as_deref()
+            .and_then(|p| pack_ord.get(p).copied())
+            .unwrap_or(u32::MAX);
+        out.extend_from_slice(&ord.to_le_bytes());
+        out.extend_from_slice(&info.pack_offset.unwrap_or(0).to_le_bytes());
+    }
+
+    out.extend_from_slice(&(index.assets.len() as u32).to_le_bytes());
+    for (name, chunks) in &index.assets {
+        out.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        out.extend_from_slice(name.as_bytes());
+        out.extend_from_slice(&(chunks.len() as u32).to_le_bytes());
+        for hex in chunks {
+            out.extend_from_slice(&from_hex(hex).unwrap_or([0u8; 32]));
+        }
+    }
+
+    let seal = cavs_hash::hash_chunk(&out);
+    out.extend_from_slice(&seal);
+    out
+}
+
+fn decode_index(bytes: &[u8]) -> Result<Index> {
+    let corrupt = |what: &str| StoreError::IndexCorrupt(what.to_string());
+    if bytes.len() < INDEX_HEADER_SIZE as usize + 32 {
+        return Err(corrupt("truncated"));
+    }
+    let (body, seal) = bytes.split_at(bytes.len() - 32);
+    if cavs_hash::hash_chunk(body) != <[u8; 32]>::try_from(seal).unwrap() {
+        return Err(corrupt("seal mismatch"));
+    }
+    if &body[..8] != INDEX_MAGIC {
+        return Err(corrupt("bad magic"));
+    }
+    struct Cur<'a> {
+        body: &'a [u8],
+        at: usize,
+    }
+    impl<'a> Cur<'a> {
+        fn take(&mut self, n: usize) -> Result<&'a [u8]> {
+            let s = self
+                .body
+                .get(self.at..self.at.saturating_add(n))
+                .ok_or_else(|| StoreError::IndexCorrupt("truncated".into()))?;
+            self.at += n;
+            Ok(s)
+        }
+        fn remaining(&self) -> usize {
+            self.body.len() - self.at
+        }
+    }
+    let mut cur = Cur { body, at: 8 };
+    macro_rules! take {
+        ($n:expr) => {
+            cur.take($n)
+        };
+    }
+    let u16le = |s: &[u8]| u16::from_le_bytes(s.try_into().unwrap());
+    let u32le = |s: &[u8]| u32::from_le_bytes(s.try_into().unwrap());
+    let u64le = |s: &[u8]| u64::from_le_bytes(s.try_into().unwrap());
+
+    let version = u16le(take!(2)?);
+    if version > INDEX_VERSION {
+        return Err(corrupt(&format!(
+            "index version {version} was written by a newer CAVS; this build reads up to {INDEX_VERSION}"
+        )));
+    }
+    let header_size = u16le(take!(2)?) as usize;
+    if header_size < INDEX_HEADER_SIZE as usize || header_size >= body.len() {
+        return Err(corrupt("bad header size"));
+    }
+    let record_size = u16le(take!(2)?);
+    if record_size != INDEX_RECORD_SIZE {
+        return Err(corrupt(&format!(
+            "record size {record_size} unsupported (expected {INDEX_RECORD_SIZE})"
+        )));
+    }
+    take!(2)?; // flags
+    let layout = match take!(1)?[0] {
+        0 => StoreLayout::Loose,
+        1 => StoreLayout::Packfiles,
+        _ => return Err(corrupt("bad layout")),
+    };
+    take!(1)?; // reserved
+    let generation = u64le(take!(8)?);
+    take!(8)?; // created_at
+    take!(header_size - 34)?; // 34 bytes read so far; skip any v1.x header growth
+
+    let pack_count = u32le(take!(4)?) as usize;
+    // Counts come from untrusted bytes: never let a crafted count reserve
+    // more memory than the file could possibly describe (2B minimum/pack).
+    if pack_count > body.len() / 2 {
+        return Err(corrupt("pack count exceeds file size"));
+    }
+    let mut packs = Vec::with_capacity(pack_count);
+    for _ in 0..pack_count {
+        let len = u16le(take!(2)?) as usize;
+        let s = std::str::from_utf8(take!(len)?).map_err(|_| corrupt("pack id not utf-8"))?;
+        packs.push(s.to_string());
+    }
+
+    let chunk_count = u64le(take!(8)?) as usize;
+    if chunk_count
+        .checked_mul(INDEX_RECORD_SIZE as usize)
+        .is_none_or(|need| need > cur.remaining())
+    {
+        return Err(corrupt("chunk count exceeds file size"));
+    }
+    let mut chunks = BTreeMap::new();
+    for _ in 0..chunk_count {
+        let hash: [u8; 32] = take!(32)?.try_into().unwrap();
+        let len_raw = u32le(take!(4)?);
+        let len_stored = u32le(take!(4)?);
+        let flags = u32le(take!(4)?);
+        let refcount = u64le(take!(8)?);
+        let zero_since = match u64le(take!(8)?) {
+            u64::MAX => None,
+            v => Some(v),
+        };
+        let ord = u32le(take!(4)?);
+        let pack_offset = u64le(take!(8)?);
+        let pack = if ord == u32::MAX {
+            None
+        } else {
+            Some(
+                packs
+                    .get(ord as usize)
+                    .ok_or_else(|| corrupt("pack ordinal out of range"))?
+                    .clone(),
+            )
+        };
+        chunks.insert(
+            to_hex(&hash),
+            ChunkInfo {
+                len_raw,
+                len_stored,
+                flags,
+                refcount,
+                zero_since,
+                pack_offset: pack.is_some().then_some(pack_offset),
+                pack,
+            },
+        );
+    }
+
+    let asset_count = u32le(take!(4)?) as usize;
+    let mut assets = BTreeMap::new();
+    for _ in 0..asset_count {
+        let len = u16le(take!(2)?) as usize;
+        let name = std::str::from_utf8(take!(len)?)
+            .map_err(|_| corrupt("asset name not utf-8"))?
+            .to_string();
+        let n = u32le(take!(4)?) as usize;
+        if n > cur.remaining() / 32 {
+            return Err(corrupt("asset chunk count exceeds file size"));
+        }
+        let mut hexes = Vec::with_capacity(n);
+        for _ in 0..n {
+            let hash: [u8; 32] = take!(32)?.try_into().unwrap();
+            hexes.push(to_hex(&hash));
+        }
+        assets.insert(name, hexes);
+    }
+    if cur.remaining() != 0 {
+        return Err(corrupt("trailing bytes"));
+    }
+    Ok(Index {
+        chunks,
+        assets,
+        layout,
+        generation,
+    })
 }
 
 /// Copy `src` to `dst` unless `dst` already exists with the same length.
@@ -987,6 +1562,23 @@ impl GlobalStore {
 /// equal-length destination is the same object — skipping the copy makes
 /// re-exports into the same tree effectively incremental. Returns whether
 /// a copy happened.
+/// Inverse of the BG4 byte-grouping pretransform (mirrors
+/// `cavs_format::bg4_ungroup`; duplicated to avoid a dependency cycle —
+/// cavs-format depends on this crate).
+fn bg4_ungroup(grouped: &[u8]) -> Vec<u8> {
+    let len = grouped.len();
+    let mut out = vec![0u8; len];
+    let mut it = grouped.iter();
+    for lane in 0..4 {
+        let mut i = lane;
+        while i < len {
+            out[i] = *it.next().unwrap();
+            i += 4;
+        }
+    }
+    out
+}
+
 fn copy_if_different(src: &Path, dst: &Path) -> Result<bool> {
     std::fs::create_dir_all(dst.parent().unwrap())?;
     let same = match (std::fs::metadata(src), std::fs::metadata(dst)) {
@@ -1031,6 +1623,362 @@ mod tests {
             signer_pubkey: None,
             meta: vec![],
         }
+    }
+
+    #[test]
+    fn publish_batch_is_atomic_and_aggregates_packs() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = vec![1u8; 1000];
+        let b = vec![2u8; 1000];
+        let (ha, hb) = (hash_chunk(&a), hash_chunk(&b));
+
+        {
+            let mut store =
+                GlobalStore::open_with_layout(dir.path(), Some(StoreLayout::Packfiles)).unwrap();
+            let ledger_at_creation = std::fs::read(dir.path().join("index.bin")).unwrap();
+            store.begin_publish_batch();
+            assert!(store.put_chunk(&ha, &a, 0, a.len() as u32).unwrap());
+            store.publish_asset(&rec("v1", &[&ha])).unwrap();
+            assert!(store.put_chunk(&hb, &b, 0, b.len() as u32).unwrap());
+            store.publish_asset(&rec("v2", &[&ha, &hb])).unwrap();
+
+            // In-memory ledger sees both; nothing is on disk yet (a crash
+            // here must leave the store exactly as before the batch). Disk
+            // state is checked directly — opening a second store would sweep
+            // the batch's open .part pack (writers are lock-serialized in
+            // real use).
+            assert!(store.has_asset("v1") && store.has_asset("v2"));
+            assert!(store.get_asset("v1").is_err(), "record file deferred");
+            assert_eq!(
+                std::fs::read(dir.path().join("index.bin")).unwrap(),
+                ledger_at_creation,
+                "ledger deferred"
+            );
+            assert!(!dir.path().join("assets/v1.json").exists());
+
+            store.commit_publish_batch().unwrap();
+        }
+
+        // Reopen: everything from the batch is persisted, and both assets
+        // share ONE aggregated pack (not one pack per publish).
+        let store = GlobalStore::open(dir.path()).unwrap();
+        assert!(store.get_asset("v1").is_ok() && store.get_asset("v2").is_ok());
+        assert_eq!(store.chunk_info(&ha).unwrap().refcount, 2);
+        assert_eq!(store.chunk_info(&hb).unwrap().refcount, 1);
+        let stats = store.stats();
+        assert_eq!(stats.unique_chunks, 2);
+        assert_eq!(stats.pack_count, 1, "batch aggregates into one pack");
+        assert_eq!(store.verify().unwrap(), 2);
+    }
+
+    #[test]
+    fn gc_sweeps_orphan_packs() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store =
+            GlobalStore::open_with_layout(dir.path(), Some(StoreLayout::Packfiles)).unwrap();
+        let a = vec![7u8; 2000];
+        let ha = hash_chunk(&a);
+        store.put_chunk(&ha, &a, 0, a.len() as u32).unwrap();
+        store.publish_asset(&rec("live", &[&ha])).unwrap();
+
+        // A sealed pack no ledger entry references — what a session that
+        // rolled over a pack but died before commit leaves behind.
+        let orphan = dir
+            .path()
+            .join("packs/de/dead".to_owned() + &"be".repeat(30) + ".cavspack");
+        std::fs::create_dir_all(orphan.parent().unwrap()).unwrap();
+        std::fs::write(&orphan, b"orphaned pack bytes").unwrap();
+
+        let (_removed, bytes) = store.gc(0).unwrap();
+        assert!(!orphan.exists(), "orphan pack must be swept");
+        assert!(bytes >= 19, "reclaimed bytes must count the orphan");
+        // The referenced pack survives and the store still verifies.
+        assert_eq!(store.verify().unwrap(), 1);
+    }
+
+    #[test]
+    fn binary_index_roundtrip_and_corruption_detection() {
+        let mut index = Index {
+            layout: StoreLayout::Packfiles,
+            ..Index::default()
+        };
+        let pack = "ab".to_string() + &"cd".repeat(31);
+        for i in 0u64..500 {
+            let h = hash_chunk(&i.to_le_bytes());
+            index.chunks.insert(
+                to_hex(&h),
+                ChunkInfo {
+                    len_raw: 1000 + i as u32,
+                    len_stored: 900,
+                    flags: (i % 4) as u32,
+                    refcount: i % 3,
+                    zero_since: (i % 3 == 0).then_some(i),
+                    pack: (i % 2 == 0).then(|| pack.clone()),
+                    pack_offset: (i % 2 == 0).then_some(i * 900),
+                },
+            );
+        }
+        index.assets.insert(
+            "game".into(),
+            index.chunks.keys().take(40).cloned().collect(),
+        );
+
+        let bytes = encode_index(&index);
+        let back = decode_index(&bytes).unwrap();
+        assert_eq!(back.layout, index.layout);
+        assert_eq!(back.assets, index.assets);
+        assert_eq!(back.chunks.len(), index.chunks.len());
+        for (hex, info) in &index.chunks {
+            let b = &back.chunks[hex];
+            assert_eq!(
+                (b.len_raw, b.len_stored, b.flags, b.refcount, b.zero_since),
+                (
+                    info.len_raw,
+                    info.len_stored,
+                    info.flags,
+                    info.refcount,
+                    info.zero_since
+                )
+            );
+            assert_eq!((&b.pack, b.pack_offset), (&info.pack, info.pack_offset));
+        }
+
+        // Any bit flip must be caught by the BLAKE3 seal.
+        let mut corrupt = bytes.clone();
+        corrupt[100] ^= 1;
+        assert!(matches!(
+            decode_index(&corrupt),
+            Err(StoreError::IndexCorrupt(_))
+        ));
+        assert!(matches!(
+            decode_index(&bytes[..40]),
+            Err(StoreError::IndexCorrupt(_))
+        ));
+    }
+
+    #[test]
+    fn legacy_json_index_is_read_and_migrated_on_save() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = vec![5u8; 800];
+        let ha = hash_chunk(&a);
+        // A pre-1.6 store: index.json on disk, no index.bin.
+        {
+            let mut store = GlobalStore::open(dir.path()).unwrap();
+            store.put_chunk(&ha, &a, 0, a.len() as u32).unwrap();
+            store.publish_asset(&rec("old", &[&ha])).unwrap();
+            let json = serde_json::to_vec_pretty(&store.index).unwrap();
+            std::fs::write(dir.path().join("index.json"), json).unwrap();
+            std::fs::remove_file(dir.path().join("index.bin")).unwrap();
+            // A pre-1.6 store has no binary snapshots at all.
+            let _ = std::fs::remove_file(dir.path().join("index.bin.prev"));
+        }
+        // Opens from index.json; the next save migrates to index.bin.
+        let mut store = GlobalStore::open(dir.path()).unwrap();
+        assert!(store.has_asset("old"));
+        store.save_index().unwrap();
+        assert!(dir.path().join("index.bin").exists());
+        assert!(!dir.path().join("index.json").exists());
+        assert!(GlobalStore::open(dir.path()).unwrap().has_asset("old"));
+    }
+
+    #[test]
+    fn corrupt_index_falls_back_to_previous_generation() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = vec![1u8; 500];
+        let b = vec![2u8; 500];
+        let (ha, hb) = (hash_chunk(&a), hash_chunk(&b));
+        {
+            let mut store = GlobalStore::open(dir.path()).unwrap();
+            store.put_chunk(&ha, &a, 0, a.len() as u32).unwrap();
+            store.publish_asset(&rec("first", &[&ha])).unwrap();
+            store.put_chunk(&hb, &b, 0, b.len() as u32).unwrap();
+            store.publish_asset(&rec("second", &[&hb])).unwrap();
+        }
+        let bin = dir.path().join("index.bin");
+        let prev = dir.path().join("index.bin.prev");
+        assert!(prev.exists(), "save keeps one previous generation");
+
+        // Corrupt the live snapshot: open recovers from the previous
+        // generation (one publish behind) instead of failing.
+        let mut bytes = std::fs::read(&bin).unwrap();
+        let mid = bytes.len() / 2;
+        bytes[mid] ^= 0xff;
+        std::fs::write(&bin, &bytes).unwrap();
+        let store = GlobalStore::open(dir.path()).unwrap();
+        assert!(store.has_asset("first"));
+        assert!(!store.has_asset("second"), "prev is one generation behind");
+
+        // A crash between save's two renames leaves only .prev: same story.
+        std::fs::remove_file(&bin).unwrap();
+        assert!(GlobalStore::open(dir.path()).unwrap().has_asset("first"));
+
+        // Both generations corrupt: a clear error, never a silent new store.
+        std::fs::write(&bin, b"garbage").unwrap();
+        std::fs::write(&prev, b"garbage").unwrap();
+        let _ = std::fs::remove_file(dir.path().join("index.json"));
+        assert!(matches!(
+            GlobalStore::open(dir.path()),
+            Err(StoreError::IndexCorrupt(_))
+        ));
+    }
+
+    #[test]
+    fn stale_tmp_snapshot_is_dropped_on_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = vec![3u8; 300];
+        let ha = hash_chunk(&a);
+        {
+            let mut store = GlobalStore::open(dir.path()).unwrap();
+            store.put_chunk(&ha, &a, 0, a.len() as u32).unwrap();
+            store.publish_asset(&rec("keep", &[&ha])).unwrap();
+        }
+        // A crash mid-save leaves a partial staging file behind.
+        std::fs::write(dir.path().join("index.bin.tmp"), b"half-written").unwrap();
+        let store = GlobalStore::open(dir.path()).unwrap();
+        assert!(store.has_asset("keep"));
+        assert!(!dir.path().join("index.bin.tmp").exists());
+    }
+
+    #[test]
+    fn future_index_version_is_rejected_with_clear_error() {
+        let index = Index::default();
+        let mut bytes = encode_index(&index);
+        // Bump the header version and re-seal so only the version check trips.
+        bytes[8..10].copy_from_slice(&99u16.to_le_bytes());
+        let body_len = bytes.len() - 32;
+        let seal = cavs_hash::hash_chunk(&bytes[..body_len]);
+        bytes[body_len..].copy_from_slice(&seal);
+        match decode_index(&bytes) {
+            Err(StoreError::IndexCorrupt(msg)) => {
+                assert!(msg.contains("newer"), "got: {msg}")
+            }
+            other => panic!("expected version rejection, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn quarantine_holds_packs_and_restores_referenced_ones() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store =
+            GlobalStore::open_with_layout(dir.path(), Some(StoreLayout::Packfiles)).unwrap();
+        let a = vec![9u8; 3000];
+        let ha = hash_chunk(&a);
+        store.put_chunk(&ha, &a, 0, a.len() as u32).unwrap();
+        store.publish_asset(&rec("live", &[&ha])).unwrap();
+        let pack_hex = store.chunk_info(&ha).unwrap().pack.clone().unwrap();
+        let pack_path = packfile::pack_path(&store.packs_dir(), &pack_hex);
+
+        // Quarantining a pack the ledger still references is recoverable:
+        // the sweep notices and moves it straight back.
+        store.quarantine_pack(&pack_hex).unwrap();
+        assert!(!pack_path.exists());
+        assert_eq!(store.sweep_quarantine(0).unwrap(), 0);
+        assert!(pack_path.exists(), "referenced pack restored, not deleted");
+        assert_eq!(store.verify().unwrap(), 1);
+
+        // Same protection at open time (e.g. after a .prev ledger recovery).
+        store.quarantine_pack(&pack_hex).unwrap();
+        drop(store);
+        let store = GlobalStore::open(dir.path()).unwrap();
+        assert!(pack_path.exists(), "open restores quarantined live packs");
+        assert_eq!(store.verify().unwrap(), 1);
+    }
+
+    #[test]
+    fn orphan_packs_age_through_quarantine_before_deletion() {
+        let dir = tempfile::tempdir().unwrap();
+        let store =
+            GlobalStore::open_with_layout(dir.path(), Some(StoreLayout::Packfiles)).unwrap();
+        let orphan_hex = "dead".to_owned() + &"be".repeat(30);
+        let orphan = packfile::pack_path(&store.packs_dir(), &orphan_hex);
+        std::fs::create_dir_all(orphan.parent().unwrap()).unwrap();
+        std::fs::write(&orphan, b"orphaned pack bytes").unwrap();
+
+        // Stage 1: past its grace period, the orphan is quarantined.
+        store.quarantine_orphan_packs(0).unwrap();
+        let qpack = dir.path().join(format!("quarantine/{orphan_hex}.cavspack"));
+        assert!(!orphan.exists() && qpack.exists());
+
+        // Still inside the quarantine period: nothing is deleted.
+        assert_eq!(store.sweep_quarantine(3600).unwrap(), 0);
+        assert!(qpack.exists());
+
+        // Backdate the quarantine stamp: now the sweep may delete.
+        std::fs::write(
+            dir.path().join(format!("quarantine/{orphan_hex}.qsince")),
+            "1",
+        )
+        .unwrap();
+        assert_eq!(store.sweep_quarantine(3600).unwrap(), 19);
+        assert!(!qpack.exists());
+    }
+
+    /// Scale probe for the ledger snapshot (not a correctness test):
+    /// `cargo test -p cavs-store index_scale -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn index_scale_1m_chunks_bin_vs_json() {
+        let mut index = Index {
+            layout: StoreLayout::Packfiles,
+            ..Index::default()
+        };
+        let n = 1_000_000u64;
+        for i in 0..n {
+            let h = hash_chunk(&i.to_le_bytes());
+            index.chunks.insert(
+                to_hex(&h),
+                ChunkInfo {
+                    len_raw: 65536,
+                    len_stored: 60000,
+                    flags: 1,
+                    refcount: 2,
+                    zero_since: None,
+                    pack: Some(to_hex(&hash_chunk(&(i / 2048).to_le_bytes()))),
+                    pack_offset: Some((i % 2048) * 60000),
+                },
+            );
+        }
+        let t = std::time::Instant::now();
+        let bin = encode_index(&index);
+        let t_enc = t.elapsed();
+        let t = std::time::Instant::now();
+        let back = decode_index(&bin).unwrap();
+        let t_dec = t.elapsed();
+        assert_eq!(back.chunks.len(), index.chunks.len());
+
+        let t = std::time::Instant::now();
+        let json = serde_json::to_vec_pretty(&index).unwrap();
+        let t_jenc = t.elapsed();
+        let t = std::time::Instant::now();
+        let _: Index = serde_json::from_slice(&json).unwrap();
+        let t_jdec = t.elapsed();
+
+        println!("1M chunks:");
+        println!(
+            "  bin : {} bytes, encode {t_enc:?}, decode {t_dec:?}",
+            bin.len()
+        );
+        println!(
+            "  json: {} bytes, encode {t_jenc:?}, decode {t_jdec:?}",
+            json.len()
+        );
+    }
+
+    #[test]
+    fn commit_publish_batch_without_batch_is_a_noop() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store =
+            GlobalStore::open_with_layout(dir.path(), Some(StoreLayout::Packfiles)).unwrap();
+        store.commit_publish_batch().unwrap();
+        // Non-batched publishes still persist eagerly.
+        let a = vec![9u8; 600];
+        let ha = hash_chunk(&a);
+        store.put_chunk(&ha, &a, 0, a.len() as u32).unwrap();
+        store.publish_asset(&rec("solo", &[&ha])).unwrap();
+        assert!(GlobalStore::open(dir.path())
+            .unwrap()
+            .get_asset("solo")
+            .is_ok());
     }
 
     #[test]

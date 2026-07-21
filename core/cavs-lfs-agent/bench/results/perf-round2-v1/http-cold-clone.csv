@@ -1,0 +1,10 @@
+[http-bench] workdir: /var/folders/py/yszxdqmj51552n0qcr9k2t2h0000gn/T/tmp.DobfYGY9Jv
+scenario,agent,metric,value
+big-binary,prev,time_s,4.51
+big-binary,prev,http_requests,6179
+big-binary,new,time_s,3.50
+big-binary,new,http_requests,46
+many-files,prev,time_s,6.60
+many-files,prev,http_requests,5741
+many-files,new,time_s,4.91
+many-files,new,http_requests,840

@@ -6,6 +6,83 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Round 2.1 hardening (pre-merge P0s).**
+  - *Crash-safe ledger writes*: `index.bin` is staged to a temp file,
+    fsynced, read back and seal-verified before an atomic rename; the
+    outgoing snapshot is kept one generation as `index.bin.prev` and the
+    open path falls back to it when the current snapshot is corrupt or
+    missing. Both-generations-corrupt is a clear `IndexCorrupt` error,
+    never a silent empty store.
+  - *Formal `index.bin` header*: self-describing header (version,
+    header_size, record_size, generation, created_at) — readers reject
+    snapshots written by a newer CAVS with a clear message, header growth
+    within v1 stays compatible, and untrusted counts can no longer drive
+    allocations past the file size.
+  - *GC quarantine*: packs are never deleted directly. Dead and orphaned
+    packs move to `quarantine/` (stamped), get deleted only after they
+    also age out of quarantine, and are restored automatically — by the
+    sweep or at open — if the ledger references them again (e.g. after an
+    `index.bin.prev` recovery).
+  - *Read-amplification cap in coalescing*: a range group's gap bytes are
+    capped at 15% of its useful bytes, so a sparse update can no longer
+    download multiples of what it needs; per-group amplification is
+    bounded at 1.15× by construction (`FetchStats.useful_bytes` exposes
+    it).
+  - *Global download backpressure* (cavs-fetch): a process-wide weighted
+    semaphore caps wire bytes in flight (default 128 MiB,
+    `CAVS_FETCH_MAX_INFLIGHT_BYTES` to override), so N concurrent fetches
+    can't stack N × connections × 8 MiB of buffers.
+    `FetchStats.throttle_waits` counts backpressure events.
+  - *Selective retries*: transport errors and short reads get one
+    transparent retry; a chunk failing BLAKE3 inside a coalesced range is
+    re-requested alone (fresh request for its exact subrange) instead of
+    repeating the whole range, then fails with a stable
+    `CAVS-E-*` diagnosis. `FetchStats.requests`/`selective_retries` count
+    them.
+  - *WAN benchmark harness*: `range_server.py` honours `LATENCY_MS` to
+    emulate per-request WAN latency in `http-bench.sh`.
+- **Coalesced range fetch** (cavs-fetch + serverless client): missing
+  chunks of the same pack are sorted and fetched in Range GETs of up to
+  8 MiB (gaps ≤ 64 KiB ride along); each chunk is still BLAKE3-verified
+  individually. Cold clone over HTTP: 6,179 → 46 requests on a 104 MiB
+  asset (−99.3%), −85% on 250 small files (`bench/results/perf-round2-v1`).
+- **Binary store ledger** (`index.bin`, CAVSIDX1): compact fixed-record
+  snapshot with a BLAKE3 seal replaces pretty-JSON `index.json` — −77%
+  size and −48% load time at 1M chunks; legacy stores are read and
+  migrated on the next save.
+- **Orphan-pack GC**: `gc()` also sweeps sealed packs no ledger entry
+  references (residue of a push killed between pack rollover and commit),
+  honoring the grace period against pack mtime.
+- `bench/http-bench.sh` + `bench/range_server.py`: HTTP cold-clone
+  benchmark (requests + wall time) for A/B-ing agent binaries.
+
+- **BG4 chunk codec** (`CHUNK_FLAG_BG4`, Xet-inspired): per-chunk choice of
+  plain zstd vs a byte-grouping-of-4 pretransform + zstd, attempted only
+  when plain zstd underperforms — a large win on float/int payloads (model
+  weights, vertex buffers, audio samples). Opt-in at the `Writer`
+  (`set_bg4`); the LFS agent enables it by default (`--no-bg4` to disable).
+  Decoded by cavs-format, cavs-fetch, the serverless client and store
+  verify; cavs-server decodes BG4 server-side, so the wire protocol and the
+  non-Rust SDKs are unchanged.
+- **Session-batched publish** (`GlobalStore::begin_publish_batch` /
+  `commit_publish_batch`, Xet-style finalize): inside a batch, publishes
+  update only the in-memory ledger, the ingest pack aggregates across
+  assets (rollover at the preferred pack size instead of one pack per
+  asset), and `index.json` is written once at commit. A crash before the
+  commit leaves the on-disk store untouched.
+
+### Changed
+
+- **cavs-lfs-agent publishes at session finalize.** Uploads only ingest;
+  the export tree refresh and the ledger commit happen once per push, at
+  terminate. A many-object push no longer rewrites the store ledger per
+  object nor produces one pack per object; an interrupted push publishes
+  nothing and the retry repairs (new crash tests cover this).
+- New `tensor` benchmark scenario (float32 random-walk weights) in
+  `bench/gen.py`.
+
 ## [1.5.1] — LFS agent progress fixes
 
 ### Fixed

@@ -50,6 +50,12 @@ struct Args {
     #[arg(long, default_value = "zstd-3")]
     compression: String,
 
+    /// Disable the per-chunk BG4 byte-grouping pretransform (on by default
+    /// with compression; helps float/int payloads like model weights,
+    /// vertex buffers and audio samples).
+    #[arg(long)]
+    no_bg4: bool,
+
     /// Require signed manifests on download: 64-hex Ed25519 public key.
     #[arg(long)]
     pubkey: Option<String>,
@@ -99,6 +105,7 @@ fn main() -> Result<()> {
         profile_label,
         compress,
         zstd_level,
+        bg4: !args.no_bg4,
         sign_key,
     };
 
@@ -229,15 +236,7 @@ fn main() -> Result<()> {
                         }
                     },
                 };
-                match upload::handle(
-                    tree,
-                    &mut write.store,
-                    &ul.oid,
-                    &ul.path,
-                    ul.size,
-                    &upload_cfg,
-                    &out,
-                ) {
+                match upload::handle(write, &ul.oid, &ul.path, ul.size, &upload_cfg, &out) {
                     Ok(()) => out.send(&Complete::ok_upload(&ul.oid)),
                     Err(e) => {
                         eprintln!("[lfs-agent] upload {} failed: {e:#}", ul.oid);
@@ -251,6 +250,23 @@ fn main() -> Result<()> {
             Event::Terminate => {
                 eprintln!("[lfs-agent] terminate");
                 break;
+            }
+        }
+    }
+
+    // Session finalize (Xet-style): commit the batched publishes and export
+    // every uploaded asset into the static tree, once per push. Reached on
+    // terminate and on EOF; a crash before this point publishes nothing, so
+    // the next push simply re-ingests. An error here is fatal — the push
+    // must not look successful with nothing published.
+    if let Some(session) = session.as_mut() {
+        if let Some(write) = session.write.as_mut() {
+            let n = write.pending_exports.len();
+            write
+                .finalize()
+                .with_context(|| format!("finalizing push session ({n} assets)"))?;
+            if n > 0 {
+                eprintln!("[lfs-agent] finalize: published {n} assets");
             }
         }
     }

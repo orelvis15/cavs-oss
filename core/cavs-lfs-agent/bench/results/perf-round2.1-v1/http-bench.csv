@@ -1,0 +1,21 @@
+=== WAN 25ms: r1 (per-chunk) vs r2.1 (current) ===
+scenario,agent,metric,value
+big-binary,agent-a,time_s,26.78
+big-binary,agent-a,http_requests,6179
+big-binary,agent-b,time_s,3.66
+big-binary,agent-b,http_requests,47
+many-files,agent-a,time_s,46.46
+many-files,agent-a,http_requests,5741
+many-files,agent-b,time_s,29.29
+many-files,agent-b,http_requests,854
+=== localhost 0ms: r2 (no guards) vs r2.1 (current) ===
+scenario,agent,metric,value
+big-binary,agent-a,time_s,3.36
+big-binary,agent-a,http_requests,46
+big-binary,agent-b,time_s,3.80
+big-binary,agent-b,http_requests,47
+many-files,agent-a,time_s,4.65
+many-files,agent-a,http_requests,840
+many-files,agent-b,time_s,4.73
+many-files,agent-b,http_requests,854
+[bench] done
