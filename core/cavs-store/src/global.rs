@@ -744,7 +744,17 @@ impl GlobalStore {
             ] {
                 let dst = out.join(&rel);
                 std::fs::create_dir_all(dst.parent().unwrap())?;
-                std::fs::copy(&src, &dst)?;
+                // Packs and their indexes are immutable and content-addressed:
+                // if the destination already exists with the same length it is
+                // the same object, so skip the copy. This makes re-exporting
+                // into the same tree effectively incremental.
+                let same = match (std::fs::metadata(&src), std::fs::metadata(&dst)) {
+                    (Ok(s), Ok(d)) => s.len() == d.len(),
+                    _ => false,
+                };
+                if !same {
+                    std::fs::copy(&src, &dst)?;
+                }
                 written.push(rel);
             }
         }
@@ -806,6 +816,85 @@ impl GlobalStore {
                     "chunks": chunks,
                 }))?,
             )?;
+            written.push(rel);
+        }
+        Ok(written)
+    }
+
+    /// Build the runtime [`cavs_proto::Manifest`] for a stored asset (the
+    /// reconstruction structure a client needs: ordered chunks per
+    /// track/segment, with each chunk's raw length pulled from the store
+    /// ledger). Mirrors the server's `AppState::manifest`, but reads from an
+    /// [`AssetRecord`] + the chunk ledger so a *serverless* client can plan a
+    /// fetch from a static export.
+    pub fn asset_manifest(&self, name: &str) -> Result<cavs_proto::Manifest> {
+        let record = self.get_asset(name)?;
+        let chunk_ref = |hex: &str| {
+            let len = from_hex(hex)
+                .and_then(|h| self.chunk_info(&h))
+                .map(|i| i.len_raw)
+                .unwrap_or(0);
+            cavs_proto::ChunkRef {
+                hash: hex.to_string(),
+                len,
+            }
+        };
+        // Track kind labels as encoded by the `.cavs` container (see
+        // `cavs_format::TrackKind`); re-stated locally because cavs-format
+        // depends on this crate, so we cannot depend on it back.
+        let kind_label = |kind: u8| match kind {
+            0 => "video",
+            1 => "audio",
+            2 => "subtitle",
+            _ => "data",
+        };
+        Ok(cavs_proto::Manifest {
+            asset: record.name.clone(),
+            asset_uuid: record.asset_uuid.clone(),
+            tracks: record
+                .tracks
+                .iter()
+                .map(|t| cavs_proto::ManifestTrack {
+                    track_id: t.track_id,
+                    kind: kind_label(t.kind).to_string(),
+                    codec: t.codec.clone(),
+                    name: t.name.clone(),
+                    timescale: t.timescale,
+                    init_chunks: t.init_chunks.iter().map(|h| chunk_ref(h)).collect(),
+                })
+                .collect(),
+            segments: record
+                .segments
+                .iter()
+                .map(|s| cavs_proto::ManifestSegment {
+                    segment_id: s.segment_id,
+                    track_id: s.track_id,
+                    pts_start: s.pts_start,
+                    duration: s.duration,
+                    random_access: s.random_access,
+                    chunks: s.chunks.iter().map(|h| chunk_ref(h)).collect(),
+                })
+                .collect(),
+            dict: record.dict.clone(),
+            chunk_table: record.chunk_table.clone(),
+            merkle_root: record.merkle_root.clone(),
+            signature: record.signature.clone(),
+            signer_pubkey: record.signer_pubkey.clone(),
+            meta: record.meta.clone(),
+        })
+    }
+
+    /// Write `assets/<name>/manifest.json` for every asset into an export
+    /// tree, so a serverless client can read the reconstruction structure
+    /// with no running server. Returns the relative paths written.
+    pub fn export_static_manifests(&self, out: &Path) -> Result<Vec<String>> {
+        let mut written = Vec::new();
+        for name in self.asset_names() {
+            let manifest = self.asset_manifest(&name)?;
+            let rel = format!("assets/{name}/manifest.json");
+            let dst = out.join(&rel);
+            std::fs::create_dir_all(dst.parent().unwrap())?;
+            std::fs::write(&dst, serde_json::to_vec_pretty(&manifest)?)?;
             written.push(rel);
         }
         Ok(written)

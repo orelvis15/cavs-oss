@@ -27,9 +27,11 @@
 //!
 //! See `FORMAT.md` at the workspace root for the full byte-level spec.
 
+mod ingest;
 mod reader;
 mod writer;
 
+pub use ingest::{ingest_into_store, IngestStats};
 pub use reader::{Reader, SignatureStatus, VerifyReport};
 pub use writer::{PackStats, Writer};
 
@@ -217,6 +219,8 @@ pub enum FormatError {
     TrackNotFound(u32),
     #[error("zstd error: {0}")]
     Zstd(std::io::Error),
+    #[error("store error: {0}")]
+    Store(#[from] cavs_store::StoreError),
 }
 
 pub type Result<T> = std::result::Result<T, FormatError>;

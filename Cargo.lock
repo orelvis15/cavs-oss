@@ -518,6 +518,7 @@ name = "cavs-store"
 version = "1.4.0"
 dependencies = [
  "cavs-hash",
+ "cavs-proto",
  "serde",
  "serde_json",
  "tempfile",
