@@ -19,6 +19,12 @@ chunks:
 
 (Numbers from `core/cavs-lfs-agent/e2e/run.sh`, reproducible.)
 
+A full comparison — plain git (aggressive gc) vs vanilla Git LFS vs the CAVS
+agent, four deterministic scenarios, storage/transfer/time plus the honest
+negatives (full rewrites, small-file trees, per-object push overhead) — is
+measured in [core/cavs-lfs-agent/bench/RESULTS.md](../core/cavs-lfs-agent/bench/RESULTS.md),
+reproducible with `bench/run.sh`.
+
 ## How it works
 
 ```

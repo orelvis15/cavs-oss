@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""Deterministic versioned datasets for the LFS benchmark harness.
+
+Four scenarios, each a sequence of full version trees under
+<root>/<scenario>/v<N>/…, meant to model how game/binary assets actually
+evolve:
+
+  big-binary    100 MiB incompressible asset; each version edits ~1.25 MiB
+                in place and appends 1 MiB (5 versions).
+  compressible  64 MiB semi-structured pack (~2-3x zstd-compressible);
+                each version replaces ~2% of its blocks (4 versions).
+  many-files    250 binary files, log-normal sizes (~90 MiB total); each
+                version partially edits 10% of the files (4 versions).
+  full-rewrite  48 MiB blob fully rewritten (2 versions) — the honest
+                worst case, where chunk dedup cannot help.
+
+Everything is seeded: identical trees on every run/machine.
+"""
+
+import os
+import random
+import sys
+
+
+def wbytes(path: str, data: bytes) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
+
+
+def mutate(data: bytearray, rng: random.Random, n_edits: int, edit_size: int) -> None:
+    for _ in range(n_edits):
+        off = rng.randrange(0, max(1, len(data) - edit_size))
+        data[off : off + edit_size] = rng.randbytes(edit_size)
+
+
+def scenario_big(root: str) -> None:
+    rng = random.Random(42)
+    data = bytearray(rng.randbytes(100 * 2**20))
+    for v in range(1, 6):
+        if v > 1:
+            mutate(data, rng, 10, 128 * 1024)
+            data += rng.randbytes(2**20)
+        wbytes(f"{root}/big-binary/v{v}/asset.bin", bytes(data))
+
+
+def scenario_compressible(root: str) -> None:
+    rng = random.Random(7)
+
+    def block() -> bytes:  # 16 KiB: repeated pattern + noise tail
+        pat = rng.randbytes(512)
+        return pat * 24 + rng.randbytes(4096)
+
+    blocks = [block() for _ in range(4096)]  # 64 MiB
+    for v in range(1, 5):
+        if v > 1:
+            for _ in range(80):
+                blocks[rng.randrange(len(blocks))] = block()
+        wbytes(f"{root}/compressible/v{v}/data.pak", b"".join(blocks))
+
+
+def scenario_many(root: str) -> None:
+    rng = random.Random(1337)
+    files: dict[str, bytearray] = {}
+    for i in range(250):
+        size = int(rng.lognormvariate(12.2, 1.1))
+        size = max(4096, min(size, 8 * 2**20))
+        files[f"assets/f{i:03}.bin"] = bytearray(rng.randbytes(size))
+    for v in range(1, 5):
+        if v > 1:
+            for name in rng.sample(sorted(files), 25):
+                mutate(files[name], rng, 4, 32 * 1024)
+        for name, data in files.items():
+            wbytes(f"{root}/many-files/v{v}/{name}", bytes(data))
+
+
+def scenario_rewrite(root: str) -> None:
+    rng = random.Random(99)
+    for v in range(1, 3):
+        wbytes(f"{root}/full-rewrite/v{v}/blob.bin", rng.randbytes(48 * 2**20))
+
+
+def main() -> None:
+    root = sys.argv[1]
+    scenario_big(root)
+    scenario_compressible(root)
+    scenario_many(root)
+    scenario_rewrite(root)
+    print(f"datasets ready under {root}")
+
+
+if __name__ == "__main__":
+    main()
