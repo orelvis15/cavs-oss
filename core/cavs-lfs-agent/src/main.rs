@@ -40,8 +40,9 @@ struct Args {
     #[arg(long)]
     cache_dir: Option<std::path::PathBuf>,
 
-    /// Chunking profile for uploads (fastcdc-16k/32k/64k/128k[-n3],
-    /// fixed-256k/512k/1m, or auto).
+    /// Chunking profile for uploads: fastcdc-16k/32k/64k/128k/256k[-n3],
+    /// fixed-256k/512k/1m, or auto (per-file by size: <64 MiB -> 16k,
+    /// <512 MiB -> 64k, else 128k — tuned from bench/RESULTS.md).
     #[arg(long, default_value = "auto")]
     profile: String,
 
@@ -78,8 +79,13 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     // Fail fast on bad session-wide upload config, before speaking protocol.
-    let (mode, profile_label) =
-        upload::parse_profile(&args.profile).context("invalid --profile")?;
+    let auto = args.profile == "auto";
+    let (mode, profile_label) = if auto {
+        // Placeholder; auto resolves the profile per file, by size.
+        upload::parse_profile("fastcdc-64k")?
+    } else {
+        upload::parse_profile(&args.profile).context("invalid --profile")?
+    };
     let (compress, zstd_level) =
         upload::parse_compression(&args.compression).context("invalid --compression")?;
     let sign_key = args
@@ -88,6 +94,7 @@ fn main() -> Result<()> {
         .map(upload::load_sign_key)
         .transpose()?;
     let upload_cfg = upload::UploadCfg {
+        auto,
         mode,
         profile_label,
         compress,

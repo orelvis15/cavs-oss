@@ -19,6 +19,8 @@ use std::path::Path;
 /// Upload configuration fixed for the whole session.
 #[derive(Debug, Clone)]
 pub struct UploadCfg {
+    /// `--profile auto`: pick the chunking profile per file by size.
+    pub auto: bool,
     pub mode: ChunkMode,
     pub profile_label: &'static str,
     pub compress: bool,
@@ -26,9 +28,30 @@ pub struct UploadCfg {
     pub sign_key: Option<[u8; 32]>,
 }
 
+/// Size-tiered automatic profile selection, tuned from the committed
+/// benchmark sweep (bench/RESULTS.md): small chunks win on small and
+/// compressible files (update download −71% at 64 MiB compressible),
+/// fastcdc-64k wins on large incompressible blobs, and larger chunks bound
+/// per-asset metadata (manifest/chunk-map scale with chunk count) on huge
+/// files. Deliberately a pure function of size: the agent sees each LFS
+/// object in isolation, and a stable choice keeps chunk boundaries — and
+/// therefore cross-version dedup — intact as a file evolves. A file whose
+/// size crosses a tier loses dedup for that one transition.
+pub fn auto_profile(size: u64) -> &'static str {
+    const MIB: u64 = 1024 * 1024;
+    if size < 64 * MIB {
+        "fastcdc-16k"
+    } else if size < 512 * MIB {
+        "fastcdc-64k"
+    } else {
+        "fastcdc-128k"
+    }
+}
+
 /// Same labels/modes as cavs-cli's `ChunkProfile` and the SDK's
 /// `parse_profile` — chunk boundaries are part of a profile's identity, so
-/// the tables must stay in lockstep.
+/// the tables must stay in lockstep. (`auto` is handled before this table:
+/// see [`auto_profile`].)
 pub fn parse_profile(label: &str) -> Result<(ChunkMode, &'static str)> {
     let cdc = |min: usize, avg: usize, max: usize, norm: u8| ChunkMode::Cdc {
         min: min * 1024,
@@ -37,7 +60,7 @@ pub fn parse_profile(label: &str) -> Result<(ChunkMode, &'static str)> {
         norm,
     };
     Ok(match label {
-        "auto" | "fastcdc-64k" => (cdc(16, 64, 256, cavs_chunker::NORM_DEFAULT), "fastcdc-64k"),
+        "fastcdc-64k" => (cdc(16, 64, 256, cavs_chunker::NORM_DEFAULT), "fastcdc-64k"),
         "fastcdc-16k" => (cdc(4, 16, 64, cavs_chunker::NORM_TIGHT), "fastcdc-16k"),
         "fastcdc-32k" => (cdc(8, 32, 128, cavs_chunker::NORM_TIGHT), "fastcdc-32k"),
         "fastcdc-128k" => (
@@ -120,6 +143,19 @@ pub fn handle(
         return Ok(());
     }
 
+    // Resolve `--profile auto` per file, by size (see auto_profile).
+    let mut eff = cfg.clone();
+    if cfg.auto {
+        let picked = auto_profile(size);
+        let (mode, label) = parse_profile(picked)?;
+        eff.mode = mode;
+        eff.profile_label = label;
+        eprintln!(
+            "[lfs-agent] upload {}: auto profile -> {label} ({size} bytes)",
+            &oid[..12.min(oid.len())]
+        );
+    }
+
     // 1. Pack the blob as a `.cavs` with one raw data track named after the
     //    oid. `sha256:<oid> = <oid>` lets cavs-fetch verify the LFS oid on
     //    every future download.
@@ -127,7 +163,7 @@ pub fn handle(
         .prefix(oid)
         .suffix(".cavs")
         .tempfile_in(tree)?;
-    pack_blob(src, oid, tmp.path(), cfg)?;
+    pack_blob(src, oid, tmp.path(), &eff)?;
     out.send(&Progress::new(oid, size / 2, size / 2));
 
     // 2. Ingest into the shared store: only chunks new to the store are
@@ -208,4 +244,37 @@ fn pack_blob(src: &Path, oid: &str, dst: &Path, cfg: &UploadCfg) -> Result<()> {
     })?;
     w.finish()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auto_profile_tiers() {
+        const MIB: u64 = 1024 * 1024;
+        assert_eq!(auto_profile(0), "fastcdc-16k");
+        assert_eq!(auto_profile(360 * 1024), "fastcdc-16k");
+        assert_eq!(auto_profile(63 * MIB), "fastcdc-16k");
+        assert_eq!(auto_profile(64 * MIB), "fastcdc-64k");
+        assert_eq!(auto_profile(104 * MIB), "fastcdc-64k");
+        assert_eq!(auto_profile(511 * MIB), "fastcdc-64k");
+        assert_eq!(auto_profile(512 * MIB), "fastcdc-128k");
+        assert_eq!(auto_profile(4096 * MIB), "fastcdc-128k");
+    }
+
+    #[test]
+    fn auto_tiers_are_parseable() {
+        // Every label auto_profile can return must exist in the table.
+        for size in [0, 64 * 1024 * 1024, 512 * 1024 * 1024] {
+            parse_profile(auto_profile(size)).unwrap();
+        }
+    }
+
+    #[test]
+    fn explicit_auto_label_is_not_in_the_table() {
+        // `auto` is resolved before parse_profile; the table must reject it
+        // so nothing accidentally treats it as a concrete profile.
+        assert!(parse_profile("auto").is_err());
+    }
 }
