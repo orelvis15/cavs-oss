@@ -4,6 +4,60 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — Round 3: metadata batching, segmented index, adaptive fetch
+
+### Added
+
+- **Round 3A — session meta-packs & batching metadata resolver.**
+  - The publisher writes one `meta/packs/<id>.cmeta` per push (zstd JSON:
+    manifest + chunk locations of every uploaded object) plus a
+    self-healing `meta/index.json` (oid → pack; rebuilt from the packs
+    when unreadable). Content-addressed and immutable.
+  - `cavs_fetch::MetadataResolver`: L1 in-process + L2 disk metadata
+    caches (L2 validated against the remote's oid → pack mapping, so
+    re-pushes/repacks never serve stale locations), meta-pack prefetch of
+    push siblings, singleflight on the miss path, 5 s negative cache for
+    remotes without a meta index, per-asset fallback (full compatibility
+    with pre-Round-3 trees).
+  - Phase timing in `FetchStats` (`metadata_ms/plan_ms/payload_ms/
+    reconstruct_ms`, `metadata_requests`); the LFS agent logs a
+    per-object and per-session breakdown.
+  - cavs-server: `POST /v1/metadata/batch` (≤128 objects, per-object
+    partial responses) + `cavs_metadata_batch_*` metrics.
+- **Round 3B — segmented, mmapped index (opt-in).**
+  - `cavs store <dir> index-migrate`: migrates `index.bin` to
+    `index/` — immutable BLAKE3-sealed segments (fixed-stride sorted
+    records, mmap + binary search; the chunk table never loads into RAM),
+    per-generation `root.idx` + atomic `CURRENT` swap, begin/commit WAL,
+    delta segment per publish session, threshold-driven compaction,
+    current+previous generation retention, per-segment corruption
+    detection. `index.bin.pre-migration` is kept for rollback.
+  - `cavs store <dir> index-inspect` reports mode/generation/segments.
+- **Round 3B — chunk-map v2 by runs.** Meta-packs encode object locations
+  as runs of physically contiguous chunks (pack + start offset once,
+  implicit offsets, uniform flags collapse to a scalar) — >30% fewer
+  metadata bytes than per-chunk entries (tested). Dual reader; per-asset
+  `chunk-map.json` stays v1 for older clients.
+- **Round 3C — AIMD adaptive download concurrency.** `connections = 0`
+  (the new agent default) grows/shrinks the worker pool between 2 and 64
+  (+1 per clean 1 s window, halve on pressure: failed ranges, short
+  reads, HTTP 429/503; 1 s cooldown). `CAVS_FETCH_CONCURRENCY=auto|N`
+  override; fixed pools unchanged. New `FetchStats` fields
+  (`concurrency_mode/peak`, `aimd_decreases`).
+- **Round 3D — fragmentation telemetry & copy-on-write repack.**
+  `cavs store <dir> fragmentation` (per-pack live/dead bytes, small-pack
+  ratio, comparative score) and `cavs store <dir> repack [--dry-run]`:
+  merges packs <8 MiB, compacts packs >30% dead, rewrites live chunks
+  into fresh packs, swaps the ledger generation and quarantines old packs
+  (recoverable; reads keep working; crash-safe at every step).
+- Format documentation: `docs/ROUND3_FORMATS.md`.
+
+### Changed
+
+- `GlobalStore::chunk_info` now returns an owned `ChunkInfo` (required by
+  the mmapped chunk table); `cavs-lfs-agent --connections` defaults to
+  `0` (adaptive).
+
 ## [1.6.0] — Session publish, BG4 codec, coalesced range fetch, hardened ledger
 
 ### Added
