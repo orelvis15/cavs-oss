@@ -46,6 +46,19 @@ jobs:
       - name: Test
         run: cargo test --all
 
+  lfs-e2e:
+    name: git-lfs e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # ubuntu runners ship git-lfs; the script self-skips if it is absent.
+      - name: Build agent
+        run: cargo build -p cavs-lfs-agent
+      - name: Run e2e (real git + git-lfs through the agent)
+        run: core/cavs-lfs-agent/e2e/run.sh target/debug/cavs-lfs-agent
+
   sdk-go:
     name: sdk · go
     runs-on: ubuntu-latest

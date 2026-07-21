@@ -49,7 +49,7 @@ jobs:
       - name: Build binaries
         run: >
           cargo build --release --target ${{ matrix.target }}
-          --bin cavs --bin cavs-server --bin cavs-client
+          --bin cavs --bin cavs-server --bin cavs-client --bin cavs-lfs-agent
 
       - name: Package
         shell: bash
@@ -59,7 +59,7 @@ jobs:
           DIST="cavs-${VERSION}-${{ matrix.target }}"
           BINDIR="target/${{ matrix.target }}/release"
           mkdir "$DIST"
-          for b in cavs cavs-server cavs-client; do
+          for b in cavs cavs-server cavs-client cavs-lfs-agent; do
             if [ -f "$BINDIR/$b.exe" ]; then cp "$BINDIR/$b.exe" "$DIST/"; else cp "$BINDIR/$b" "$DIST/"; fi
           done
           cp README.md LICENSE NOTICE "$DIST/"
@@ -386,9 +386,12 @@ jobs:
           # and must precede cavs-cli/server/client.
           # cavs-fetch (the v1.4.0 embeddable fetch engine) is a dependency of
           # cavs-sdk-core, so it must precede it.
-          for crate in cavs-hash cavs-chunker cavs-store cavs-proto cavs-format \
+          # v1.5.0: cavs-store now depends on cavs-proto (static manifest
+          # export), so cavs-proto moved ahead of cavs-store; cavs-lfs-agent
+          # (the Git LFS transfer agent) is a leaf binary published last.
+          for crate in cavs-hash cavs-chunker cavs-proto cavs-store cavs-format \
                        cavs-manifest cavs-signature cavs-rebuild-plan cavs-plan \
                        cavs-analyzer cavs-workspace cavs-fetch cavs-sdk-core cavs-ffi \
-                       cavs-cli cavs-server cavs-client; do
+                       cavs-cli cavs-server cavs-client cavs-lfs-agent; do
             publish "$crate"
           done
