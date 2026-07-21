@@ -19,6 +19,7 @@
 //! same engine is exposed through the CAVS SDKs (`fetchStatic`) and the C
 //! ABI, which is what the Unity and Unreal plugins call.
 
+mod adaptive;
 mod cache;
 mod meta;
 mod reconstruct;
@@ -28,6 +29,7 @@ pub use cache::ChunkCache;
 pub use meta::{MetaStats, MetadataResolver};
 pub use source::StaticSource;
 
+use adaptive::{AimdController, Gate, INITIAL_CONCURRENCY, MAX_CONCURRENCY, MIN_CONCURRENCY};
 use anyhow::{bail, Context, Result};
 use cavs_hash::{from_hex, hash_chunk, ChunkHash};
 use serde::Deserialize;
@@ -60,7 +62,13 @@ fn bg4_ungroup(grouped: &[u8]) -> Vec<u8> {
 
 /// Options for a serverless fetch.
 pub struct FetchOptions<'a> {
-    /// Concurrent range requests (>=1).
+    /// Concurrent range requests. `0` = adaptive (AUTO): an AIMD controller
+    /// starts at 8 connections and moves between 2 and 64 — +1 per clean
+    /// one-second window, halved (with a 1 s cooldown) on pressure from the
+    /// remote (failed range request, short read, HTTP 429/503). `>= 1` = a
+    /// fixed pool of exactly that many connections, the historical behavior.
+    /// The `CAVS_FETCH_CONCURRENCY` env var (`auto` or an integer) overrides
+    /// this field when set, so operators can tune deployed embedders.
     pub connections: usize,
     /// Optional Ed25519 public key (64 hex) to enforce the content signature.
     pub pubkey: Option<String>,
@@ -116,6 +124,16 @@ pub struct FetchStats {
     pub payload_ms: u64,
     /// Wall time reconstructing the output from the cache, in ms.
     pub reconstruct_ms: u64,
+    /// Concurrency mode the payload phase ran with: 0 = fixed pool,
+    /// 1 = adaptive (AIMD). A plain integer, not an enum, to keep the
+    /// struct `Copy` and flat for the C ABI / JSON stats surfaces.
+    pub concurrency_mode: u64,
+    /// High-water mark of workers concurrently inside the download section
+    /// (the pool size itself in fixed mode).
+    pub concurrency_peak: u64,
+    /// AIMD multiplicative decreases triggered by pressure events; always 0
+    /// in fixed mode. A nonzero value means the remote pushed back.
+    pub aimd_decreases: u64,
 }
 
 /// A fetch failure with a stable reason, so an embedder can decide
@@ -430,6 +448,19 @@ struct GroupOutcome {
     selective_retries: usize,
 }
 
+/// Resolve the effective `connections` value: an explicit
+/// `CAVS_FETCH_CONCURRENCY` env value (`auto` → 0, or an integer) beats the
+/// caller's `FetchOptions`; anything unparsable falls back to the caller's
+/// value rather than silently changing the mode. Pure, so it is testable
+/// without mutating process state.
+fn concurrency_override(env: Option<&str>, fallback: usize) -> usize {
+    match env {
+        Some(v) if v.trim().eq_ignore_ascii_case("auto") => 0,
+        Some(v) => v.trim().parse::<usize>().unwrap_or(fallback),
+        None => fallback,
+    }
+}
+
 fn fetch_missing_parallel(
     source: &dyn RangeSource,
     missing: &[RangeGroup],
@@ -437,13 +468,32 @@ fn fetch_missing_parallel(
     opts: &FetchOptions,
     total_wire: u64,
 ) -> Result<FetchStats> {
+    let env = std::env::var("CAVS_FETCH_CONCURRENCY").ok();
+    let connections = concurrency_override(env.as_deref(), opts.connections);
+    let auto = connections == 0;
     if missing.is_empty() {
         if let Some(p) = opts.progress {
             p(0, 0);
         }
-        return Ok(FetchStats::default());
+        return Ok(FetchStats {
+            concurrency_mode: auto as u64,
+            ..FetchStats::default()
+        });
     }
-    let workers = opts.connections.max(1).min(missing.len());
+    // AUTO sizes the pool once at the ceiling and lets the gate park the
+    // workers above the AIMD limit; fixed mode keeps the historical exact
+    // pool with no gate at all.
+    let adaptive: Option<(AimdController, Gate)> = auto.then(|| {
+        (
+            AimdController::new(MIN_CONCURRENCY, INITIAL_CONCURRENCY, MAX_CONCURRENCY),
+            Gate::new(),
+        )
+    });
+    let workers = if auto {
+        MAX_CONCURRENCY.min(missing.len())
+    } else {
+        connections.max(1).min(missing.len())
+    };
     let next = AtomicUsize::new(0);
     let failed = AtomicBool::new(false);
     let first_error: Mutex<Option<anyhow::Error>> = Mutex::new(None);
@@ -472,23 +522,42 @@ fn fetch_missing_parallel(
                 if idx >= missing.len() {
                     return;
                 }
+                // AUTO: hold one of the AIMD limit's slots for the whole
+                // download+decode of this group. A waiter gives up (`None`)
+                // when another worker has already latched a failure.
+                let ctrl = adaptive.as_ref().map(|(c, _)| c);
+                let _slot = match &adaptive {
+                    Some((c, gate)) => {
+                        match gate.enter(|| c.limit(), || failed.load(Ordering::Relaxed)) {
+                            Some(slot) => Some(slot),
+                            None => return,
+                        }
+                    }
+                    None => None,
+                };
                 let group = &missing[idx];
                 let (_permit, waited) = ByteBudget::global().acquire(group.span);
                 if waited {
                     throttled.fetch_add(1, Ordering::Relaxed);
                 }
-                match fetch_group(source, group, cache) {
+                match fetch_group(source, group, cache, ctrl) {
                     Ok(out) => {
                         wire.fetch_add(out.wire, Ordering::Relaxed);
                         raw.fetch_add(out.raw, Ordering::Relaxed);
                         fetched.fetch_add(out.chunks, Ordering::Relaxed);
                         requests.fetch_add(out.requests, Ordering::Relaxed);
                         selective.fetch_add(out.selective_retries, Ordering::Relaxed);
+                        if let Some(c) = ctrl {
+                            c.on_success();
+                        }
                         if let Some(p) = opts.progress {
                             p(wire.load(Ordering::Relaxed) as u64, total_wire);
                         }
                     }
                     Err(e) => {
+                        if let Some(c) = ctrl {
+                            c.on_pressure();
+                        }
                         let mut g = first_error.lock().unwrap();
                         if g.is_none() {
                             *g = Some(e);
@@ -512,18 +581,30 @@ fn fetch_missing_parallel(
         useful_bytes: missing.iter().map(|g| g.useful).sum(),
         selective_retries: selective.load(Ordering::Relaxed) as u64,
         throttle_waits: throttled.load(Ordering::Relaxed) as u64,
+        concurrency_mode: auto as u64,
+        concurrency_peak: match &adaptive {
+            Some((_, gate)) => gate.peak(),
+            None => workers as u64,
+        },
+        aimd_decreases: adaptive.as_ref().map_or(0, |(c, _)| c.decreases()),
         ..FetchStats::default()
     })
 }
 
 /// Transparently retry a transient range failure once: transport errors and
 /// short reads get a single second attempt before they become fatal.
+///
+/// Every failed attempt — even one the retry then papers over — is reported
+/// to the AIMD controller (when adaptive mode is on): a remote that starts
+/// erroring or truncating under load must slow us down *before* the errors
+/// become fatal, not after.
 fn get_range_retrying(
     source: &dyn RangeSource,
     rel: &str,
     offset: u64,
     len: u64,
     requests: &mut usize,
+    ctrl: Option<&AimdController>,
 ) -> Result<Vec<u8>> {
     for attempt in 0..2 {
         *requests += 1;
@@ -536,7 +617,14 @@ fn get_range_retrying(
             Err(e) if attempt == 1 => {
                 return Err(e.context(format!("CAVS-E-RANGE-TRANSFER-FAILED: {rel} at {offset}")))
             }
-            _ => std::thread::sleep(std::time::Duration::from_millis(100)),
+            _ => {
+                // Transient failure (transport error or short read) that a
+                // retry will absorb: still a pressure signal.
+                if let Some(c) = ctrl {
+                    c.on_pressure();
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
         }
     }
     unreachable!()
@@ -556,6 +644,7 @@ fn fetch_group(
     source: &dyn RangeSource,
     group: &RangeGroup,
     cache: &ChunkCache,
+    ctrl: Option<&AimdController>,
 ) -> Result<GroupOutcome> {
     let mut out = GroupOutcome::default();
     let wire = get_range_retrying(
@@ -564,6 +653,7 @@ fn fetch_group(
         group.start,
         group.span,
         &mut out.requests,
+        ctrl,
     )?;
     out.wire = wire.len();
     for entry in &group.chunks {
@@ -581,6 +671,7 @@ fn fetch_group(
                     entry.pack_offset_abs,
                     entry.len_stored as u64,
                     &mut out.requests,
+                    ctrl,
                 )?;
                 out.wire += alone.len();
                 decode_chunk(&alone[..entry.len_stored as usize], entry, &hash).map_err(|e| {
@@ -854,7 +945,7 @@ mod tests {
             short_reads_left: Mutex::new(0),
             single_len: 500,
         };
-        let out = fetch_group(&source, &group, &cache).unwrap();
+        let out = fetch_group(&source, &group, &cache, None).unwrap();
         assert_eq!(out.chunks, 2);
         assert_eq!(out.selective_retries, 1, "only the bad chunk re-fetched");
         assert_eq!(out.requests, 2, "one group GET + one selective GET");
@@ -872,7 +963,7 @@ mod tests {
             short_reads_left: Mutex::new(0),
             single_len: 500,
         };
-        let err = format!("{:#}", fetch_group(&source, &group, &cache).unwrap_err());
+        let err = format!("{:#}", fetch_group(&source, &group, &cache, None).unwrap_err());
         assert!(err.contains("twice"), "got: {err}");
         assert!(err.contains("CAVS-E-CHUNK-HASH-MISMATCH"), "got: {err}");
     }
@@ -890,7 +981,7 @@ mod tests {
             short_reads_left: Mutex::new(1),
             single_len: 500,
         };
-        let out = fetch_group(&source, &group, &cache).unwrap();
+        let out = fetch_group(&source, &group, &cache, None).unwrap();
         assert_eq!((out.chunks, out.requests), (2, 2));
 
         // Persistent truncation: a stable error, not a hang or a panic.
@@ -903,7 +994,125 @@ mod tests {
         };
         let dir2 = tempfile::tempdir().unwrap();
         let cache2 = ChunkCache::open(dir2.path()).unwrap();
-        let err = format!("{:#}", fetch_group(&source, &group, &cache2).unwrap_err());
+        let err = format!("{:#}", fetch_group(&source, &group, &cache2, None).unwrap_err());
         assert!(err.contains("CAVS-E-RANGE-LENGTH-MISMATCH"), "got: {err}");
+    }
+
+    #[test]
+    fn env_override_beats_options_and_tolerates_junk() {
+        assert_eq!(concurrency_override(None, 8), 8, "no env: caller wins");
+        assert_eq!(concurrency_override(Some("auto"), 8), 0);
+        assert_eq!(concurrency_override(Some(" AUTO "), 8), 0);
+        assert_eq!(concurrency_override(Some("16"), 8), 16);
+        assert_eq!(concurrency_override(Some("0"), 8), 0);
+        assert_eq!(concurrency_override(Some("many"), 8), 8, "junk: fallback");
+    }
+
+    /// N single-chunk groups over one in-memory pack, mirroring what
+    /// [`plan_range_groups`] produces for a sparse update.
+    fn in_memory_groups(n: usize, chunk_len: usize) -> (Vec<u8>, Vec<RangeGroup>) {
+        let mut pack = Vec::new();
+        let mut groups = Vec::new();
+        for i in 0..n {
+            let data = vec![i as u8; chunk_len];
+            let offset = pack.len() as u64;
+            pack.extend_from_slice(&data);
+            let entry = ChunkMapEntry {
+                hash: cavs_hash::to_hex(&hash_chunk(&data)),
+                len_raw: chunk_len as u32,
+                len_stored: chunk_len as u32,
+                flags: 0,
+                pack: "pk".into(),
+                pack_offset_abs: offset,
+            };
+            groups.push(RangeGroup {
+                pack: "pk".into(),
+                start: offset,
+                span: chunk_len as u64,
+                useful: chunk_len as u64,
+                chunks: vec![entry],
+            });
+        }
+        (pack, groups)
+    }
+
+    #[test]
+    fn auto_mode_fetches_everything_and_reports_adaptive_stats() {
+        let n = 12;
+        let (pack, groups) = in_memory_groups(n, 100);
+        let source = FlakySource {
+            pack,
+            corrupt_group_reads: false,
+            corrupt_all_reads: false,
+            short_reads_left: Mutex::new(0),
+            single_len: 0,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let cache = ChunkCache::open(dir.path()).unwrap();
+        let opts = FetchOptions {
+            connections: 0, // AUTO
+            ..FetchOptions::default()
+        };
+        let total: u64 = groups.iter().map(|g| g.span).sum();
+        let stats = fetch_missing_parallel(&source, &groups, &cache, &opts, total).unwrap();
+        assert_eq!(stats.fetched, n as u64);
+        assert_eq!(stats.wire_bytes, total);
+        assert_eq!(stats.concurrency_mode, 1, "AUTO must be reported");
+        assert!(stats.concurrency_peak >= 1);
+        assert_eq!(stats.aimd_decreases, 0, "clean source: no pressure");
+        for g in &groups {
+            assert!(cache.contains(&g.chunks[0].hash), "every chunk cached");
+        }
+    }
+
+    #[test]
+    fn auto_mode_counts_a_decrease_under_pressure() {
+        // One short read: the transparent retry absorbs it, the fetch
+        // still succeeds, but the AIMD controller must have backed off.
+        let n = 8;
+        let (pack, groups) = in_memory_groups(n, 100);
+        let source = FlakySource {
+            pack,
+            corrupt_group_reads: false,
+            corrupt_all_reads: false,
+            short_reads_left: Mutex::new(1),
+            single_len: 0,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let cache = ChunkCache::open(dir.path()).unwrap();
+        let opts = FetchOptions {
+            connections: 0,
+            ..FetchOptions::default()
+        };
+        let total: u64 = groups.iter().map(|g| g.span).sum();
+        let stats = fetch_missing_parallel(&source, &groups, &cache, &opts, total).unwrap();
+        assert_eq!(stats.fetched, n as u64);
+        assert_eq!(stats.concurrency_mode, 1);
+        assert_eq!(stats.aimd_decreases, 1, "short reads are pressure");
+    }
+
+    #[test]
+    fn fixed_mode_reports_fixed_stats() {
+        let n = 4;
+        let (pack, groups) = in_memory_groups(n, 100);
+        let source = FlakySource {
+            pack,
+            corrupt_group_reads: false,
+            corrupt_all_reads: false,
+            short_reads_left: Mutex::new(0),
+            single_len: 0,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let cache = ChunkCache::open(dir.path()).unwrap();
+        let opts = FetchOptions {
+            connections: 2,
+            ..FetchOptions::default()
+        };
+        let total: u64 = groups.iter().map(|g| g.span).sum();
+        let stats = fetch_missing_parallel(&source, &groups, &cache, &opts, total).unwrap();
+        assert_eq!(stats.fetched, n as u64);
+        assert_eq!(stats.concurrency_mode, 0);
+        assert_eq!(stats.concurrency_peak, 2, "the fixed pool size");
+        assert_eq!(stats.aimd_decreases, 0);
     }
 }

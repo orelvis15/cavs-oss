@@ -64,8 +64,9 @@ struct Args {
     #[arg(long)]
     sign_key: Option<std::path::PathBuf>,
 
-    /// Parallel connections for downloads.
-    #[arg(long, default_value_t = 8)]
+    /// Parallel connections for downloads: 0 = adaptive (AIMD, grows and
+    /// shrinks with observed pressure), N = a fixed pool of N connections.
+    #[arg(long, default_value_t = 0)]
     connections: usize,
 }
 
