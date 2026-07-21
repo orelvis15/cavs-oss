@@ -30,8 +30,22 @@ fi
 echo "[e2e] agent: $AGENT"
 
 WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT
+# On failure, surface the captured git/git-lfs/agent stderr before cleanup —
+# otherwise CI shows a bare exit code.
+cleanup() {
+  st=$?
+  if [ "$st" -ne 0 ]; then
+    echo "--- e2e failed (exit $st); captured stderr follows:"
+    for f in "$WORK"/*.err; do
+      [ -s "$f" ] || continue
+      echo "----- $f"; cat "$f"
+    done
+  fi
+  rm -rf "$WORK"
+}
+trap cleanup EXIT
 echo "[e2e] workdir: $WORK"
+git lfs version
 
 sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
 pack_kb() { du -sk "$WORK/origin.git/cavs/chunks" 2>/dev/null | cut -f1 || echo 0; }

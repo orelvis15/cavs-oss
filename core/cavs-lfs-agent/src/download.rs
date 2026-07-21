@@ -11,7 +11,7 @@ use crate::protocol::{Progress, ProtoOut};
 use anyhow::{anyhow, Context, Result};
 use cavs_fetch::{fetch_static, FetchError, FetchOptions, StaticSource};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 
 /// Fetch `oid` from the remote into a fresh temp dir under `tmp_root`.
 /// Returns the reconstructed file path and the tempdir guard keeping it
@@ -30,17 +30,20 @@ pub fn handle(
 
     let source = StaticSource::new(fetch_base);
     // Progress: cumulative wire bytes from fetch worker threads, throttled
-    // so a many-chunk object does not flood git-lfs with events.
-    let reported = AtomicU64::new(0);
+    // so a many-chunk object does not flood git-lfs with events. The mutex
+    // makes the check-and-send atomic: concurrent workers would otherwise
+    // interleave and emit non-monotonic bytesSoFar values.
+    let reported = Mutex::new(0u64);
     let progress = move |done: u64, total: u64| {
-        let last = reported.load(Ordering::Relaxed);
-        if done < last {
+        let mut last = reported.lock().unwrap();
+        if done <= *last {
             return; // stale callback from a lagging worker thread
         }
         let step = (total / 100).max(256 * 1024);
-        if done == total || done - last >= step {
-            reported.store(done, Ordering::Relaxed);
-            out.send(&Progress::new(oid, done, done - last));
+        if done == total || done - *last >= step {
+            let delta = done - *last;
+            *last = done;
+            out.send(&Progress::new(oid, done, delta));
         }
     };
     let opts = FetchOptions {

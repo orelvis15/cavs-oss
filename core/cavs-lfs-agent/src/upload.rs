@@ -167,7 +167,11 @@ pub fn handle(
         .suffix(".cavs")
         .tempfile_in(tree)?;
     pack_blob(src, oid, tmp.path(), &eff)?;
-    out.send(&Progress::new(oid, size / 2, size / 2));
+    // Coarse milestones; bytesSoFar is monotonic and the bytesSinceLast
+    // deltas sum exactly to `size` (git-lfs accounts transferred bytes).
+    let m1 = size / 2;
+    let m2 = size.saturating_sub(size / 10);
+    out.send(&Progress::new(oid, m1, m1));
 
     // 2. Ingest into the shared store: only chunks new to the store are
     //    written (dedup against every version/object ever pushed).
@@ -182,17 +186,13 @@ pub fn handle(
         stats.new_chunks,
         stats.new_bytes
     );
-    out.send(&Progress::new(
-        oid,
-        size.saturating_sub(size / 10),
-        size / 2,
-    ));
+    out.send(&Progress::new(oid, m2, m2 - m1));
 
     // 3. Export THIS asset into the static tree before acking: an acked
     //    object must be fetchable. O(this asset), not O(store) — a
     //    many-object push stays linear.
     store.export_asset(oid, tree)?;
-    out.send(&Progress::new(oid, size, size / 10));
+    out.send(&Progress::new(oid, size, size - m2));
     Ok(())
 }
 

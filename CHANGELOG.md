@@ -6,6 +6,21 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.5.1] — LFS agent progress fixes
+
+### Fixed
+
+- **cavs-lfs-agent: monotonic progress events.** The download progress
+  throttle raced across fetch worker threads and could emit a lower
+  `bytesSoFar` after a higher one; the check-and-send is now atomic
+  (mutex), so events are strictly monotonic. Caught by CI on Linux — the
+  integration tests assert monotonicity and now pass deterministically.
+- **cavs-lfs-agent: upload progress accounting.** The three upload
+  milestones over-reported `bytesSinceLast` (deltas summed to ~110 % of the
+  object); they now sum exactly to the object size.
+- e2e script prints the captured git/git-lfs/agent stderr when a step
+  fails, instead of a bare exit code.
+
 ## [1.5.0] — Git LFS transfer agent
 
 Everything below is measured in the frozen `benchmark-v1`
