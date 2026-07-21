@@ -1,6 +1,6 @@
-store   : /var/folders/py/yszxdqmj51552n0qcr9k2t2h0000gn/T/tmp.DVHxRMY8P1/full-rewrite-cavs/origin.git/cavs/.store
+store   : /var/folders/py/yszxdqmj51552n0qcr9k2t2h0000gn/T/tmp.KpOHXlqkni/full-rewrite-cavs/origin.git/cavs/.store
   asset : 4600848d5c560290652fbd802311a010912a9a195acc52d513c065bb5f079e56
   asset : b9c777004b091061a9e01ed10394fe4c316f51f5a9968e607b2d9e4bd55e26a3
-totals  : 2 assets · 1278 unique chunks · 96.00 MiB stored (0 zero-ref)
+totals  : 2 assets · 5697 unique chunks · 96.00 MiB stored (0 zero-ref)
 dedup   : 96.00 MiB logical -> 96.00 MiB unique = 0.0% storage saved across versions/titles
 packs   : 2 packfiles · 96.00 MiB on disk · 100.0% live

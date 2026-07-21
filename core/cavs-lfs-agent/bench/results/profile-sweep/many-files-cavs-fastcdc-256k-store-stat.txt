@@ -1,4 +1,4 @@
-store   : /var/folders/py/yszxdqmj51552n0qcr9k2t2h0000gn/T/tmp.DVHxRMY8P1/many-files-cavs/origin.git/cavs/.store
+store   : /var/folders/py/yszxdqmj51552n0qcr9k2t2h0000gn/T/tmp.4cnPf7wySG/many-files-cavs-fastcdc-256k/origin.git/cavs/.store
   asset : 0051b29d54ada02e8c2f1ae3640b368ec291f68feb60a6a1adb63b4ccb78ff68
   asset : 020e2e51021249d957444c705d091477ee78f9630730b7c65bcab0ff01a93e45
   asset : 040cfa343d359fd0835b7c937874a8e806848093495e4ec0bf03a6a72babc184
@@ -324,6 +324,6 @@ store   : /var/folders/py/yszxdqmj51552n0qcr9k2t2h0000gn/T/tmp.DVHxRMY8P1/many-f
   asset : fe2da13d4a2f5a9a27bf8fb24ffcb336d051314a81bf517e502189aca7c077c9
   asset : ff54205d484e8fbbeba03c903530065b6d1ce0e9e4a6bccb88c56c6d521c4ff6
   asset : ffd142ef0727d6266f01b769089045ea33b22750b48ac3a2c30473edfa91fd32
-totals  : 325 assets · 1496 unique chunks · 102.13 MiB stored (0 zero-ref)
-dedup   : 111.62 MiB logical -> 102.13 MiB unique = 8.5% storage saved across versions/titles
-packs   : 325 packfiles · 102.15 MiB on disk · 100.0% live
+totals  : 325 assets · 556 unique chunks · 106.89 MiB stored (0 zero-ref)
+dedup   : 111.62 MiB logical -> 106.89 MiB unique = 4.2% storage saved across versions/titles
+packs   : 325 packfiles · 106.91 MiB on disk · 100.0% live

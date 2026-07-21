@@ -1,0 +1,9 @@
+store   : /var/folders/py/yszxdqmj51552n0qcr9k2t2h0000gn/T/tmp.KpOHXlqkni/big-binary-cavs/origin.git/cavs/.store
+  asset : 57d6b28db7b7b867bd2a64e4fd1be8947de1b5a1a922fa3fdf882521e5e2e3f2
+  asset : 5b9857ea2738dc3ed9071efc9bb71c1882393696123e0ec26692ae54c4381abb
+  asset : 5d6d4e12d1a9446768ccaf0ab8458b680ee3038be46b6168b2e51abf9613db64
+  asset : 9d843e6f2f924a58962d49d2aeb01829da0ecbbe75aa46119e7a7e99dd36e972
+  asset : e54bbe8ad3903c43638b1f329c996f9affe3466cc61d199d6e1459391e3dbf15
+totals  : 5 assets · 6641 unique chunks · 111.84 MiB stored (0 zero-ref)
+dedup   : 510.00 MiB logical -> 111.84 MiB unique = 78.1% storage saved across versions/titles
+packs   : 5 packfiles · 111.84 MiB on disk · 100.0% live

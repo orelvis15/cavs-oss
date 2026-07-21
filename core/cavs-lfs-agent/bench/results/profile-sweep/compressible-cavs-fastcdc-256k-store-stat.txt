@@ -1,0 +1,8 @@
+store   : /var/folders/py/yszxdqmj51552n0qcr9k2t2h0000gn/T/tmp.4cnPf7wySG/compressible-cavs-fastcdc-256k/origin.git/cavs/.store
+  asset : 29f726acb432568b6fb28028ac3c5a4948f1fe811f9c9dd91809581cb5b1fc8e
+  asset : 45a5ca29c1dd93b3d9f62d44e74178711198f9bbd3f1acecc15ebd061459d30d
+  asset : 665a30bb4adfd8663921c76bf6d6b80d9358adb94b9eab74be0ee67d7f01acf5
+  asset : 7f8df8240498999ca52182fe0ee65e988e166c56ed826dd96c8976a1aebdb1f6
+totals  : 4 assets · 274 unique chunks · 51.48 MiB stored (0 zero-ref)
+dedup   : 72.27 MiB logical -> 51.48 MiB unique = 28.8% storage saved across versions/titles
+packs   : 4 packfiles · 51.48 MiB on disk · 100.0% live
