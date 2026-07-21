@@ -8,6 +8,41 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Round 2.1 hardening (pre-merge P0s).**
+  - *Crash-safe ledger writes*: `index.bin` is staged to a temp file,
+    fsynced, read back and seal-verified before an atomic rename; the
+    outgoing snapshot is kept one generation as `index.bin.prev` and the
+    open path falls back to it when the current snapshot is corrupt or
+    missing. Both-generations-corrupt is a clear `IndexCorrupt` error,
+    never a silent empty store.
+  - *Formal `index.bin` header*: self-describing header (version,
+    header_size, record_size, generation, created_at) — readers reject
+    snapshots written by a newer CAVS with a clear message, header growth
+    within v1 stays compatible, and untrusted counts can no longer drive
+    allocations past the file size.
+  - *GC quarantine*: packs are never deleted directly. Dead and orphaned
+    packs move to `quarantine/` (stamped), get deleted only after they
+    also age out of quarantine, and are restored automatically — by the
+    sweep or at open — if the ledger references them again (e.g. after an
+    `index.bin.prev` recovery).
+  - *Read-amplification cap in coalescing*: a range group's gap bytes are
+    capped at 15% of its useful bytes, so a sparse update can no longer
+    download multiples of what it needs; per-group amplification is
+    bounded at 1.15× by construction (`FetchStats.useful_bytes` exposes
+    it).
+  - *Global download backpressure* (cavs-fetch): a process-wide weighted
+    semaphore caps wire bytes in flight (default 128 MiB,
+    `CAVS_FETCH_MAX_INFLIGHT_BYTES` to override), so N concurrent fetches
+    can't stack N × connections × 8 MiB of buffers.
+    `FetchStats.throttle_waits` counts backpressure events.
+  - *Selective retries*: transport errors and short reads get one
+    transparent retry; a chunk failing BLAKE3 inside a coalesced range is
+    re-requested alone (fresh request for its exact subrange) instead of
+    repeating the whole range, then fails with a stable
+    `CAVS-E-*` diagnosis. `FetchStats.requests`/`selective_retries` count
+    them.
+  - *WAN benchmark harness*: `range_server.py` honours `LATENCY_MS` to
+    emulate per-request WAN latency in `http-bench.sh`.
 - **Coalesced range fetch** (cavs-fetch + serverless client): missing
   chunks of the same pack are sorted and fetched in Range GETs of up to
   8 MiB (gaps ≤ 64 KiB ride along); each chunk is still BLAKE3-verified

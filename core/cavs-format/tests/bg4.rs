@@ -3,14 +3,16 @@
 //! through both the serial and parallel ingest paths.
 
 use cavs_format::{
-    bg4_group, bg4_ungroup, Reader, SegmentRecord, TrackKind, TrackRecord, Writer,
-    CHUNK_FLAG_BG4, CHUNK_FLAG_ZSTD, SEGMENT_FLAG_RANDOM_ACCESS,
+    bg4_group, bg4_ungroup, Reader, SegmentRecord, TrackKind, TrackRecord, Writer, CHUNK_FLAG_BG4,
+    CHUNK_FLAG_ZSTD, SEGMENT_FLAG_RANDOM_ACCESS,
 };
 
 #[test]
 fn bg4_roundtrip_all_remainders() {
     // Cover every length mod 4, empty, and sub-lane lengths.
-    for len in [0usize, 1, 2, 3, 4, 5, 6, 7, 8, 1023, 1024, 1025, 1026, 65_537] {
+    for len in [
+        0usize, 1, 2, 3, 4, 5, 6, 7, 8, 1023, 1024, 1025, 1026, 65_537,
+    ] {
         let raw: Vec<u8> = (0..len).map(|i| (i * 31 % 251) as u8).collect();
         let grouped = bg4_group(&raw);
         assert_eq!(grouped.len(), raw.len());

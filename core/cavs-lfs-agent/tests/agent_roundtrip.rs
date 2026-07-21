@@ -409,7 +409,11 @@ fn killed_before_terminate_publishes_nothing_and_retry_repairs() {
 
     for oid in &oids {
         assert!(
-            !remote.join("assets").join(oid).join("manifest.json").is_file(),
+            !remote
+                .join("assets")
+                .join(oid)
+                .join("manifest.json")
+                .is_file(),
             "nothing may be published before finalize"
         );
     }

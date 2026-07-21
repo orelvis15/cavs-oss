@@ -9,6 +9,8 @@
 # Usage:  AGENT_A=/path/a AGENT_B=/path/b bench/http-bench.sh [scenarios…]
 #         (defaults: scenarios "big-binary many-files"; AGENT_B optional —
 #          omit to measure a single agent)
+#         LATENCY_MS=25 emulates WAN: the server sleeps that long before
+#         every response, so each round-trip costs what a real CDN would.
 # Output: CSV on stdout: scenario,agent,metric,value
 set -euo pipefail
 

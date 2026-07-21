@@ -2,11 +2,17 @@
 """Minimal static file server WITH HTTP Range support (python -m http.server
 ignores Range, which would make per-chunk clients download whole packs).
 Usage: range_server.py <directory>  — prints "PORT <n>" on stdout, logs one
-line per request to stderr."""
+line per request to stderr.
+
+Set LATENCY_MS=<n> to sleep n ms before serving each request — a crude WAN
+emulation (per-request latency dominates a chatty client on a real CDN)."""
 import http.server
 import os
 import re
 import sys
+import time
+
+LATENCY_S = int(os.environ.get("LATENCY_MS", "0")) / 1000.0
 
 
 class Slice:
@@ -28,6 +34,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def send_head(self):
+        if LATENCY_S:
+            time.sleep(LATENCY_S)
         path = self.translate_path(self.path)
         if os.path.isdir(path):
             return super().send_head()
