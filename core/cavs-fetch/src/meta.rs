@@ -70,7 +70,67 @@ pub(crate) struct MetaPackFile {
 pub(crate) struct MetaPackObject {
     pub oid: String,
     pub manifest: cavs_proto::Manifest,
+    /// v1 locations: one verbose entry per chunk.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub chunks: Vec<ChunkMapEntry>,
+    /// v2 locations: runs of physically contiguous chunks — pack + start
+    /// offset stated once, per-chunk offsets implicit. Preferred when
+    /// present; `chunks` is the dual-read fallback.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub runs: Vec<MetaRun>,
+}
+
+/// One run of physically contiguous chunks inside a pack (chunk-map v2).
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct MetaRun {
+    pub pack: String,
+    pub start_abs: u64,
+    pub hashes: Vec<String>,
+    pub lens_raw: Vec<u32>,
+    pub lens_stored: Vec<u32>,
+    /// A single integer when uniform across the run, else one per chunk.
+    #[serde(default)]
+    pub flags: RunFlags,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+#[serde(untagged)]
+pub(crate) enum RunFlags {
+    #[default]
+    None,
+    Uniform(u32),
+    PerChunk(Vec<u32>),
+}
+
+impl MetaPackObject {
+    /// The object's chunk locations, whichever encoding it carries.
+    fn into_entries(self) -> (String, cavs_proto::Manifest, Vec<ChunkMapEntry>) {
+        if self.runs.is_empty() {
+            return (self.oid, self.manifest, self.chunks);
+        }
+        let mut entries = Vec::new();
+        for run in self.runs {
+            let mut offset = run.start_abs;
+            for (i, hash) in run.hashes.into_iter().enumerate() {
+                let len_stored = run.lens_stored.get(i).copied().unwrap_or(0);
+                let flags = match &run.flags {
+                    RunFlags::None => 0,
+                    RunFlags::Uniform(f) => *f,
+                    RunFlags::PerChunk(v) => v.get(i).copied().unwrap_or(0),
+                };
+                entries.push(ChunkMapEntry {
+                    hash,
+                    len_raw: run.lens_raw.get(i).copied().unwrap_or(0),
+                    len_stored,
+                    flags,
+                    pack: run.pack.clone(),
+                    pack_offset_abs: offset,
+                });
+                offset += len_stored as u64;
+            }
+        }
+        (self.oid, self.manifest, entries)
+    }
 }
 
 /// L2 disk entry: the resolved metadata plus the meta-pack it came from
@@ -315,22 +375,23 @@ impl MetadataResolver {
         let mut wanted = None;
         let mut st = self.state.lock().unwrap();
         for obj in pack.objects {
+            let (oid, manifest, chunks) = obj.into_entries();
             let l2 = L2Entry {
                 src: pack_id.to_string(),
-                manifest: obj.manifest,
-                chunks: obj.chunks,
+                manifest,
+                chunks,
             };
-            self.l2_put(&obj.oid, &l2);
+            self.l2_put(&oid, &l2);
             let meta = Arc::new(ResolvedMeta {
                 manifest: l2.manifest,
                 chunks: l2.chunks,
             });
-            if obj.oid == want_oid {
+            if oid == want_oid {
                 wanted = Some(meta.clone());
             } else {
                 st.stats.prefetched += 1;
             }
-            st.l1.insert(obj.oid, meta);
+            st.l1.insert(oid, meta);
         }
         Ok(wanted)
     }
@@ -447,6 +508,7 @@ mod tests {
                     oid: oid.to_string(),
                     manifest: manifest_for(oid),
                     chunks: vec![chunk_entry(&format!("c-{oid}"))],
+                    runs: vec![],
                 })
                 .collect(),
         };
@@ -486,6 +548,61 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn run_encoded_meta_pack_expands_to_per_chunk_entries() {
+        let remote = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        // One object whose locations travel as a single 3-chunk run.
+        let pack = MetaPackFile {
+            version: 1,
+            objects: vec![MetaPackObject {
+                oid: "oid-r".into(),
+                manifest: manifest_for("oid-r"),
+                chunks: vec![],
+                runs: vec![MetaRun {
+                    pack: "chunks/packs/aa/p.cavspack".into(),
+                    start_abs: 16,
+                    hashes: vec!["h0".into(), "h1".into(), "h2".into()],
+                    lens_raw: vec![100, 200, 300],
+                    lens_stored: vec![50, 60, 70],
+                    flags: RunFlags::Uniform(3),
+                }],
+            }],
+        };
+        let raw = serde_json::to_vec(&pack).unwrap();
+        std::fs::create_dir_all(remote.path().join("meta/packs")).unwrap();
+        std::fs::write(
+            remote.path().join("meta/packs/runpack.cmeta"),
+            zstd::bulk::compress(&raw, 3).unwrap(),
+        )
+        .unwrap();
+        let index = MetaIndexFile {
+            version: 1,
+            generation: 1,
+            packs: vec![MetaIndexPack {
+                id: "runpack".into(),
+                oids: vec!["oid-r".into()],
+            }],
+        };
+        std::fs::write(
+            remote.path().join("meta/index.json"),
+            serde_json::to_vec(&index).unwrap(),
+        )
+        .unwrap();
+
+        let source = StaticSource::new(remote.path().to_str().unwrap());
+        let resolver = MetadataResolver::new(cache.path());
+        let m = resolver.resolve(&source, "oid-r").unwrap();
+        assert_eq!(m.chunks.len(), 3);
+        // Offsets are implicit: cumulative stored lengths from start_abs.
+        assert_eq!(m.chunks[0].pack_offset_abs, 16);
+        assert_eq!(m.chunks[1].pack_offset_abs, 66);
+        assert_eq!(m.chunks[2].pack_offset_abs, 126);
+        assert!(m.chunks.iter().all(|c| c.flags == 3));
+        assert_eq!(m.chunks[2].len_raw, 300);
+        assert_eq!(m.chunks[2].pack, "chunks/packs/aa/p.cavspack");
     }
 
     #[test]

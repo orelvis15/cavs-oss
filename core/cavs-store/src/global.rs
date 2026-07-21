@@ -1304,6 +1304,101 @@ impl GlobalStore {
         Ok(chunks)
     }
 
+    /// Chunk-map **v2 by runs** (Round 3B): the same information as
+    /// [`Self::chunk_map_entries`], but physically contiguous chunks of the
+    /// same pack collapse into one run — the pack path and start offset are
+    /// stated once and per-chunk offsets are implicit (cumulative
+    /// `len_stored`). A push writes an object's chunks contiguously, so a
+    /// many-chunk object typically serializes as a handful of runs instead
+    /// of one verbose entry per chunk, cutting metadata bytes well past the
+    /// 30% target. `flags` collapses to a single integer when uniform
+    /// across the run (the common case).
+    ///
+    /// Run shape:
+    /// ```json
+    /// {"pack": "chunks/packs/ab/<id>.cavspack", "start_abs": 16,
+    ///  "hashes": ["..."], "lens_raw": [..], "lens_stored": [..],
+    ///  "flags": 3 }
+    /// ```
+    fn chunk_map_runs(&self, name: &str) -> Result<Vec<serde_json::Value>> {
+        let hexes = self
+            .index
+            .assets
+            .get(name)
+            .ok_or_else(|| StoreError::AssetNotFound(name.to_string()))?;
+        // Order by physical position so contiguity is visible.
+        let mut placed: Vec<(String, ChunkInfo)> = Vec::with_capacity(hexes.len());
+        for hex in hexes {
+            let Some(info) = self.chunk_get(hex) else {
+                continue;
+            };
+            if info.pack.is_none() {
+                return Err(StoreError::NotExportable(format!(
+                    "chunk {hex} is not packed (ingest still open?)"
+                )));
+            }
+            placed.push((hex.clone(), info));
+        }
+        placed.sort_by(|a, b| {
+            (a.1.pack.as_deref(), a.1.pack_offset).cmp(&(b.1.pack.as_deref(), b.1.pack_offset))
+        });
+
+        struct Run {
+            pack: String,
+            start_abs: u64,
+            next_offset: u64,
+            hashes: Vec<String>,
+            lens_raw: Vec<u32>,
+            lens_stored: Vec<u32>,
+            flags: Vec<u32>,
+        }
+        let mut runs: Vec<Run> = Vec::new();
+        for (hex, info) in placed {
+            let pack = info.pack.as_deref().unwrap();
+            let offset = info.pack_offset.unwrap_or(0);
+            let extend = runs.last().is_some_and(|r: &Run| {
+                r.pack == pack && offset == r.next_offset
+            });
+            if !extend {
+                runs.push(Run {
+                    pack: pack.to_string(),
+                    start_abs: packfile::PACK_HEADER_LEN + offset,
+                    next_offset: offset,
+                    hashes: Vec::new(),
+                    lens_raw: Vec::new(),
+                    lens_stored: Vec::new(),
+                    flags: Vec::new(),
+                });
+            }
+            let run = runs.last_mut().unwrap();
+            run.next_offset = offset + info.len_stored as u64;
+            run.hashes.push(hex);
+            run.lens_raw.push(info.len_raw);
+            run.lens_stored.push(info.len_stored);
+            run.flags.push(info.flags);
+        }
+
+        Ok(runs
+            .into_iter()
+            .map(|r| {
+                let uniform = r.flags.windows(2).all(|w| w[0] == w[1]);
+                let flags: serde_json::Value = if uniform {
+                    r.flags.first().copied().unwrap_or(0).into()
+                } else {
+                    r.flags.into()
+                };
+                serde_json::json!({
+                    "pack": format!("chunks/packs/{}/{}.cavspack", &r.pack[..2], r.pack),
+                    "start_abs": r.start_abs,
+                    "hashes": r.hashes,
+                    "lens_raw": r.lens_raw,
+                    "lens_stored": r.lens_stored,
+                    "flags": flags,
+                })
+            })
+            .collect())
+    }
+
     /// Write `assets/<name>/chunk-map.json` for one asset; returns the
     /// relative path written.
     fn write_chunk_map(&self, name: &str, out: &Path) -> Result<String> {
@@ -1413,10 +1508,12 @@ impl GlobalStore {
         }
         let mut objects = Vec::with_capacity(names.len());
         for name in names {
+            // Locations travel as v2 runs; readers that predate runs fall
+            // back to the per-asset chunk-map.json (still v1) on their own.
             objects.push(serde_json::json!({
                 "oid": name,
                 "manifest": self.asset_manifest(name)?,
-                "chunks": self.chunk_map_entries(name)?,
+                "runs": self.chunk_map_runs(name)?,
             }));
         }
         let raw = serde_json::to_vec(&serde_json::json!({
@@ -2238,12 +2335,38 @@ mod tests {
         let pack_path = tree.path().join(format!("meta/packs/{id}.cmeta"));
         assert!(pack_path.is_file());
 
-        // The pack carries both objects' manifests + chunk locations.
+        // The pack carries both objects' manifests + chunk locations,
+        // run-encoded (v2): oid2's two contiguous chunks form ONE run.
         let raw = zstd::bulk::decompress(&std::fs::read(&pack_path).unwrap(), 1 << 30).unwrap();
         let doc: serde_json::Value = serde_json::from_slice(&raw).unwrap();
         assert_eq!(doc["version"], 1);
         assert_eq!(doc["objects"].as_array().unwrap().len(), 2);
-        assert_eq!(doc["objects"][1]["chunks"].as_array().unwrap().len(), 2);
+        let runs = doc["objects"][1]["runs"].as_array().unwrap();
+        assert_eq!(runs.len(), 1, "contiguous chunks collapse into one run");
+        assert_eq!(runs[0]["hashes"].as_array().unwrap().len(), 2);
+        assert_eq!(runs[0]["flags"], 0, "uniform flags collapse to a scalar");
+
+        // Run encoding must be smaller than the per-chunk v1 encoding.
+        let v1_bytes = serde_json::to_vec(&serde_json::json!({
+            "objects": [{
+                "oid": "oid2",
+                "chunks": store.chunk_map_entries("oid2").unwrap(),
+            }],
+        }))
+        .unwrap()
+        .len();
+        let v2_bytes = serde_json::to_vec(&serde_json::json!({
+            "objects": [{
+                "oid": "oid2",
+                "runs": store.chunk_map_runs("oid2").unwrap(),
+            }],
+        }))
+        .unwrap()
+        .len();
+        assert!(
+            (v2_bytes as f64) < v1_bytes as f64 * 0.7,
+            "runs must cut location metadata by >30% (v1 {v1_bytes} vs v2 {v2_bytes})"
+        );
 
         // The index maps both oids to the pack.
         let index: serde_json::Value =
