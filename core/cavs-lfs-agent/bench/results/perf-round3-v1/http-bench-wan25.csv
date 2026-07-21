@@ -1,0 +1,31 @@
+=== WAN 25ms (LATENCY_MS=25) — runs 1..3, A=round2.1(f8def72) B=round3 ===
+# run 1
+scenario,agent,metric,value
+big-binary,agent-a,time_s,3.23
+big-binary,agent-a,http_requests,47
+big-binary,agent-b,time_s,3.23
+big-binary,agent-b,http_requests,47
+many-files,agent-a,time_s,29.66
+many-files,agent-a,http_requests,854
+many-files,agent-b,time_s,12.76
+many-files,agent-b,http_requests,359
+# run 2
+scenario,agent,metric,value
+big-binary,agent-a,time_s,3.48
+big-binary,agent-a,http_requests,47
+big-binary,agent-b,time_s,3.28
+big-binary,agent-b,http_requests,47
+many-files,agent-a,time_s,28.52
+many-files,agent-a,http_requests,854
+many-files,agent-b,time_s,12.74
+many-files,agent-b,http_requests,359
+# run 3
+scenario,agent,metric,value
+big-binary,agent-a,time_s,3.44
+big-binary,agent-a,http_requests,47
+big-binary,agent-b,time_s,3.49
+big-binary,agent-b,http_requests,47
+many-files,agent-a,time_s,28.04
+many-files,agent-a,http_requests,854
+many-files,agent-b,time_s,13.22
+many-files,agent-b,http_requests,359
