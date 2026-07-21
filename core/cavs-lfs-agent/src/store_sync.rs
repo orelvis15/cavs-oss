@@ -1,7 +1,11 @@
 //! Session-scoped access to the remote's GlobalStore: one exclusive lock and
 //! one open store per push session (git-lfs sends every object of a push
 //! through the same agent process), so a 250-object push pays for one store
-//! open — and each upload exports only its own asset.
+//! open. Publishes are batched Xet-style: uploads only ingest, and the
+//! session [`WriteSession::finalize`] (at terminate) commits the ledger once
+//! and exports every uploaded asset — packs aggregate across objects up to
+//! the store's preferred pack size instead of one pack per object, and
+//! `index.json` is written once per push instead of once per object.
 
 use anyhow::{Context, Result};
 use cavs_store::{GlobalStore, StoreLayout};
@@ -30,11 +34,17 @@ impl StoreLock {
     }
 }
 
-/// The write half of an upload session: lock + open store, created on the
-/// first upload event and dropped at terminate.
+/// The write half of an upload session: lock + open store (with an open
+/// publish batch), created on the first upload event; finalized and dropped
+/// at terminate.
 pub struct WriteSession {
     _lock: StoreLock,
     pub store: GlobalStore,
+    /// The export tree of the directory remote.
+    pub tree: std::path::PathBuf,
+    /// Oids ingested (or found missing from the export tree) this session,
+    /// exported by [`Self::finalize`].
+    pub pending_exports: Vec<String>,
 }
 
 pub fn open_session(tree: &Path, store_dir: &Path) -> Result<WriteSession> {
@@ -42,6 +52,29 @@ pub fn open_session(tree: &Path, store_dir: &Path) -> Result<WriteSession> {
     // GlobalStore has no internal locking; serialize writers across
     // processes (a concurrent `git push` from elsewhere blocks here).
     let lock = StoreLock::acquire(tree)?;
-    let store = GlobalStore::open_with_layout(store_dir, Some(StoreLayout::Packfiles))?;
-    Ok(WriteSession { _lock: lock, store })
+    let mut store = GlobalStore::open_with_layout(store_dir, Some(StoreLayout::Packfiles))?;
+    store.begin_publish_batch();
+    Ok(WriteSession {
+        _lock: lock,
+        store,
+        tree: tree.to_path_buf(),
+        pending_exports: Vec::new(),
+    })
+}
+
+impl WriteSession {
+    /// Commit the batched publishes (one pack close + one `index.json`
+    /// write for the whole push) and export every asset uploaded this
+    /// session into the static tree. Idempotent.
+    pub fn finalize(&mut self) -> Result<()> {
+        self.store
+            .commit_publish_batch()
+            .context("committing publish batch")?;
+        for oid in std::mem::take(&mut self.pending_exports) {
+            self.store
+                .export_asset(&oid, &self.tree)
+                .with_context(|| format!("exporting {oid}"))?;
+        }
+        Ok(())
+    }
 }

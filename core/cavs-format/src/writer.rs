@@ -6,9 +6,9 @@
 
 use crate::wire::*;
 use crate::{
-    ChunkRecord, FormatError, Integrity, Result, SectionType, SegmentRecord, TrackRecord,
-    CHUNK_FLAG_ZSTD, COMPRESSION_NONE, COMPRESSION_ZSTD, MAGIC, SUPERBLOCK_LEN, VERSION_MAJOR,
-    VERSION_MINOR,
+    bg4_group, ChunkRecord, FormatError, Integrity, Result, SectionType, SegmentRecord,
+    TrackRecord, CHUNK_FLAG_BG4, CHUNK_FLAG_ZSTD, COMPRESSION_NONE, COMPRESSION_ZSTD, MAGIC,
+    SUPERBLOCK_LEN, VERSION_MAJOR, VERSION_MINOR,
 };
 use cavs_hash::{content_signature_message, hash_chunk, merkle_root, ChunkHash, Hasher};
 use cavs_store::CasIndex;
@@ -19,6 +19,41 @@ use std::path::Path;
 
 /// Minimum chunk size worth attempting compression on.
 const COMPRESS_MIN_LEN: usize = 512;
+
+/// Compression pays only if it saves at least ~6.25% over raw.
+fn compression_pays(stored_len: usize, raw_len: usize) -> bool {
+    stored_len < raw_len - raw_len / 16
+}
+
+/// Pick the stored form of one first-occurrence chunk payload: plain zstd,
+/// BG4+zstd, or raw. Returns `(stored_bytes, flags)`; `None` means store raw.
+///
+/// The BG4 attempt is only made when plain zstd compresses poorly (final
+/// size above 75% of raw): byte-interleaved numeric data — the regime where
+/// BG4 wins — is exactly where plain zstd struggles, while payloads zstd
+/// already handles well (text, structured bytes) skip the second pass. On
+/// incompressible data the extra attempt rides zstd's incompressibility
+/// fast path, so it stays cheap.
+fn prepare_stored(
+    raw: &[u8],
+    level: i32,
+    try_bg4: bool,
+) -> std::io::Result<Option<(Vec<u8>, u32)>> {
+    let plain = zstd::bulk::compress(raw, level)?;
+    let plain_pays = compression_pays(plain.len(), raw.len());
+    if !try_bg4 || (plain_pays && plain.len() <= raw.len() / 4 * 3) {
+        return Ok(plain_pays.then_some((plain, CHUNK_FLAG_ZSTD)));
+    }
+    let bg = zstd::bulk::compress(&bg4_group(raw), level)?;
+    let bg_pays = compression_pays(bg.len(), raw.len());
+    Ok(match (plain_pays, bg_pays) {
+        (false, false) => None,
+        _ if bg_pays && (!plain_pays || bg.len() < plain.len()) => {
+            Some((bg, CHUNK_FLAG_ZSTD | CHUNK_FLAG_BG4))
+        }
+        _ => Some((plain, CHUNK_FLAG_ZSTD)),
+    })
+}
 
 /// Summary of a finished pack, for reporting.
 #[derive(Debug, Clone)]
@@ -49,6 +84,7 @@ pub struct Writer {
     logical_chunks: u64,
     compression: u8,
     zstd_level: i32,
+    bg4: bool,
     timescale: u32,
     asset_uuid: [u8; 16],
     signer: Option<SigningKey>,
@@ -84,6 +120,7 @@ impl Writer {
                 COMPRESSION_NONE
             },
             zstd_level: 3,
+            bg4: false,
             timescale,
             asset_uuid,
             signer: None,
@@ -93,6 +130,15 @@ impl Writer {
     /// zstd level for chunk storage/wire compression (default 3).
     pub fn set_zstd_level(&mut self, level: i32) {
         self.zstd_level = level;
+    }
+
+    /// Also consider the BG4 byte-grouping pretransform per chunk (see
+    /// [`crate::bg4_group`]); the smaller of plain zstd / BG4+zstd wins,
+    /// raw still wins when neither pays. Off by default: readers must know
+    /// [`CHUNK_FLAG_BG4`] — enable only where every consumer of the output
+    /// is BG4-aware (e.g. the Git LFS agent's store + cavs-fetch).
+    pub fn set_bg4(&mut self, enabled: bool) {
+        self.bg4 = enabled;
     }
 
     /// Sign the packed content with this Ed25519 secret key. The signature
@@ -135,7 +181,8 @@ impl Writer {
 
         let compress = self.compression == COMPRESSION_ZSTD;
         let level = self.zstd_level;
-        let prepared: std::result::Result<Vec<Option<Vec<u8>>>, std::io::Error> = ranges
+        let bg4 = self.bg4;
+        let prepared: std::result::Result<Vec<Option<(Vec<u8>, u32)>>, std::io::Error> = ranges
             .par_iter()
             .enumerate()
             .map(|(i, r)| {
@@ -143,9 +190,7 @@ impl Writer {
                 if !first_occurrence[i] || !compress || raw.len() < COMPRESS_MIN_LEN {
                     return Ok(None);
                 }
-                let c = zstd::bulk::compress(raw, level)?;
-                // Keep compression only if it actually pays for itself.
-                Ok((c.len() < raw.len() - raw.len() / 16).then_some(c))
+                prepare_stored(raw, level, bg4)
             })
             .collect();
         let prepared = prepared.map_err(FormatError::Zstd)?;
@@ -161,7 +206,7 @@ impl Writer {
                 continue;
             }
             let (stored_slice, flags): (&[u8], u32) = match &comp {
-                Some(c) => (c, CHUNK_FLAG_ZSTD),
+                Some((c, flags)) => (c, *flags),
                 None => (raw, 0),
             };
             self.out.write_all(stored_slice)?;
@@ -194,13 +239,13 @@ impl Writer {
         let stored: Vec<u8>;
         let stored_slice: &[u8] =
             if self.compression == COMPRESSION_ZSTD && raw.len() >= COMPRESS_MIN_LEN {
-                stored = zstd::bulk::compress(raw, self.zstd_level).map_err(FormatError::Zstd)?;
-                // Keep compression only if it actually pays for itself.
-                if stored.len() < raw.len() - raw.len() / 16 {
-                    flags |= CHUNK_FLAG_ZSTD;
-                    &stored
-                } else {
-                    raw
+                match prepare_stored(raw, self.zstd_level, self.bg4).map_err(FormatError::Zstd)? {
+                    Some((c, f)) => {
+                        stored = c;
+                        flags |= f;
+                        &stored
+                    }
+                    None => raw,
                 }
             } else {
                 raw

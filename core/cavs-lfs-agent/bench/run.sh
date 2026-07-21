@@ -18,7 +18,7 @@
 # Usage: bench/run.sh [out-dir]        (default: ./bench-results)
 # Env:   AGENT=<path>       agent binary (default: cargo build --release)
 #        SCENARIOS="…"      subset of: big-binary compressible many-files
-#                           full-rewrite cross-repo
+#                           full-rewrite tensor cross-repo
 #        SYSTEMS="…"        subset of: git lfs cavs   (default: all)
 #        CAVS_PROFILE=<p>   chunking profile for the agent (label appended
 #                           to the system name when set, e.g. cavs-fastcdc-16k)
@@ -327,7 +327,7 @@ run_crossrepo() {
   rm -rf "$ROOT"
 }
 
-SCENARIOS=${SCENARIOS:-"big-binary compressible many-files full-rewrite cross-repo"}
+SCENARIOS=${SCENARIOS:-"big-binary compressible many-files full-rewrite tensor cross-repo"}
 SYSTEMS=${SYSTEMS:-"git lfs cavs"}
 for SC in $SCENARIOS; do
   if [ "$SC" = cross-repo ]; then

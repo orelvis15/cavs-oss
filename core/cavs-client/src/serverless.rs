@@ -26,6 +26,25 @@ use std::sync::Mutex;
 /// `cavs_format::CHUNK_FLAG_ZSTD`).
 const CHUNK_FLAG_ZSTD: u32 = 1;
 
+/// BG4 pretransform chunk flag (mirrors `cavs_format::CHUNK_FLAG_BG4`).
+const CHUNK_FLAG_BG4: u32 = 1 << 1;
+
+/// Inverse of the BG4 byte-grouping pretransform (mirrors
+/// `cavs_format::bg4_ungroup`).
+fn bg4_ungroup(grouped: &[u8]) -> Vec<u8> {
+    let len = grouped.len();
+    let mut out = vec![0u8; len];
+    let mut it = grouped.iter();
+    for lane in 0..4 {
+        let mut i = lane;
+        while i < len {
+            out[i] = *it.next().unwrap();
+            i += 4;
+        }
+    }
+    out
+}
+
 #[derive(Debug, Deserialize)]
 struct ChunkMapFile {
     #[allow(dead_code)]
@@ -294,12 +313,15 @@ fn fetch_one(
         from_hex(&entry.hash).with_context(|| format!("bad hash {} in chunk-map", entry.hash))?;
     let wire = source.get_range(&entry.pack, entry.pack_offset_abs, entry.len_stored as u64)?;
     let wire_len = wire.len();
-    let raw = if entry.flags & CHUNK_FLAG_ZSTD != 0 {
+    let mut raw = if entry.flags & CHUNK_FLAG_ZSTD != 0 {
         zstd::bulk::decompress(&wire, entry.len_raw as usize)
             .map_err(|e| anyhow::anyhow!("decompressing chunk {}: {e}", entry.hash))?
     } else {
         wire
     };
+    if entry.flags & CHUNK_FLAG_BG4 != 0 {
+        raw = bg4_ungroup(&raw);
+    }
     if raw.len() != entry.len_raw as usize || hash_chunk(&raw) != hash {
         bail!(
             "{}",

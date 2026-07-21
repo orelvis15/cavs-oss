@@ -1,19 +1,21 @@
 //! Upload one LFS object: pack the file as a single raw data track into a
-//! temporary `.cavs`, ingest it into the remote's shared [`GlobalStore`]
-//! (chunk-level dedup against every object ever pushed), then refresh the
-//! static export tree that downloads read.
+//! temporary `.cavs`, then ingest it into the remote's shared
+//! [`GlobalStore`] (chunk-level dedup against every object ever pushed).
 //!
-//! The export runs *before* `complete` is reported: once git-lfs records an
-//! object as pushed it must already be fetchable.
+//! Publication is session-batched (Xet-style finalize): uploads only queue
+//! the oid, and the static export tree that downloads read is refreshed once
+//! per push, at terminate (see [`crate::store_sync::WriteSession::finalize`]).
+//! An interrupted push publishes nothing — the next push re-ingests and
+//! repairs, which the idempotent re-push path below also covers.
 
 use crate::protocol::{Progress, ProtoOut};
+use crate::store_sync::WriteSession;
 use anyhow::{bail, Context, Result};
 use cavs_chunker::ChunkMode;
 use cavs_format::{
     ingest_into_store, Reader, SegmentRecord, TrackKind, TrackRecord, Writer,
     SEGMENT_FLAG_RANDOM_ACCESS,
 };
-use cavs_store::GlobalStore;
 use std::path::Path;
 
 /// Upload configuration fixed for the whole session.
@@ -25,6 +27,10 @@ pub struct UploadCfg {
     pub profile_label: &'static str,
     pub compress: bool,
     pub zstd_level: i32,
+    /// Consider the BG4 byte-grouping pretransform per chunk (numeric
+    /// payloads); safe here because the agent's export tree is only read by
+    /// BG4-aware consumers (cavs-fetch).
+    pub bg4: bool,
     pub sign_key: Option<[u8; 32]>,
 }
 
@@ -117,27 +123,28 @@ pub fn load_sign_key(path: &Path) -> Result<[u8; 32]> {
 }
 
 /// Push `src` (whose content sha256 is `oid`) into the directory remote.
-/// `store` is the session-scoped store (one lock + open per push session).
+/// `write` is the session-scoped lock + store; the asset is ingested here
+/// and exported at session finalize.
 pub fn handle(
-    tree: &Path,
-    store: &mut GlobalStore,
+    write: &mut WriteSession,
     oid: &str,
     src: &Path,
     size: u64,
     cfg: &UploadCfg,
     out: &ProtoOut,
 ) -> Result<()> {
+    let tree = write.tree.clone();
     // Idempotent re-push: the object is already published. Refresh its
-    // export only if its manifest is missing from the tree (e.g. a crash
-    // between ingest and export).
-    if store.get_asset(oid).is_ok() {
+    // export at finalize only if its manifest is missing from the tree
+    // (e.g. a crash between a previous session's commit and export).
+    if write.store.has_asset(oid) {
         if !tree
             .join("assets")
             .join(oid)
             .join("manifest.json")
             .is_file()
         {
-            store.export_asset(oid, tree)?;
+            write.pending_exports.push(oid.to_string());
         }
         eprintln!(
             "[lfs-agent] upload {}: already at remote, skipping",
@@ -165,18 +172,19 @@ pub fn handle(
     let tmp = tempfile::Builder::new()
         .prefix(oid)
         .suffix(".cavs")
-        .tempfile_in(tree)?;
+        .tempfile_in(&tree)?;
     pack_blob(src, oid, tmp.path(), &eff)?;
     // Coarse milestones; bytesSoFar is monotonic and the bytesSinceLast
     // deltas sum exactly to `size` (git-lfs accounts transferred bytes).
     let m1 = size / 2;
-    let m2 = size.saturating_sub(size / 10);
     out.send(&Progress::new(oid, m1, m1));
 
     // 2. Ingest into the shared store: only chunks new to the store are
-    //    written (dedup against every version/object ever pushed).
+    //    written (dedup against every version/object ever pushed). The
+    //    publish is batched — the ingest pack aggregates across the whole
+    //    push and the ledger is committed once, at session finalize.
     let mut reader = Reader::open(tmp.path())?;
-    let stats = ingest_into_store(&mut reader, store, oid)?;
+    let stats = ingest_into_store(&mut reader, &mut write.store, oid)?;
     drop(reader);
     let _ = tmp.close();
     eprintln!(
@@ -186,13 +194,12 @@ pub fn handle(
         stats.new_chunks,
         stats.new_bytes
     );
-    out.send(&Progress::new(oid, m2, m2 - m1));
+    out.send(&Progress::new(oid, size, size - m1));
 
-    // 3. Export THIS asset into the static tree before acking: an acked
-    //    object must be fetchable. O(this asset), not O(store) — a
-    //    many-object push stays linear.
-    store.export_asset(oid, tree)?;
-    out.send(&Progress::new(oid, size, size - m2));
+    // 3. Queue the export: the static tree is refreshed once per push, at
+    //    terminate — O(new data) pack copies for the whole session instead
+    //    of per-object re-copies of the still-growing ingest pack.
+    write.pending_exports.push(oid.to_string());
     Ok(())
 }
 
@@ -215,6 +222,7 @@ fn pack_blob(src: &Path, oid: &str, dst: &Path, cfg: &UploadCfg) -> Result<()> {
     let mut w = Writer::create(dst, uuid, 1000, cfg.compress)
         .with_context(|| format!("cannot create {}", dst.display()))?;
     w.set_zstd_level(cfg.zstd_level);
+    w.set_bg4(cfg.bg4);
     if let Some(secret) = &cfg.sign_key {
         w.sign_with(secret);
     }

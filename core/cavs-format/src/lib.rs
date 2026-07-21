@@ -85,6 +85,40 @@ pub const COMPRESSION_ZSTD: u8 = 1;
 /// Chunk flag bit: payload stored zstd-compressed.
 pub const CHUNK_FLAG_ZSTD: u32 = 1 << 0;
 
+/// Chunk flag bit: payload ran through the BG4 byte-grouping pretransform
+/// before compression (stored bytes are `zstd(bg4_group(raw))`). Always set
+/// together with [`CHUNK_FLAG_ZSTD`].
+pub const CHUNK_FLAG_BG4: u32 = 1 << 1;
+
+/// Byte-grouping-of-4 pretransform (BG4): scatter the payload into four
+/// planes by byte index mod 4 (`raw[0], raw[4], …` then `raw[1], raw[5], …`
+/// and so on). Little-endian f32/i32 streams — model weights, vertex
+/// buffers, audio samples — put each position's slowly-varying bytes next to
+/// each other, which zstd compresses far better than the interleaved
+/// original. Length-preserving; inverted by [`bg4_ungroup`].
+pub fn bg4_group(raw: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(raw.len());
+    for lane in 0..4 {
+        out.extend(raw.iter().skip(lane).step_by(4));
+    }
+    out
+}
+
+/// Inverse of [`bg4_group`].
+pub fn bg4_ungroup(grouped: &[u8]) -> Vec<u8> {
+    let len = grouped.len();
+    let mut out = vec![0u8; len];
+    let mut it = grouped.iter();
+    for lane in 0..4 {
+        let mut i = lane;
+        while i < len {
+            out[i] = *it.next().unwrap();
+            i += 4;
+        }
+    }
+    out
+}
+
 /// Segment flag bit: random-access point (keyframe bundle boundary).
 pub const SEGMENT_FLAG_RANDOM_ACCESS: u32 = 1 << 0;
 

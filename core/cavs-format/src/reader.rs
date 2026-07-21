@@ -241,13 +241,16 @@ impl Reader {
     /// Read, decompress and verify one chunk payload.
     pub fn read_chunk(&mut self, index: u32) -> Result<Vec<u8>> {
         let (stored, flags, len_raw) = self.read_chunk_stored(index)?;
-        let raw = if flags & CHUNK_FLAG_ZSTD != 0 {
+        let mut raw = if flags & CHUNK_FLAG_ZSTD != 0 {
             // len_raw was bounded by MAX_CHUNK_RAW in read_chunk_stored, so
             // the decompression capacity hint is safe.
             zstd::bulk::decompress(&stored, len_raw as usize).map_err(FormatError::Zstd)?
         } else {
             stored
         };
+        if flags & crate::CHUNK_FLAG_BG4 != 0 {
+            raw = crate::bg4_ungroup(&raw);
+        }
         let rec = &self.chunks[index as usize];
         if raw.len() != len_raw as usize || hash_chunk(&raw) != rec.hash {
             return Err(FormatError::ChunkHashMismatch { index });

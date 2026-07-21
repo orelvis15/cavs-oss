@@ -180,6 +180,9 @@ pub struct GlobalStore {
     index: Index,
     open_pack: Option<PackWriter>,
     preferred_pack_size: u64,
+    /// `Some` while a publish batch is open (see
+    /// [`Self::begin_publish_batch`]): asset records queued for the commit.
+    batch: Option<Vec<AssetRecord>>,
 }
 
 impl GlobalStore {
@@ -233,7 +236,48 @@ impl GlobalStore {
             index,
             open_pack: None,
             preferred_pack_size: PREFERRED_PACK_SIZE,
+            batch: None,
         })
+    }
+
+    /// Begin a publish batch (session-scoped, Xet-style finalize): until
+    /// [`Self::commit_publish_batch`], `publish_asset` only updates the
+    /// in-memory ledger — the ingest pack stays open across assets (so many
+    /// small assets aggregate into few large packs instead of one pack per
+    /// asset), asset record files are not written, and `index.json` is not
+    /// saved. If the process dies before the commit, the on-disk store is
+    /// exactly as it was before the batch (orphan `.part` packs are swept on
+    /// the next open), so an interrupted push simply re-ingests.
+    pub fn begin_publish_batch(&mut self) {
+        if self.batch.is_none() {
+            self.batch = Some(Vec::new());
+        }
+    }
+
+    /// Persist everything the open publish batch deferred: close the ingest
+    /// pack (resolving ledger locations), write every queued asset record,
+    /// and save the ledger once — one `index.json` write per push session
+    /// instead of one per object. Idempotent; a no-op when no batch is open.
+    pub fn commit_publish_batch(&mut self) -> Result<()> {
+        let Some(pending) = self.batch.take() else {
+            return Ok(());
+        };
+        let had_open_pack = self.open_pack.is_some();
+        self.flush_packs()?;
+        for record in &pending {
+            self.write_asset_record(record)?;
+        }
+        if !pending.is_empty() || had_open_pack {
+            self.save_index()?;
+        }
+        Ok(())
+    }
+
+    /// Whether an asset is published — including assets queued in an open
+    /// publish batch (unlike [`Self::get_asset`], which reads the record
+    /// file a batch has not written yet).
+    pub fn has_asset(&self, name: &str) -> bool {
+        self.index.assets.contains_key(name)
     }
 
     pub fn layout(&self) -> StoreLayout {
@@ -472,13 +516,20 @@ impl GlobalStore {
 
     /// Publish (or replace) an asset. Refcounts are adjusted so the chunk
     /// ledger reflects exactly the currently-published assets.
+    ///
+    /// Inside a publish batch (see [`Self::begin_publish_batch`]) only the
+    /// in-memory ledger changes; the ingest pack stays open and nothing is
+    /// persisted until [`Self::commit_publish_batch`].
     pub fn publish_asset(&mut self, record: &AssetRecord) -> Result<()> {
         if record.name.contains(['/', '\\', '.']) || record.name.is_empty() {
             return Err(StoreError::BadAssetName(record.name.clone()));
         }
-        // Close the ingest pack so every chunk has a resolved location
-        // before the ledger is persisted.
-        self.flush_packs()?;
+        let batching = self.batch.is_some();
+        if !batching {
+            // Close the ingest pack so every chunk has a resolved location
+            // before the ledger is persisted.
+            self.flush_packs()?;
+        }
         // Distinct chunks this asset references.
         let mut distinct: HashSet<String> = HashSet::new();
         for t in &record.tracks {
@@ -506,6 +557,16 @@ impl GlobalStore {
         self.index
             .assets
             .insert(record.name.clone(), distinct.into_iter().collect());
+        if batching {
+            self.batch.as_mut().unwrap().push(record.clone());
+            return Ok(());
+        }
+        self.write_asset_record(record)?;
+        self.save_index()
+    }
+
+    /// Write an asset's record file (`assets/<name>.json`) atomically.
+    fn write_asset_record(&self, record: &AssetRecord) -> Result<()> {
         let json = serde_json::to_vec_pretty(record)?;
         let path = self
             .root
@@ -514,7 +575,7 @@ impl GlobalStore {
         let tmp = path.with_extension("json.tmp");
         std::fs::write(&tmp, &json)?;
         std::fs::rename(&tmp, &path)?;
-        self.save_index()
+        Ok(())
     }
 
     /// Unpublish an asset: drop its references (chunks may become zero-ref,
@@ -662,9 +723,9 @@ impl GlobalStore {
     }
 
     /// Verify: every ledger chunk reads back (loose file or pack range),
-    /// decompresses when stored with zstd, and re-hashes to its identity;
-    /// every referenced pack passes its header/footer check. Returns the
-    /// number of chunks checked.
+    /// decompresses when stored with zstd (undoing the BG4 pretransform when
+    /// flagged), and re-hashes to its identity; every referenced pack passes
+    /// its header/footer check. Returns the number of chunks checked.
     pub fn verify(&self) -> Result<u64> {
         // Cap decompression by the ledger's own raw length, itself sane-
         // bounded so a corrupt ledger cannot request a huge allocation.
@@ -672,7 +733,7 @@ impl GlobalStore {
         for hex in self.index.chunks.keys() {
             let hash = from_hex(hex).ok_or_else(|| StoreError::BadHash(hex.clone()))?;
             let (stored, flags, len_raw) = self.read_chunk_stored(&hash)?;
-            let raw = if flags & 1 != 0 {
+            let mut raw = if flags & 1 != 0 {
                 // CHUNK_FLAG_ZSTD == 1 (cavs-format), kept as a plain bit
                 // here to avoid a dependency cycle.
                 if len_raw as u64 > MAX_RAW {
@@ -683,6 +744,11 @@ impl GlobalStore {
             } else {
                 stored
             };
+            if flags & 2 != 0 {
+                // CHUNK_FLAG_BG4 == 2 (cavs-format): undo the byte-grouping
+                // pretransform before re-hashing.
+                raw = bg4_ungroup(&raw);
+            }
             if raw.len() != len_raw as usize || cavs_hash::hash_chunk(&raw) != hash {
                 return Err(StoreError::BadHash(hex.clone()));
             }
@@ -987,6 +1053,23 @@ impl GlobalStore {
 /// equal-length destination is the same object — skipping the copy makes
 /// re-exports into the same tree effectively incremental. Returns whether
 /// a copy happened.
+/// Inverse of the BG4 byte-grouping pretransform (mirrors
+/// `cavs_format::bg4_ungroup`; duplicated to avoid a dependency cycle —
+/// cavs-format depends on this crate).
+fn bg4_ungroup(grouped: &[u8]) -> Vec<u8> {
+    let len = grouped.len();
+    let mut out = vec![0u8; len];
+    let mut it = grouped.iter();
+    for lane in 0..4 {
+        let mut i = lane;
+        while i < len {
+            out[i] = *it.next().unwrap();
+            i += 4;
+        }
+    }
+    out
+}
+
 fn copy_if_different(src: &Path, dst: &Path) -> Result<bool> {
     std::fs::create_dir_all(dst.parent().unwrap())?;
     let same = match (std::fs::metadata(src), std::fs::metadata(dst)) {
@@ -1031,6 +1114,64 @@ mod tests {
             signer_pubkey: None,
             meta: vec![],
         }
+    }
+
+    #[test]
+    fn publish_batch_is_atomic_and_aggregates_packs() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = vec![1u8; 1000];
+        let b = vec![2u8; 1000];
+        let (ha, hb) = (hash_chunk(&a), hash_chunk(&b));
+
+        {
+            let mut store =
+                GlobalStore::open_with_layout(dir.path(), Some(StoreLayout::Packfiles)).unwrap();
+            store.begin_publish_batch();
+            assert!(store.put_chunk(&ha, &a, 0, a.len() as u32).unwrap());
+            store.publish_asset(&rec("v1", &[&ha])).unwrap();
+            assert!(store.put_chunk(&hb, &b, 0, b.len() as u32).unwrap());
+            store.publish_asset(&rec("v2", &[&ha, &hb])).unwrap();
+
+            // In-memory ledger sees both; nothing is on disk yet (a crash
+            // here must leave the store exactly as before the batch). Disk
+            // state is checked directly — opening a second store would sweep
+            // the batch's open .part pack (writers are lock-serialized in
+            // real use).
+            assert!(store.has_asset("v1") && store.has_asset("v2"));
+            assert!(store.get_asset("v1").is_err(), "record file deferred");
+            let index: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(dir.path().join("index.json")).unwrap())
+                    .unwrap();
+            assert_eq!(index["chunks"], serde_json::json!({}), "ledger deferred");
+            assert!(!dir.path().join("assets/v1.json").exists());
+
+            store.commit_publish_batch().unwrap();
+        }
+
+        // Reopen: everything from the batch is persisted, and both assets
+        // share ONE aggregated pack (not one pack per publish).
+        let store = GlobalStore::open(dir.path()).unwrap();
+        assert!(store.get_asset("v1").is_ok() && store.get_asset("v2").is_ok());
+        assert_eq!(store.chunk_info(&ha).unwrap().refcount, 2);
+        assert_eq!(store.chunk_info(&hb).unwrap().refcount, 1);
+        let stats = store.stats();
+        assert_eq!(stats.unique_chunks, 2);
+        assert_eq!(stats.pack_count, 1, "batch aggregates into one pack");
+        assert_eq!(store.verify().unwrap(), 2);
+    }
+
+    #[test]
+    fn commit_publish_batch_without_batch_is_a_noop() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store =
+            GlobalStore::open_with_layout(dir.path(), Some(StoreLayout::Packfiles)).unwrap();
+        store.commit_publish_batch().unwrap();
+        // Non-batched publishes still persist eagerly.
+        let a = vec![9u8; 600];
+        let ha = hash_chunk(&a);
+        store.put_chunk(&ha, &a, 0, a.len() as u32).unwrap();
+        store.publish_asset(&rec("solo", &[&ha])).unwrap();
+        assert!(GlobalStore::open(dir.path()).unwrap().get_asset("solo").is_ok());
     }
 
     #[test]
