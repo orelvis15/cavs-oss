@@ -25,6 +25,9 @@ fn compression_pays(stored_len: usize, raw_len: usize) -> bool {
     stored_len < raw_len - raw_len / 16
 }
 
+/// A chunk's chosen stored form: `(stored_bytes, flags)`, or `None` for raw.
+type PreparedChunk = Option<(Vec<u8>, u32)>;
+
 /// Pick the stored form of one first-occurrence chunk payload: plain zstd,
 /// BG4+zstd, or raw. Returns `(stored_bytes, flags)`; `None` means store raw.
 ///
@@ -34,11 +37,7 @@ fn compression_pays(stored_len: usize, raw_len: usize) -> bool {
 /// already handles well (text, structured bytes) skip the second pass. On
 /// incompressible data the extra attempt rides zstd's incompressibility
 /// fast path, so it stays cheap.
-fn prepare_stored(
-    raw: &[u8],
-    level: i32,
-    try_bg4: bool,
-) -> std::io::Result<Option<(Vec<u8>, u32)>> {
+fn prepare_stored(raw: &[u8], level: i32, try_bg4: bool) -> std::io::Result<PreparedChunk> {
     let plain = zstd::bulk::compress(raw, level)?;
     let plain_pays = compression_pays(plain.len(), raw.len());
     if !try_bg4 || (plain_pays && plain.len() <= raw.len() / 4 * 3) {
@@ -182,7 +181,7 @@ impl Writer {
         let compress = self.compression == COMPRESSION_ZSTD;
         let level = self.zstd_level;
         let bg4 = self.bg4;
-        let prepared: std::result::Result<Vec<Option<(Vec<u8>, u32)>>, std::io::Error> = ranges
+        let prepared: std::result::Result<Vec<PreparedChunk>, std::io::Error> = ranges
             .par_iter()
             .enumerate()
             .map(|(i, r)| {
