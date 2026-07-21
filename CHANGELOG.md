@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — Round 3: metadata batching, segmented index, adaptive fetch
+## [1.7.0] — Round 3: metadata batching, segmented index, adaptive fetch
 
 ### Added
 
