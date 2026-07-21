@@ -415,6 +415,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "cavs-lfs-agent"
+version = "1.4.0"
+dependencies = [
+ "anyhow",
+ "cavs-chunker",
+ "cavs-fetch",
+ "cavs-format",
+ "cavs-hash",
+ "cavs-store",
+ "clap",
+ "memmap2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "cavs-manifest"
 version = "1.4.0"
 dependencies = [

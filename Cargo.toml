@@ -18,6 +18,7 @@ members = [
     "core/cavs-cli",
     "core/cavs-server",
     "core/cavs-client",
+    "core/cavs-lfs-agent",
 ]
 # The libFuzzer harness needs nightly and its own profile; it builds from
 # fuzz/ with `cargo +nightly fuzz run <target>`.

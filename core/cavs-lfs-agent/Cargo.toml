@@ -1,0 +1,32 @@
+[package]
+name = "cavs-lfs-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Git LFS standalone custom transfer agent backed by CAVS: content-defined chunking, zstd, and chunk-level dedup so only changed bytes travel and get stored across file versions."
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["git-lfs", "cavs", "dedup", "chunking", "transfer"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "cavs-lfs-agent"
+path = "src/main.rs"
+
+[dependencies]
+cavs-hash = { workspace = true }
+cavs-chunker = { workspace = true }
+cavs-store = { workspace = true }
+cavs-format = { workspace = true }
+cavs-fetch = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+memmap2 = { workspace = true }
+tempfile = { workspace = true }
+
+[dev-dependencies]
+sha2 = { workspace = true }
+tempfile = { workspace = true }
