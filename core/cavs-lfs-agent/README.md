@@ -91,6 +91,7 @@ Pass via `lfs.customtransfer.cavs.args`:
 | `--cache-dir <dir>` | `<git-dir>/lfs/cavs/cache` | chunk cache (`$CAVS_LFS_CACHE`) |
 | `--profile <p>` | `auto` (= fastcdc-64k) | chunking: `fastcdc-16k/32k/64k/128k[-n3]`, `fixed-256k/512k/1m` |
 | `--compression <c>` | `zstd-3` | `none` or `zstd-<1..22>` |
+| `--no-bg4` | off | disable the per-chunk BG4 byte-grouping pretransform (numeric payloads: model weights, vertex buffers, audio) |
 | `--connections <n>` | 8 | parallel download connections |
 | `--pubkey <hex>` | — | require Ed25519-signed manifests on download |
 | `--sign-key <file>` | — | sign uploads (64-hex secret key) |
@@ -105,3 +106,8 @@ Pass via `lfs.customtransfer.cavs.args`:
   filesystem remote — advisory locks can be unreliable on NFS.
 - The directory remote stores the packed data twice (store + static export)
   in exchange for a CDN-syncable tree; exports skip unchanged packs.
+- Publication is session-batched (Xet-style finalize): a push's objects
+  become fetchable when the agent finalizes at terminate, not per object.
+  Ingested packs aggregate across the whole push and the store ledger is
+  committed once; a push killed before finalize publishes nothing, and the
+  retry re-ingests and repairs.

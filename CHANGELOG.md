@@ -6,6 +6,33 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **BG4 chunk codec** (`CHUNK_FLAG_BG4`, Xet-inspired): per-chunk choice of
+  plain zstd vs a byte-grouping-of-4 pretransform + zstd, attempted only
+  when plain zstd underperforms — a large win on float/int payloads (model
+  weights, vertex buffers, audio samples). Opt-in at the `Writer`
+  (`set_bg4`); the LFS agent enables it by default (`--no-bg4` to disable).
+  Decoded by cavs-format, cavs-fetch, the serverless client and store
+  verify; cavs-server decodes BG4 server-side, so the wire protocol and the
+  non-Rust SDKs are unchanged.
+- **Session-batched publish** (`GlobalStore::begin_publish_batch` /
+  `commit_publish_batch`, Xet-style finalize): inside a batch, publishes
+  update only the in-memory ledger, the ingest pack aggregates across
+  assets (rollover at the preferred pack size instead of one pack per
+  asset), and `index.json` is written once at commit. A crash before the
+  commit leaves the on-disk store untouched.
+
+### Changed
+
+- **cavs-lfs-agent publishes at session finalize.** Uploads only ingest;
+  the export tree refresh and the ledger commit happen once per push, at
+  terminate. A many-object push no longer rewrites the store ledger per
+  object nor produces one pack per object; an interrupted push publishes
+  nothing and the retry repairs (new crash tests cover this).
+- New `tensor` benchmark scenario (float32 random-walk weights) in
+  `bench/gen.py`.
+
 ## [1.5.1] — LFS agent progress fixes
 
 ### Fixed

@@ -1,0 +1,7 @@
+store   : /var/folders/py/yszxdqmj51552n0qcr9k2t2h0000gn/T/tmp.GOVfPJzPBm/tensor-cavs/origin.git/cavs/.store
+  asset : 12a3ae45a489929ed6683c77da164b459a79b3bb7347aa1f6d2503097d39dfcc
+  asset : 5cf034fc7b59a6fd196cd355b2af11f9692db755363f99e3e541e8e47a76ea31
+  asset : 833202840d4d48a40cc2d5b4f6cd001f36c8d3cd306b01a8324dfba51dac0365
+totals  : 3 assets · 2206 unique chunks · 27.94 MiB stored (0 zero-ref)
+dedup   : 72.05 MiB logical -> 27.94 MiB unique = 61.2% storage saved across versions/titles
+packs   : 3 packfiles · 27.94 MiB on disk · 100.0% live
