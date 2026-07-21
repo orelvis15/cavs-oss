@@ -7,14 +7,13 @@
 //! object as pushed it must already be fetchable.
 
 use crate::protocol::{Progress, ProtoOut};
-use crate::store_sync;
 use anyhow::{bail, Context, Result};
 use cavs_chunker::ChunkMode;
 use cavs_format::{
     ingest_into_store, Reader, SegmentRecord, TrackKind, TrackRecord, Writer,
     SEGMENT_FLAG_RANDOM_ACCESS,
 };
-use cavs_store::{GlobalStore, StoreLayout};
+use cavs_store::GlobalStore;
 use std::path::Path;
 
 /// Upload configuration fixed for the whole session.
@@ -92,23 +91,17 @@ pub fn load_sign_key(path: &Path) -> Result<[u8; 32]> {
 }
 
 /// Push `src` (whose content sha256 is `oid`) into the directory remote.
+/// `store` is the session-scoped store (one lock + open per push session).
 pub fn handle(
     tree: &Path,
-    store_dir: &Path,
+    store: &mut GlobalStore,
     oid: &str,
     src: &Path,
     size: u64,
     cfg: &UploadCfg,
     out: &ProtoOut,
 ) -> Result<()> {
-    std::fs::create_dir_all(tree)?;
-    // GlobalStore has no internal locking; serialize writers across
-    // processes (a second `git push` from elsewhere blocks here).
-    let _lock = store_sync::StoreLock::acquire(tree)?;
-
-    let mut store = GlobalStore::open_with_layout(store_dir, Some(StoreLayout::Packfiles))?;
-
-    // Idempotent re-push: the object is already published. Refresh the
+    // Idempotent re-push: the object is already published. Refresh its
     // export only if its manifest is missing from the tree (e.g. a crash
     // between ingest and export).
     if store.get_asset(oid).is_ok() {
@@ -118,7 +111,7 @@ pub fn handle(
             .join("manifest.json")
             .is_file()
         {
-            store_sync::export_remote(&store, tree)?;
+            store.export_asset(oid, tree)?;
         }
         eprintln!(
             "[lfs-agent] upload {}: already at remote, skipping",
@@ -133,14 +126,14 @@ pub fn handle(
     let tmp = tempfile::Builder::new()
         .prefix(oid)
         .suffix(".cavs")
-        .tempfile_in(store_dir)?;
+        .tempfile_in(tree)?;
     pack_blob(src, oid, tmp.path(), cfg)?;
     out.send(&Progress::new(oid, size / 2, size / 2));
 
     // 2. Ingest into the shared store: only chunks new to the store are
     //    written (dedup against every version/object ever pushed).
     let mut reader = Reader::open(tmp.path())?;
-    let stats = ingest_into_store(&mut reader, &mut store, oid)?;
+    let stats = ingest_into_store(&mut reader, store, oid)?;
     drop(reader);
     let _ = tmp.close();
     eprintln!(
@@ -156,9 +149,10 @@ pub fn handle(
         size / 2,
     ));
 
-    // 3. Refresh the static export that downloads read. Packs are skipped
-    //    when unchanged, so this is incremental in practice.
-    store_sync::export_remote(&store, tree)?;
+    // 3. Export THIS asset into the static tree before acking: an acked
+    //    object must be fetchable. O(this asset), not O(store) — a
+    //    many-object push stays linear.
+    store.export_asset(oid, tree)?;
     out.send(&Progress::new(oid, size, size / 10));
     Ok(())
 }

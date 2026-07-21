@@ -742,19 +742,7 @@ impl GlobalStore {
                     format!("chunks/indexes/{}/{pack}.cavsindex", &pack[..2]),
                 ),
             ] {
-                let dst = out.join(&rel);
-                std::fs::create_dir_all(dst.parent().unwrap())?;
-                // Packs and their indexes are immutable and content-addressed:
-                // if the destination already exists with the same length it is
-                // the same object, so skip the copy. This makes re-exporting
-                // into the same tree effectively incremental.
-                let same = match (std::fs::metadata(&src), std::fs::metadata(&dst)) {
-                    (Ok(s), Ok(d)) => s.len() == d.len(),
-                    _ => false,
-                };
-                if !same {
-                    std::fs::copy(&src, &dst)?;
-                }
+                copy_if_different(&src, &out.join(&rel))?;
                 written.push(rel);
             }
         }
@@ -780,44 +768,129 @@ impl GlobalStore {
             ));
         }
         let mut written = Vec::new();
-        for (name, hexes) in &self.index.assets {
-            let mut chunks = Vec::with_capacity(hexes.len());
-            for hex in hexes {
-                let Some(info) = self.index.chunks.get(hex) else {
-                    continue;
-                };
-                let Some(pack) = info.pack.as_deref() else {
+        for name in self.index.assets.keys() {
+            written.push(self.write_chunk_map(name, out)?);
+        }
+        Ok(written)
+    }
+
+    /// Write `assets/<name>/chunk-map.json` for one asset; returns the
+    /// relative path written.
+    fn write_chunk_map(&self, name: &str, out: &Path) -> Result<String> {
+        let hexes = self
+            .index
+            .assets
+            .get(name)
+            .ok_or_else(|| StoreError::AssetNotFound(name.to_string()))?;
+        let mut chunks = Vec::with_capacity(hexes.len());
+        for hex in hexes {
+            let Some(info) = self.index.chunks.get(hex) else {
+                continue;
+            };
+            let Some(pack) = info.pack.as_deref() else {
+                return Err(StoreError::NotExportable(format!(
+                    "chunk {hex} is not packed (ingest still open?)"
+                )));
+            };
+            // `pack_offset` is into the pack's data region; a static
+            // client that knows nothing about the packfile header wants
+            // the absolute file offset for its HTTP Range request, so we
+            // publish both.
+            let pack_offset = info.pack_offset.unwrap_or(0);
+            chunks.push(serde_json::json!({
+                "hash": hex,
+                "len_raw": info.len_raw,
+                "len_stored": info.len_stored,
+                "flags": info.flags,
+                "pack": format!("chunks/packs/{}/{pack}.cavspack", &pack[..2]),
+                "pack_offset": pack_offset,
+                "pack_offset_abs": packfile::PACK_HEADER_LEN + pack_offset,
+            }));
+        }
+        let rel = format!("assets/{name}/chunk-map.json");
+        let dst = out.join(&rel);
+        std::fs::create_dir_all(dst.parent().unwrap())?;
+        std::fs::write(
+            &dst,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "asset": name,
+                "chunks": chunks,
+            }))?,
+        )?;
+        Ok(rel)
+    }
+
+    /// Incrementally export **one asset** into an export tree: the packs it
+    /// references (skipped when already present), its `record.json`,
+    /// `chunk-map.json` and `manifest.json`. Equivalent, for that asset, to
+    /// the full `export_object_store` + `export_static_plans` +
+    /// [`Self::export_static_manifests`] — but O(this asset), not O(store),
+    /// so per-object publishers (e.g. the Git LFS agent) stay linear across
+    /// a many-object push.
+    pub fn export_asset(&self, name: &str, out: &Path) -> Result<Vec<String>> {
+        if self.index.layout != StoreLayout::Packfiles {
+            return Err(StoreError::NotExportable(
+                "object-store export requires a packfile-layout store".into(),
+            ));
+        }
+        let hexes = self
+            .index
+            .assets
+            .get(name)
+            .ok_or_else(|| StoreError::AssetNotFound(name.to_string()))?;
+        let mut packs: Vec<&str> = Vec::new();
+        for hex in hexes {
+            let Some(info) = self.index.chunks.get(hex) else {
+                continue;
+            };
+            match info.pack.as_deref() {
+                Some(pack) => {
+                    if !packs.contains(&pack) {
+                        packs.push(pack);
+                    }
+                }
+                None => {
                     return Err(StoreError::NotExportable(format!(
                         "chunk {hex} is not packed (ingest still open?)"
-                    )));
-                };
-                // `pack_offset` is into the pack's data region; a static
-                // client that knows nothing about the packfile header wants
-                // the absolute file offset for its HTTP Range request, so we
-                // publish both.
-                let pack_offset = info.pack_offset.unwrap_or(0);
-                chunks.push(serde_json::json!({
-                    "hash": hex,
-                    "len_raw": info.len_raw,
-                    "len_stored": info.len_stored,
-                    "flags": info.flags,
-                    "pack": format!("chunks/packs/{}/{pack}.cavspack", &pack[..2]),
-                    "pack_offset": pack_offset,
-                    "pack_offset_abs": packfile::PACK_HEADER_LEN + pack_offset,
-                }));
+                    )))
+                }
             }
-            let rel = format!("assets/{name}/chunk-map.json");
-            let dst = out.join(&rel);
-            std::fs::create_dir_all(dst.parent().unwrap())?;
-            std::fs::write(
-                &dst,
-                serde_json::to_vec_pretty(&serde_json::json!({
-                    "asset": name,
-                    "chunks": chunks,
-                }))?,
-            )?;
-            written.push(rel);
         }
+        packs.sort_unstable();
+
+        let mut written = Vec::new();
+        for pack in packs {
+            for (src, rel) in [
+                (
+                    packfile::pack_path(&self.packs_dir(), pack),
+                    format!("chunks/packs/{}/{pack}.cavspack", &pack[..2]),
+                ),
+                (
+                    packfile::index_path(&self.packs_dir(), pack),
+                    format!("chunks/indexes/{}/{pack}.cavsindex", &pack[..2]),
+                ),
+            ] {
+                if copy_if_different(&src, &out.join(&rel))? {
+                    written.push(rel);
+                }
+            }
+        }
+
+        let rel = format!("assets/{name}/record.json");
+        let dst = out.join(&rel);
+        std::fs::create_dir_all(dst.parent().unwrap())?;
+        std::fs::copy(self.root.join("assets").join(format!("{name}.json")), &dst)?;
+        written.push(rel);
+
+        written.push(self.write_chunk_map(name, out)?);
+
+        let manifest = self.asset_manifest(name)?;
+        let rel = format!("assets/{name}/manifest.json");
+        let dst = out.join(&rel);
+        std::fs::create_dir_all(dst.parent().unwrap())?;
+        std::fs::write(&dst, serde_json::to_vec_pretty(&manifest)?)?;
+        written.push(rel);
+
         Ok(written)
     }
 
@@ -907,6 +980,23 @@ impl GlobalStore {
         std::fs::rename(&tmp, &path)?;
         Ok(())
     }
+}
+
+/// Copy `src` to `dst` unless `dst` already exists with the same length.
+/// Packs and their indexes are immutable and content-addressed, so an
+/// equal-length destination is the same object — skipping the copy makes
+/// re-exports into the same tree effectively incremental. Returns whether
+/// a copy happened.
+fn copy_if_different(src: &Path, dst: &Path) -> Result<bool> {
+    std::fs::create_dir_all(dst.parent().unwrap())?;
+    let same = match (std::fs::metadata(src), std::fs::metadata(dst)) {
+        (Ok(s), Ok(d)) => s.len() == d.len(),
+        _ => false,
+    };
+    if !same {
+        std::fs::copy(src, dst)?;
+    }
+    Ok(!same)
 }
 
 fn now_epoch() -> u64 {

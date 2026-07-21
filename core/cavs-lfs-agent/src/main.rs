@@ -69,6 +69,9 @@ struct Session {
     /// Tempdirs of completed downloads: git-lfs consumes the file after our
     /// `complete`, so they must outlive the event — freed on terminate/exit.
     tempdirs: Vec<tempfile::TempDir>,
+    /// Lock + open store, created on the first upload and reused for the
+    /// whole push session (one store open per push, not per object).
+    write: Option<store_sync::WriteSession>,
 }
 
 fn main() -> Result<()> {
@@ -132,6 +135,7 @@ fn main() -> Result<()> {
                             remote,
                             cache_dir,
                             tempdirs: Vec::new(),
+                            write: None,
                         });
                         out.send(&InitResult::default());
                     }
@@ -186,7 +190,7 @@ fn main() -> Result<()> {
                 }
             }
             Event::Upload(ul) => {
-                let Some(session) = session.as_ref() else {
+                let Some(session) = session.as_mut() else {
                     out.send(&Complete::err(
                         &ul.oid,
                         ProtoError::new(CODE_GENERIC, "protocol error: upload before init"),
@@ -203,7 +207,30 @@ fn main() -> Result<()> {
                     ));
                     continue;
                 };
-                match upload::handle(tree, store, &ul.oid, &ul.path, ul.size, &upload_cfg, &out) {
+                // Lock + open the store once per push session, lazily.
+                let write = match &mut session.write {
+                    Some(w) => w,
+                    None => match store_sync::open_session(tree, store) {
+                        Ok(w) => session.write.insert(w),
+                        Err(e) => {
+                            eprintln!("[lfs-agent] cannot open store: {e:#}");
+                            out.send(&Complete::err(
+                                &ul.oid,
+                                ProtoError::new(CODE_GENERIC, format!("{e:#}")),
+                            ));
+                            continue;
+                        }
+                    },
+                };
+                match upload::handle(
+                    tree,
+                    &mut write.store,
+                    &ul.oid,
+                    &ul.path,
+                    ul.size,
+                    &upload_cfg,
+                    &out,
+                ) {
                     Ok(()) => out.send(&Complete::ok_upload(&ul.oid)),
                     Err(e) => {
                         eprintln!("[lfs-agent] upload {} failed: {e:#}", ul.oid);
