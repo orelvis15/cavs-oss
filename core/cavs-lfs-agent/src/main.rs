@@ -14,11 +14,14 @@
 //! The agent speaks NDJSON on stdin/stdout (`init`/`download`/`upload`/
 //! `terminate`); diagnostics go to stderr only.
 
+mod download;
 mod protocol;
+mod remote;
 
 use anyhow::Result;
 use clap::Parser;
-use protocol::{Complete, Event, InitResult, ProtoError, ProtoOut, CODE_GENERIC};
+use protocol::{Complete, Event, InitResult, ProtoError, ProtoOut, CODE_GENERIC, CODE_NOT_FOUND};
+use remote::Remote;
 use std::io::BufRead;
 
 #[derive(Debug, Parser)]
@@ -57,12 +60,21 @@ struct Args {
     connections: usize,
 }
 
+/// Everything resolved at `init` time and shared by all transfers.
+struct Session {
+    remote: Remote,
+    cache_dir: std::path::PathBuf,
+    /// Tempdirs of completed downloads: git-lfs consumes the file after our
+    /// `complete`, so they must outlive the event — freed on terminate/exit.
+    tempdirs: Vec<tempfile::TempDir>,
+}
+
 fn main() -> Result<()> {
     let args = Args::parse();
     let out = ProtoOut::stdout();
     let stdin = std::io::stdin();
 
-    let mut session: Option<protocol::InitEvent> = None;
+    let mut session: Option<Session> = None;
 
     for line in stdin.lock().lines() {
         let line = line?;
@@ -84,15 +96,73 @@ fn main() -> Result<()> {
                     "[lfs-agent] init: operation={} remote={:?}",
                     init.operation, init.remote
                 );
-                session = Some(init);
-                out.send(&InitResult::default());
+                let resolved =
+                    remote::resolve(args.remote.as_deref(), &init.remote).and_then(|remote| {
+                        let cache_dir = remote::cache_dir(args.cache_dir.as_deref())?;
+                        Ok((remote, cache_dir))
+                    });
+                match resolved {
+                    Ok((remote, cache_dir)) => {
+                        eprintln!(
+                            "[lfs-agent] remote: {remote:?}, cache: {}",
+                            cache_dir.display()
+                        );
+                        session = Some(Session {
+                            remote,
+                            cache_dir,
+                            tempdirs: Vec::new(),
+                        });
+                        out.send(&InitResult::default());
+                    }
+                    Err(e) => {
+                        out.send(&InitResult {
+                            error: Some(ProtoError::new(protocol::CODE_INIT, format!("{e:#}"))),
+                        });
+                        anyhow::bail!("init failed: {e:#}");
+                    }
+                }
             }
             Event::Download(dl) => {
-                let _ = &session;
-                out.send(&Complete::err(
+                let Some(session) = session.as_mut() else {
+                    out.send(&Complete::err(
+                        &dl.oid,
+                        ProtoError::new(CODE_GENERIC, "protocol error: download before init"),
+                    ));
+                    continue;
+                };
+                // On a directory remote a missing asset is a clean 404;
+                // over HTTP the fetch itself reports the missing manifest.
+                if let Remote::Dir { tree, .. } = &session.remote {
+                    if !download::exists_at_dir_remote(tree, &dl.oid) {
+                        out.send(&Complete::err(
+                            &dl.oid,
+                            ProtoError::new(CODE_NOT_FOUND, "object not found at remote"),
+                        ));
+                        continue;
+                    }
+                }
+                let tmp_root = session.cache_dir.join("tmp");
+                match download::handle(
+                    &session.remote.fetch_base(),
                     &dl.oid,
-                    ProtoError::new(CODE_GENERIC, "download not implemented yet"),
-                ));
+                    &session.cache_dir,
+                    &tmp_root,
+                    args.connections,
+                    args.pubkey.as_deref(),
+                    &out,
+                ) {
+                    Ok((path, tmpdir)) => {
+                        out.send(&Complete::ok_download(&dl.oid, &path));
+                        session.tempdirs.push(tmpdir);
+                    }
+                    Err(e) => {
+                        eprintln!("[lfs-agent] download {} failed: {e:#}", dl.oid);
+                        out.send(&Complete::err(
+                            &dl.oid,
+                            ProtoError::new(CODE_GENERIC, format!("{e:#}")),
+                        ));
+                    }
+                }
             }
             Event::Upload(ul) => {
                 out.send(&Complete::err(
@@ -106,6 +176,5 @@ fn main() -> Result<()> {
             }
         }
     }
-    let _ = args;
     Ok(())
 }
