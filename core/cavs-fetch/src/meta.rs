@@ -241,7 +241,9 @@ impl MetadataResolver {
 
         // 1. Make sure we know the remote's oid → pack mapping (one probe
         //    per session; a missing index is negative-cached briefly).
-        let mapped_pack = self.ensure_index(source)?.and_then(|idx| idx.get(oid).cloned());
+        let mapped_pack = self
+            .ensure_index(source)?
+            .and_then(|idx| idx.get(oid).cloned());
 
         // 2. L2 disk cache, validated against the mapping so a re-pushed or
         //    repacked object never resolves to stale chunk locations.
@@ -263,12 +265,7 @@ impl MetadataResolver {
         // 3. Meta-pack route: fetch the pack holding this oid and prefetch
         //    every sibling object it carries.
         if let Some(pack_id) = &mapped_pack {
-            let already = self
-                .state
-                .lock()
-                .unwrap()
-                .fetched_packs
-                .contains(pack_id);
+            let already = self.state.lock().unwrap().fetched_packs.contains(pack_id);
             if !already {
                 match self.fetch_meta_pack(source, pack_id, oid) {
                     Ok(Some(meta)) => return Ok(meta),

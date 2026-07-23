@@ -170,7 +170,10 @@ impl SegIndex {
         if let Ok(entries) = std::fs::read_dir(dir.join("generations")) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
-                if let Some(gen) = name.strip_prefix("gen-").and_then(|g| g.parse::<u64>().ok()) {
+                if let Some(gen) = name
+                    .strip_prefix("gen-")
+                    .and_then(|g| g.parse::<u64>().ok())
+                {
                     if gen > generation {
                         let _ = std::fs::remove_dir_all(entry.path());
                     }
@@ -547,7 +550,12 @@ fn hex_to_hash(hex: &str) -> Option<[u8; 32]> {
     Some(out)
 }
 
-fn encode_record(out: &mut Vec<u8>, hash: &[u8; 32], info: Option<&ChunkInfo>, packs: &mut PackTable) {
+fn encode_record(
+    out: &mut Vec<u8>,
+    hash: &[u8; 32],
+    info: Option<&ChunkInfo>,
+    packs: &mut PackTable,
+) {
     out.extend_from_slice(hash);
     match info {
         Some(info) => {
@@ -675,18 +683,14 @@ fn write_segment(
 }
 
 fn open_segment(path: &Path, rs: &RootSegment) -> Result<Segment> {
-    let file = std::fs::File::open(path).map_err(|e| {
-        StoreError::IndexCorrupt(format!("segment {} unreadable: {e}", rs.file))
-    })?;
+    let file = std::fs::File::open(path)
+        .map_err(|e| StoreError::IndexCorrupt(format!("segment {} unreadable: {e}", rs.file)))?;
     // Safety: segments are immutable once committed; the store's advisory
     // lock serializes writers, and a torn write never lands under a
     // committed name (content-addressed tmp+rename).
     let mmap = unsafe { memmap2::Mmap::map(&file) }
         .map_err(|e| StoreError::IndexCorrupt(format!("mmap {}: {e}", rs.file)))?;
-    if mmap.len() as u64 != rs.size
-        || mmap.len() < SEG_HEADER_LEN + 32
-        || &mmap[..8] != SEG_MAGIC
-    {
+    if mmap.len() as u64 != rs.size || mmap.len() < SEG_HEADER_LEN + 32 || &mmap[..8] != SEG_MAGIC {
         return Err(StoreError::IndexCorrupt(format!(
             "segment {} does not match its root entry",
             rs.file
@@ -990,12 +994,10 @@ mod tests {
             let dirty = BTreeMap::from([(hex.clone(), Some(info(1, 1, Some("p"))))]);
             seg.commit_generation(&dirty, &assets).unwrap();
         }
-        let gens: Vec<_> = std::fs::read_dir(
-            SegIndex::index_dir(dir.path()).join("generations"),
-        )
-        .unwrap()
-        .flatten()
-        .collect();
+        let gens: Vec<_> = std::fs::read_dir(SegIndex::index_dir(dir.path()).join("generations"))
+            .unwrap()
+            .flatten()
+            .collect();
         assert!(gens.len() <= 2, "kept {} generations", gens.len());
     }
 }

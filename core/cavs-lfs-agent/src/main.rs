@@ -15,6 +15,7 @@
 //! `terminate`); diagnostics go to stderr only.
 
 mod download;
+mod http_push;
 mod protocol;
 mod remote;
 mod store_sync;
@@ -25,6 +26,7 @@ use clap::Parser;
 use protocol::{Complete, Event, InitResult, ProtoError, ProtoOut, CODE_GENERIC, CODE_NOT_FOUND};
 use remote::Remote;
 use std::io::BufRead;
+use std::time::Instant;
 
 #[derive(Debug, Parser)]
 #[command(name = "cavs-lfs-agent", version, about)]
@@ -80,12 +82,29 @@ struct Session {
     /// Lock + open store, created on the first upload and reused for the
     /// whole push session (one store open per push, not per object).
     write: Option<store_sync::WriteSession>,
+    /// Writable HTTP remote (resolved at init for upload sessions). When set,
+    /// uploads ingest into a local staging mirror and the export is pushed to
+    /// the Hub at finalize.
+    http: Option<http_push::HttpTarget>,
+    /// (oid, size) of every object seen this push, registered on the Hub at
+    /// finalize so the repository reflects the push.
+    uploaded: Vec<(String, u64)>,
     /// Session-wide metadata resolver: L1/L2 caches + meta-pack prefetch
     /// shared across every download of this process.
     resolver: cavs_fetch::MetadataResolver,
     /// Aggregate download stats for the terminate-time breakdown.
     downloads: u64,
     agg: cavs_fetch::FetchStats,
+    /// Upload benchmark accumulators (faithful, measured — reported to the Hub
+    /// at finalize). `up_started` is set on the first upload so the push wall
+    /// time excludes pre-push idle.
+    up_started: Option<Instant>,
+    up_logical: u64,
+    up_new_bytes: u64,
+    up_chunks: u64,
+    up_new_chunks: u64,
+    up_ingest_ms: u64,
+    up_objects: u64,
 }
 
 impl Session {
@@ -203,15 +222,48 @@ fn main() -> Result<()> {
                             "[lfs-agent] remote: {remote:?}, cache: {}",
                             cache_dir.display()
                         );
+                        // For an upload against an http(s) remote, resolve the
+                        // writable Hub target now (enforces the plaintext-http
+                        // gate + token lookup) so a misconfigured push fails at
+                        // init instead of after transferring bytes.
+                        let http = if init.operation == "upload" {
+                            if let Remote::Http(base) = &remote {
+                                match http_push::HttpTarget::resolve(base) {
+                                    Ok(t) => Some(t),
+                                    Err(e) => {
+                                        out.send(&InitResult {
+                                            error: Some(ProtoError::new(
+                                                protocol::CODE_INIT,
+                                                format!("{e:#}"),
+                                            )),
+                                        });
+                                        anyhow::bail!("init failed: {e:#}");
+                                    }
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
                         let resolver = cavs_fetch::MetadataResolver::new(&cache_dir);
                         session = Some(Session {
                             remote,
                             cache_dir,
                             tempdirs: Vec::new(),
                             write: None,
+                            http,
+                            uploaded: Vec::new(),
                             resolver,
                             downloads: 0,
                             agg: cavs_fetch::FetchStats::default(),
+                            up_started: None,
+                            up_logical: 0,
+                            up_new_bytes: 0,
+                            up_chunks: 0,
+                            up_new_chunks: 0,
+                            up_ingest_ms: 0,
+                            up_objects: 0,
                         });
                         out.send(&InitResult::default());
                     }
@@ -275,20 +327,22 @@ fn main() -> Result<()> {
                     ));
                     continue;
                 };
-                let Remote::Dir { tree, store } = &session.remote else {
-                    out.send(&Complete::err(
-                        &ul.oid,
-                        ProtoError::new(
-                            CODE_GENERIC,
-                            "remote is read-only (http); uploads need a directory remote",
-                        ),
-                    ));
-                    continue;
+                // Where the ingest/export lands: a directory remote writes its
+                // static tree in place; an http remote stages into a local
+                // mirror (under the cache dir) that is pushed to the Hub at
+                // finalize. Both paths share the same ingest/pack/export code.
+                let (tree, store) = match &session.remote {
+                    Remote::Dir { tree, store } => (tree.clone(), store.clone()),
+                    Remote::Http(_) => {
+                        let tree = session.cache_dir.join("mirror");
+                        let store = tree.join(".store");
+                        (tree, store)
+                    }
                 };
                 // Lock + open the store once per push session, lazily.
                 let write = match &mut session.write {
                     Some(w) => w,
-                    None => match store_sync::open_session(tree, store) {
+                    None => match store_sync::open_session(&tree, &store) {
                         Ok(w) => session.write.insert(w),
                         Err(e) => {
                             eprintln!("[lfs-agent] cannot open store: {e:#}");
@@ -300,8 +354,21 @@ fn main() -> Result<()> {
                         }
                     },
                 };
+                if session.up_started.is_none() {
+                    session.up_started = Some(Instant::now());
+                }
+                let t0 = Instant::now();
                 match upload::handle(write, &ul.oid, &ul.path, ul.size, &upload_cfg, &out) {
-                    Ok(()) => out.send(&Complete::ok_upload(&ul.oid)),
+                    Ok(stats) => {
+                        session.up_ingest_ms += t0.elapsed().as_millis() as u64;
+                        session.up_logical += ul.size;
+                        session.up_new_bytes += stats.new_bytes;
+                        session.up_chunks += stats.chunks;
+                        session.up_new_chunks += stats.new_chunks;
+                        session.up_objects += 1;
+                        session.uploaded.push((ul.oid.clone(), ul.size));
+                        out.send(&Complete::ok_upload(&ul.oid));
+                    }
                     Err(e) => {
                         eprintln!("[lfs-agent] upload {} failed: {e:#}", ul.oid);
                         out.send(&Complete::err(
@@ -332,6 +399,98 @@ fn main() -> Result<()> {
                 .with_context(|| format!("finalizing push session ({n} assets)"))?;
             if n > 0 {
                 eprintln!("[lfs-agent] finalize: published {n} assets");
+            }
+        }
+        // http remote: mirror the freshly exported static tree to the Hub and
+        // register the push. Only runs when this was an upload session against
+        // an http(s) remote (see init).
+        if let Some(http) = session.http.as_ref() {
+            let tree = session.cache_dir.join("mirror");
+            if tree.is_dir() {
+                let t_mirror = Instant::now();
+                let (put, skipped) = http
+                    .sync_tree(&tree)
+                    .context("mirroring static export to the hub")?;
+                let mirror_ms = t_mirror.elapsed().as_millis() as u64;
+                // Attach each object's post-dedup+compression footprint (looked
+                // up from the now-finalized store) so the Hub can persist
+                // per-object storage stats. 0 when the asset isn't resolvable.
+                let store = session.write.as_ref().map(|w| &w.store);
+                let objects: Vec<http_push::FinalizeObject> = session
+                    .uploaded
+                    .iter()
+                    .map(|(oid, size)| {
+                        let (physical, chunks) = store
+                            .and_then(|s| s.asset_stored_stats(oid))
+                            .unwrap_or((0, 0));
+                        http_push::FinalizeObject {
+                            oid: oid.clone(),
+                            size: *size,
+                            physical,
+                            chunks,
+                        }
+                    })
+                    .collect();
+                // Faithful, measured push benchmark. Times are wall-clock of the
+                // agent's own work (ingest + mirror + total since first upload);
+                // bytes/chunks are exact counters from the store, not estimates.
+                let total_ms = session
+                    .up_started
+                    .map(|t| t.elapsed().as_millis() as u64)
+                    .unwrap_or(0);
+                let stats = serde_json::json!({
+                    "kind": "push",
+                    "duration_ms": total_ms,
+                    "ingest_ms": session.up_ingest_ms,
+                    "mirror_ms": mirror_ms,
+                    "logical_bytes": session.up_logical,
+                    "stored_bytes": session.up_new_bytes,
+                    "object_count": session.up_objects,
+                    "chunk_count": session.up_chunks,
+                    "new_chunks": session.up_new_chunks,
+                    "reused_chunks": session.up_chunks.saturating_sub(session.up_new_chunks),
+                    "files_put": put as u64,
+                    "files_skipped": skipped as u64,
+                });
+                let gen = http
+                    .finalize(&objects, Some(&stats))
+                    .context("finalizing push on the hub")?;
+                eprintln!(
+                    "[lfs-agent] hub: pushed {put} files ({skipped} already present), \
+                     {} objects, generation {gen}",
+                    session.uploaded.len()
+                );
+            }
+        }
+
+        // Download session over an http(s) Hub: report the faithful fetch stats
+        // so the dashboard can show pull benchmarks. Best-effort — a failed
+        // report must never fail the pull the user already completed.
+        if session.downloads > 0 {
+            let base = session.remote.fetch_base();
+            if let Some(token) = http_push::download_auth(&base) {
+                let m = session.resolver.stats();
+                let a = &session.agg;
+                let report = serde_json::json!({
+                    "kind": "pull",
+                    "duration_ms": a.metadata_ms + a.plan_ms + a.payload_ms + a.reconstruct_ms,
+                    "object_count": session.downloads,
+                    "logical_bytes": a.logical_bytes,
+                    "wire_bytes": a.wire_bytes,
+                    "useful_bytes": a.useful_bytes,
+                    "chunk_count": a.fetched + a.reused,
+                    "new_chunks": a.fetched,
+                    "reused_chunks": a.reused,
+                    "requests": a.requests,
+                    "metadata_ms": a.metadata_ms,
+                    "plan_ms": a.plan_ms,
+                    "payload_ms": a.payload_ms,
+                    "reconstruct_ms": a.reconstruct_ms,
+                    "metadata_requests": a.metadata_requests,
+                    "cache_l1_hits": m.l1_hits,
+                    "cache_l2_hits": m.l2_hits,
+                });
+                http_push::report_transfer(&base, &token, &report);
             }
         }
     }

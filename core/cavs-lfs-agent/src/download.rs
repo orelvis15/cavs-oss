@@ -34,7 +34,9 @@ pub fn handle(
     std::fs::create_dir_all(tmp_root)?;
     let tmpdir = tempfile::tempdir_in(tmp_root).context("creating download tempdir")?;
 
-    let source = StaticSource::new(fetch_base);
+    // Attach a bearer token when the tree is served by an authenticated Hub
+    // (http(s) base); a directory / public-CDN base resolves to None.
+    let source = StaticSource::with_auth(fetch_base, crate::http_push::download_auth(fetch_base));
     // Progress: cumulative wire bytes from fetch worker threads, throttled
     // so a many-chunk object does not flood git-lfs with events. The mutex
     // makes the check-and-send atomic: concurrent workers would otherwise

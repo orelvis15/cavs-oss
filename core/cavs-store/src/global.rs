@@ -1347,6 +1347,25 @@ impl GlobalStore {
         self.index.assets.keys().cloned().collect()
     }
 
+    /// One asset's physical footprint: total stored (compressed) bytes and
+    /// chunk count across the chunks it references. Shared chunks are counted
+    /// for each asset that references them, so this is the object's *standalone*
+    /// compressed size — useful for per-object stats. Summing it across assets
+    /// over-counts cross-asset dedup; the repo's true physical is the unique
+    /// packed bytes, not this sum. Returns `None` for an unknown asset.
+    pub fn asset_stored_stats(&self, name: &str) -> Option<(u64, u64)> {
+        let hexes = self.index.assets.get(name)?;
+        let mut stored = 0u64;
+        let mut chunks = 0u64;
+        for hex in hexes {
+            if let Some(info) = self.chunk_get(hex) {
+                stored += info.len_stored as u64;
+                chunks += 1;
+            }
+        }
+        Some((stored, chunks))
+    }
+
     pub fn get_asset(&self, name: &str) -> Result<AssetRecord> {
         let path = self.root.join("assets").join(format!("{name}.json"));
         let bytes =
@@ -1605,9 +1624,9 @@ impl GlobalStore {
         for (hex, info) in placed {
             let pack = info.pack.as_deref().unwrap();
             let offset = info.pack_offset.unwrap_or(0);
-            let extend = runs.last().is_some_and(|r: &Run| {
-                r.pack == pack && offset == r.next_offset
-            });
+            let extend = runs
+                .last()
+                .is_some_and(|r: &Run| r.pack == pack && offset == r.next_offset);
             if !extend {
                 runs.push(Run {
                     pack: pack.to_string(),

@@ -965,7 +965,10 @@ mod tests {
             short_reads_left: Mutex::new(0),
             single_len: 500,
         };
-        let err = format!("{:#}", fetch_group(&source, &group, &cache, None).unwrap_err());
+        let err = format!(
+            "{:#}",
+            fetch_group(&source, &group, &cache, None).unwrap_err()
+        );
         assert!(err.contains("twice"), "got: {err}");
         assert!(err.contains("CAVS-E-CHUNK-HASH-MISMATCH"), "got: {err}");
     }
@@ -996,7 +999,10 @@ mod tests {
         };
         let dir2 = tempfile::tempdir().unwrap();
         let cache2 = ChunkCache::open(dir2.path()).unwrap();
-        let err = format!("{:#}", fetch_group(&source, &group, &cache2, None).unwrap_err());
+        let err = format!(
+            "{:#}",
+            fetch_group(&source, &group, &cache2, None).unwrap_err()
+        );
         assert!(err.contains("CAVS-E-RANGE-LENGTH-MISMATCH"), "got: {err}");
     }
 

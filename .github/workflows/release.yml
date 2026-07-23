@@ -70,7 +70,7 @@ jobs:
             tar czf "$DIST.tar.gz" "$DIST"
           fi
           # Also publish the LFS agent as a standalone binary named
-          # cavs-lfs-agent-<target>, so the CAVS Hub CLI installer
+          # cavs-lfs-agent-<target>, so the CAVS Node CLI installer
           # (cavs-hub-cli/install.sh) can fetch it directly from Releases.
           if [ -f "$BINDIR/cavs-lfs-agent.exe" ]; then
             cp "$BINDIR/cavs-lfs-agent.exe" "cavs-lfs-agent-${{ matrix.target }}.exe"

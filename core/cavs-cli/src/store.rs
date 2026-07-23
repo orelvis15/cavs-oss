@@ -149,9 +149,7 @@ pub fn index_inspect(store_dir: &Path) -> Result<()> {
     if r.segmented {
         println!(
             "index   : segmented · generation {} · {} segments ({} deltas pending compaction)",
-            r.generation,
-            r.segments,
-            r.deltas
+            r.generation, r.segments, r.deltas
         );
     } else {
         println!(
@@ -180,7 +178,10 @@ pub fn fragmentation(store_dir: &Path) -> Result<()> {
         human_bytes(f.dead_bytes),
         f.dead_bytes_ratio * 100.0
     );
-    println!("score   : {:.3} (small-pack ratio + dead-bytes ratio)", f.fragmentation_score);
+    println!(
+        "score   : {:.3} (small-pack ratio + dead-bytes ratio)",
+        f.fragmentation_score
+    );
     for p in f.packs.iter().take(8) {
         println!(
             "  pack {}… {} disk / {} live · {:.0}% dead · {} chunks",

@@ -7,7 +7,7 @@ Reproduce with `bench/run.sh` — datasets are deterministic (seeded). Raw
 data: [results/benchmark-v1/](results/benchmark-v1/) (main run) and
 [results/profile-sweep/](results/profile-sweep/) (chunking sweep).
 
-These are the measurements the CAVS Cloud MVP spec asks for (§17):
+These are the measurements the CAVS Node MVP spec asks for (§17):
 Git LFS compatibility, storage efficiency vs Git LFS, reconstruction
 correctness, and benchmark reports with the dashboard metrics (logical vs
 physical storage, dedup %, objects, unique chunks).
@@ -44,7 +44,7 @@ reconstructed identically in every system at every step.**
 | many-files | 88 527 | 96 902 | 114 392 | 211 501 | 104 901 | −8 % |
 | full-rewrite | 49 152 | 98 362 | 98 330 | 203 986 | 101 548 | +3 % |
 
-¹ chunk store only — what a CAVS Cloud backend would bill. ² with
+¹ chunk store only — what a CAVS Node backend would bill. ² with
 `auto`→16k + zstd, even the **doubled** directory remote (56.9 MB) is
 smaller than one logical copy (65.5 MB) and 4.6× smaller than LFS.
 

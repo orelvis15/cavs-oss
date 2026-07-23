@@ -13,7 +13,7 @@ use crate::store_sync::WriteSession;
 use anyhow::{bail, Context, Result};
 use cavs_chunker::ChunkMode;
 use cavs_format::{
-    ingest_into_store, Reader, SegmentRecord, TrackKind, TrackRecord, Writer,
+    ingest_into_store, IngestStats, Reader, SegmentRecord, TrackKind, TrackRecord, Writer,
     SEGMENT_FLAG_RANDOM_ACCESS,
 };
 use std::path::Path;
@@ -132,7 +132,7 @@ pub fn handle(
     size: u64,
     cfg: &UploadCfg,
     out: &ProtoOut,
-) -> Result<()> {
+) -> Result<IngestStats> {
     let tree = write.tree.clone();
     // Idempotent re-push: the object is already published. Refresh its
     // export at finalize only if its manifest is missing from the tree
@@ -150,7 +150,7 @@ pub fn handle(
             "[lfs-agent] upload {}: already at remote, skipping",
             &oid[..12.min(oid.len())]
         );
-        return Ok(());
+        return Ok(IngestStats::default());
     }
 
     // Resolve `--profile auto` per file, by size (see auto_profile).
@@ -200,7 +200,7 @@ pub fn handle(
     //    terminate — O(new data) pack copies for the whole session instead
     //    of per-object re-copies of the still-growing ingest pack.
     write.pending_exports.push(oid.to_string());
-    Ok(())
+    Ok(stats)
 }
 
 /// Pack a single file as one raw data track into `dst`.

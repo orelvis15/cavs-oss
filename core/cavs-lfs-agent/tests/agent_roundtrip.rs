@@ -428,22 +428,50 @@ fn killed_before_terminate_publishes_nothing_and_retry_repairs() {
     }
 }
 
+/// A push to a plaintext `http://` remote must be refused at init unless the
+/// dev escape hatch is set — the agent should never ship a token + bytes in
+/// cleartext by default. (An `https://` remote, or `http://` with the env set,
+/// takes the writable Hub path instead; those need a live server, exercised
+/// end-to-end elsewhere.)
 #[test]
-fn upload_to_http_remote_is_rejected() {
+fn plaintext_http_upload_is_gated() {
     let tmp = tempfile::tempdir().unwrap();
     let cache = tmp.path().join("cache");
-    let src = tmp.path().join("blob");
-    std::fs::write(&src, b"data").unwrap();
 
-    let mut agent = Agent::spawn(Path::new("https://cdn.example.invalid/lfs"), &cache, &[]);
-    agent.init("upload");
-    let oid = oid_of(b"data");
-    agent.send(json!({"event": "upload", "oid": oid, "size": 4, "path": src}));
-    let done = agent.recv_complete(&oid);
-    let msg = done["error"]["message"].as_str().unwrap_or_default();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_cavs-lfs-agent"))
+        .arg("--remote")
+        .arg("http://127.0.0.1:0/lfs")
+        .arg("--cache-dir")
+        .arg(&cache)
+        .env_remove("CAVS_LFS_ALLOW_INSECURE_HTTP")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .expect("spawn agent");
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+
+    writeln!(
+        stdin,
+        "{}",
+        json!({
+            "event": "init", "operation": "upload", "remote": "unused",
+            "concurrent": false, "concurrenttransfers": 1
+        })
+    )
+    .unwrap();
+
+    let mut line = String::new();
+    stdout.read_line(&mut line).expect("read init reply");
+    let reply: Value =
+        serde_json::from_str(&line).unwrap_or_else(|e| panic!("bad JSON: {e}: {line}"));
+    let msg = reply["error"]["message"].as_str().unwrap_or_default();
     assert!(
-        msg.contains("read-only"),
-        "expected read-only rejection, got: {done}"
+        msg.contains("plaintext http"),
+        "expected the plaintext-http gate to reject init, got: {line}"
     );
-    agent.terminate();
+
+    let _ = child.kill();
+    let _ = child.wait();
 }
